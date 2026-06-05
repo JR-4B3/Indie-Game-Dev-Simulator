@@ -1,2 +1,2 @@
 # GameDev
-Little GameDev (Tycoon) Game (for now) Terminal only 
+Little GameDev (Tycoon) Game, Terminal only (for now) 
