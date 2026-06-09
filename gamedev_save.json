@@ -1,0 +1,44 @@
+{
+  "clock": {
+    "current_date": "1976-01-08",
+    "week": 2,
+    "elapsed_seconds": 5.425069222000275
+  },
+  "studio": {
+    "cash": 10000,
+    "fans": 0,
+    "reputation": 0,
+    "xp": 0,
+    "level": 1,
+    "released_games": 0,
+    "current_project": null,
+    "employees": [
+      {
+        "name": "You",
+        "gameplay": 4,
+        "graphics": 3,
+        "audio": 3,
+        "tech": 4,
+        "wage": 0
+      }
+    ],
+    "active_sales": []
+  },
+  "selected_genre": 0,
+  "selected_topic": 0,
+  "selected_platform": 0,
+  "selected_focus": 0,
+  "focus_percentages": [
+    25,
+    25,
+    25,
+    25
+  ],
+  "time_speed_index": 4,
+  "resume_time_speed_index": 4,
+  "logs": [
+    "Saved game to gamedev_save.json.",
+    "1976 begins. Your tiny studio is ready.",
+    "Press N to create games or E to hire employees."
+  ]
+}

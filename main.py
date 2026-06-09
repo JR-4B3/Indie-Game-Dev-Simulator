@@ -1,47 +1,24 @@
 from __future__ import annotations
 
+import argparse
 import curses
+import json
 import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
+from pathlib import Path
+
+from game_data import GENRES, GENRE_PROFILES, GOOD_MATCHES, PLATFORMS, PLATFORM_PROFILES, TOPICS
 
 
 SECONDS_PER_WEEK = 30.0
-START_DATE = date(1970, 1, 1)
-TIME_SPEEDS = [0.0, 1.0, 1.5, 2.0]
-TIME_LABELS = ["||", ">", ">>", ">>>"]
+START_DATE = date(1976, 1, 1)
+TIME_SPEEDS = [0.0, 1.0, 1.5, 2.0, 3.0]
+TIME_LABELS = ["||", ">", ">>", ">>>", ">>>>"]
 DEFAULT_TIME_SPEED_INDEX = 1
+DEFAULT_SAVE_FILE = "gamedev_save.json"
 STATS = ["Gameplay", "Graphics", "Audio", "Tech"]
-GENRES = ["Action", "RPG", "Puzzle", "Racing", "Strategy"]
-TOPICS = [
-    "Zombies",
-    "Vampire",
-    "Medieval",
-    "Space",
-    "Cyberpunk",
-    "Pirates",
-    "Detective",
-    "Fantasy",
-    "Sports",
-    "Robots",
-    "War",
-    "Western",
-    "Ninjas",
-    "Aliens",
-    "Superheroes",
-    "Dinosaurs",
-    "Farming",
-    "School",
-    "Cooking",
-    "Underwater",
-]
-GOOD_MATCHES = {
-    "Action": {"Zombies", "Vampire", "War", "Ninjas", "Aliens", "Superheroes", "Robots"},
-    "RPG": {"Medieval", "Fantasy", "Cyberpunk", "Pirates", "Vampire", "Western", "Space"},
-    "Puzzle": {"Detective", "Cooking", "School", "Underwater", "Robots", "Farming"},
-    "Racing": {"Sports", "Cyberpunk", "Space", "Dinosaurs", "Western", "Pirates"},
-    "Strategy": {"War", "Medieval", "Space", "Robots", "Pirates", "Farming", "Aliens"},
-}
+NAVIGATION_KEYS = {curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT}
 PROJECT_LENGTH_WEEKS = 8
 STUDIO_LEVEL_XP = [0, 100, 250, 500, 900, 1400]
 EMPLOYEE_CANDIDATES = [
@@ -80,6 +57,10 @@ class GameClock:
 class Project:
     genre: str
     topic: str
+    platform: str
+    platform_category: str
+    platform_user_base: int
+    focus_percentages: tuple[int, int, int, int]
     started_week: int
     weeks_done: int = 0
     gameplay: int = 0
@@ -130,11 +111,18 @@ class GameState:
     studio: Studio
     selected_genre: int = 0
     selected_topic: int = 0
+    selected_platform: int = 0
+    selected_focus: int = 0
+    topic_columns: int = 1
     selected_employee: int = 0
     selecting_topics: bool = False
+    selecting_platforms: bool = False
+    selecting_focus: bool = False
+    focus_percentages: list[int] = field(default_factory=lambda: [25, 25, 25, 25])
     modal: str = "main"
     time_speed_index: int = DEFAULT_TIME_SPEED_INDEX
     resume_time_speed_index: int = DEFAULT_TIME_SPEED_INDEX
+    save_path: str = DEFAULT_SAVE_FILE
     logs: list[str] | None = None
 
     def __post_init__(self) -> None:
@@ -142,7 +130,7 @@ class GameState:
             self.studio.employees.append(Employee("You", 4, 3, 3, 4, 0))
         if self.logs is None:
             self.logs = [
-                "1970 begins. Your tiny studio is ready.",
+                "1976 begins. Your tiny studio is ready.",
                 "Press N to create games or E to hire employees.",
             ]
 
@@ -150,6 +138,107 @@ class GameState:
         assert self.logs is not None
         self.logs.insert(0, message)
         del self.logs[60:]
+
+
+def project_to_data(project: Project | None) -> dict | None:
+    if project is None:
+        return None
+
+    return {
+        "genre": project.genre,
+        "topic": project.topic,
+        "platform": project.platform,
+        "platform_category": project.platform_category,
+        "platform_user_base": project.platform_user_base,
+        "focus_percentages": list(project.focus_percentages),
+        "started_week": project.started_week,
+        "weeks_done": project.weeks_done,
+        "gameplay": project.gameplay,
+        "graphics": project.graphics,
+        "audio": project.audio,
+        "tech": project.tech,
+    }
+
+
+def project_from_data(data: dict | None) -> Project | None:
+    if data is None:
+        return None
+
+    data = dict(data)
+    data["focus_percentages"] = tuple(data["focus_percentages"])
+    return Project(**data)
+
+
+def state_to_data(state: GameState) -> dict:
+    return {
+        "clock": {
+            "current_date": state.clock.current_date.isoformat(),
+            "week": state.clock.week,
+            "elapsed_seconds": state.clock._elapsed_seconds,
+        },
+        "studio": {
+            "cash": state.studio.cash,
+            "fans": state.studio.fans,
+            "reputation": state.studio.reputation,
+            "xp": state.studio.xp,
+            "level": state.studio.level,
+            "released_games": state.studio.released_games,
+            "current_project": project_to_data(state.studio.current_project),
+            "employees": [employee.__dict__ for employee in state.studio.employees],
+            "active_sales": [sale.__dict__ for sale in state.studio.active_sales],
+        },
+        "selected_genre": state.selected_genre,
+        "selected_topic": state.selected_topic,
+        "selected_platform": state.selected_platform,
+        "selected_focus": state.selected_focus,
+        "focus_percentages": state.focus_percentages,
+        "time_speed_index": state.time_speed_index,
+        "resume_time_speed_index": state.resume_time_speed_index,
+        "logs": state.logs or [],
+    }
+
+
+def state_from_data(data: dict, save_path: str) -> GameState:
+    clock_data = data["clock"]
+    studio_data = data["studio"]
+    clock = GameClock(
+        current_date=date.fromisoformat(clock_data["current_date"]),
+        week=clock_data["week"],
+        _elapsed_seconds=clock_data.get("elapsed_seconds", 0.0),
+    )
+    studio = Studio(
+        cash=studio_data["cash"],
+        fans=studio_data["fans"],
+        reputation=studio_data["reputation"],
+        xp=studio_data["xp"],
+        level=studio_data["level"],
+        released_games=studio_data["released_games"],
+        current_project=project_from_data(studio_data.get("current_project")),
+        employees=[Employee(**employee) for employee in studio_data.get("employees", [])],
+        active_sales=[ActiveSale(**sale) for sale in studio_data.get("active_sales", [])],
+    )
+    return GameState(
+        clock=clock,
+        studio=studio,
+        selected_genre=data.get("selected_genre", 0),
+        selected_topic=data.get("selected_topic", 0),
+        selected_platform=data.get("selected_platform", 0),
+        selected_focus=data.get("selected_focus", 0),
+        focus_percentages=data.get("focus_percentages", [25, 25, 25, 25]),
+        time_speed_index=data.get("time_speed_index", DEFAULT_TIME_SPEED_INDEX),
+        resume_time_speed_index=data.get("resume_time_speed_index", DEFAULT_TIME_SPEED_INDEX),
+        save_path=save_path,
+        logs=data.get("logs", []),
+    )
+
+
+def save_game(state: GameState) -> None:
+    Path(state.save_path).write_text(json.dumps(state_to_data(state), indent=2), encoding="utf-8")
+
+
+def load_game(save_path: str) -> GameState:
+    data = json.loads(Path(save_path).read_text(encoding="utf-8"))
+    return state_from_data(data, save_path)
 
 
 def format_date(value: date) -> str:
@@ -173,20 +262,134 @@ def update_studio_level(studio: Studio) -> bool:
     return leveled_up
 
 
+def year_month(value: date) -> tuple[int, int]:
+    return value.year, value.month
+
+
+def is_platform_active(platform: tuple[str, tuple[int, int], tuple[int, int] | None, int, str], current_date: date) -> bool:
+    current = year_month(current_date)
+    release = platform[1]
+    support_end = platform[2]
+    return release <= current and (support_end is None or current <= support_end)
+
+
+def available_platforms(state: GameState) -> list[tuple[str, tuple[int, int], tuple[int, int] | None, int, str]]:
+    return [platform for platform in PLATFORMS if is_platform_active(platform, state.clock.current_date)]
+
+
+def selected_platform_info(state: GameState) -> tuple[str, tuple[int, int], tuple[int, int] | None, int, str] | None:
+    platforms = available_platforms(state)
+    if not platforms:
+        return None
+
+    return platforms[min(state.selected_platform, len(platforms) - 1)]
+
+
+def estimate_platform_users(platform: tuple[str, tuple[int, int], tuple[int, int] | None, int, str], current_date: date) -> int:
+    name, release, support_end, dev_cost, category = platform
+    age_months = max(0, (current_date.year - release[0]) * 12 + current_date.month - release[1])
+    if support_end is None:
+        lifespan_months = 96
+    else:
+        lifespan_months = max(12, (support_end[0] - release[0]) * 12 + support_end[1] - release[1])
+
+    maturity = min(1.0, (age_months + 4) / max(8, lifespan_months // 2))
+    decline = 1.0 if support_end is None else max(0.35, 1.0 - max(0, age_months - lifespan_months * 0.7) / max(1, lifespan_months))
+    category_base = {"PC": 180_000, "Console": 220_000, "Handheld": 150_000, "Arcade": 90_000, "Mobile": 260_000}[category]
+    cost_reach = max(0.8, min(3.2, dev_cost / 12_000))
+    long_support = 1.15 if support_end is None or lifespan_months >= 96 else 1.0
+    return max(25_000, int(category_base * cost_reach * maturity * decline * long_support))
+
+
+def platform_fit(genre: str, topic: str, platform_category: str) -> tuple[int, str]:
+    profile = PLATFORM_PROFILES[platform_category]
+    genre_bonus = 12 if genre in profile["genres"] else -4
+    topic_bonus = 8 if topic in profile["topics"] else 0
+    genre_targets = set(GENRE_PROFILES[genre]["targets"])
+    audience_overlap = genre_targets & set(profile["audiences"])
+    audience_bonus = min(8, len(audience_overlap) * 4)
+    score = genre_bonus + topic_bonus + audience_bonus
+    label = "strong" if score >= 20 else "good" if score >= 12 else "niche" if score >= 4 else "weak"
+    return score, label
+
+
+def focus_fit(genre: str, focus_percentages: tuple[int, int, int, int]) -> tuple[int, str]:
+    ideal = GENRE_PROFILES[genre]["priorities"]
+    distance = sum(abs(focus_percentages[index] - ideal[index]) for index in range(len(STATS)))
+    score = max(-12, 16 - distance // 4)
+    label = "excellent" if score >= 12 else "good" if score >= 6 else "risky" if score >= 0 else "bad"
+    return score, label
+
+
+def normalize_focus(values: list[int]) -> list[int]:
+    total = sum(values)
+    if total == 100:
+        return values
+
+    values[-1] += 100 - total
+    return values
+
+
+def adjust_focus(state: GameState, delta: int) -> None:
+    index = state.selected_focus
+    values = state.focus_percentages
+    if delta > 0:
+        donor = max((candidate for candidate in range(len(values)) if candidate != index), key=lambda candidate: values[candidate])
+        amount = min(delta, values[donor], 100 - values[index])
+        values[index] += amount
+        values[donor] -= amount
+    elif delta < 0:
+        amount = min(-delta, values[index])
+        receiver = (index + 1) % len(values)
+        values[index] -= amount
+        values[receiver] += amount
+
+    state.focus_percentages = normalize_focus(values)
+
+
+def reset_new_game_steps(state: GameState) -> None:
+    state.selecting_topics = False
+    state.selecting_platforms = False
+    state.selecting_focus = False
+
+
+def move_topic_selection(state: GameState, delta_columns: int, delta_rows: int) -> None:
+    columns = max(1, state.topic_columns)
+    current_column = state.selected_topic % columns
+    target = state.selected_topic + delta_columns + delta_rows * columns
+
+    if delta_columns < 0 and current_column == 0:
+        return
+    if delta_columns > 0 and current_column >= columns - 1:
+        return
+    if 0 <= target < len(TOPICS):
+        state.selected_topic = target
+
+
 def review_game(project: Project, studio: Studio) -> tuple[int, int, int, int, int, int, int, int]:
-    match_bonus = 22 if project.topic in GOOD_MATCHES[project.genre] else 6
+    match_bonus = 26 if project.topic in GOOD_MATCHES[project.genre] else 4
     experience_bonus = min(18, studio.level * 3 + studio.released_games)
     topic_variety = (TOPICS.index(project.topic) * 7 + GENRES.index(project.genre) * 11) % 13
-    stat_average = (project.gameplay + project.graphics + project.audio + project.tech) // 4
-    quality_bonus = min(35, stat_average // 2)
-    press_score = max(15, min(100, 20 + match_bonus + experience_bonus + topic_variety + quality_bonus))
-    public_score = max(10, min(100, press_score + (studio.fans // 20) - 5))
+    priorities = project.focus_percentages
+    weighted_quality = (
+        project.gameplay * priorities[0]
+        + project.graphics * priorities[1]
+        + project.audio * priorities[2]
+        + project.tech * priorities[3]
+    ) // 100
+    quality_bonus = min(35, weighted_quality // 2)
+    platform_bonus, _ = platform_fit(project.genre, project.topic, project.platform_category)
+    focus_bonus, _ = focus_fit(project.genre, project.focus_percentages)
+    user_bonus = min(16, project.platform_user_base // 120_000)
+    press_score = max(15, min(100, 16 + match_bonus + experience_bonus + topic_variety + quality_bonus + platform_bonus // 2 + focus_bonus))
+    public_score = max(10, min(100, press_score + platform_bonus + user_bonus + (studio.fans // 25) - 10))
 
     launch_fans = max(1, public_score // 8)
     reputation = max(1, press_score // 12)
     xp = 40 + press_score
     sale_weeks = 2 + press_score // 18 + public_score // 25
-    weekly_cash = 250 + press_score * 12 + public_score * 10
+    market_scale = max(0.8, min(4.5, project.platform_user_base / 180_000))
+    weekly_cash = int((250 + press_score * 12 + public_score * 10) * market_scale)
     weekly_fans = max(1, public_score // 12)
     return press_score, public_score, sale_weeks, weekly_cash, weekly_fans, launch_fans, reputation, xp
 
@@ -196,17 +399,32 @@ def start_project(state: GameState) -> None:
         state.add_log("A game is already in development.")
         return
 
-    cost = 1_500
+    platform = selected_platform_info(state)
+    if platform is None:
+        state.add_log("No active platforms are available for development.")
+        return
+
+    platform_name, _, _, cost, platform_category = platform
     if state.studio.cash < cost:
-        state.add_log("Not enough cash to start a new game.")
+        state.add_log(f"Not enough cash to develop for {platform_name}.")
         return
 
     genre = GENRES[state.selected_genre]
     topic = TOPICS[state.selected_topic]
+    user_base = estimate_platform_users(platform, state.clock.current_date)
     state.studio.cash -= cost
-    state.studio.current_project = Project(genre=genre, topic=topic, started_week=state.clock.week)
+    state.studio.current_project = Project(
+        genre=genre,
+        topic=topic,
+        platform=platform_name,
+        platform_category=platform_category,
+        platform_user_base=user_base,
+        focus_percentages=tuple(state.focus_percentages),
+        started_week=state.clock.week,
+    )
     state.modal = "main"
-    state.add_log(f"Started a {topic} {genre} game. Budget spent: ${cost:,}.")
+    reset_new_game_steps(state)
+    state.add_log(f"Started a {topic} {genre} game for {platform_name}. Budget spent: ${cost:,}.")
 
 
 def hire_employee(state: GameState) -> None:
@@ -237,11 +455,12 @@ def finish_project(state: GameState) -> None:
     state.studio.xp += xp
     state.studio.released_games += 1
     state.studio.active_sales.append(
-        ActiveSale(f"{project.topic} {project.genre}", press_score, public_score, sale_weeks, weekly_cash, weekly_fans)
+        ActiveSale(f"{project.topic} {project.genre} ({project.platform})", press_score, public_score, sale_weeks, weekly_cash, weekly_fans)
     )
     state.studio.current_project = None
 
-    state.add_log(f"Released {project.topic} {project.genre}: press {press_score}/100, public {public_score}/100.")
+    state.add_log(f"Released {project.topic} {project.genre} on {project.platform}: press {press_score}/100, public {public_score}/100.")
+    state.add_log(f"Focus fit was {focus_fit(project.genre, project.focus_percentages)[1]}: GP {project.focus_percentages[0]}%, GR {project.focus_percentages[1]}%, AU {project.focus_percentages[2]}%, TE {project.focus_percentages[3]}%.")
     state.add_log(f"Sales forecast: ${weekly_cash:,}/week and +{weekly_fans} fans/week for {sale_weeks} weeks.")
     state.add_log(f"Launch buzz: +{fans} fans, +{reputation} rep, +{xp} studio XP.")
     if update_studio_level(state.studio):
@@ -365,38 +584,46 @@ def draw_overlay(screen: curses.window, state: GameState) -> None:
     if current_project is None:
         genre = GENRES[state.selected_genre]
         topic = TOPICS[state.selected_topic]
+        platform = selected_platform_info(state)
         match = "good fit" if topic in GOOD_MATCHES[genre] else "risky fit"
+        platform_text = "No active platform"
+        if platform is not None:
+            fit = platform_fit(genre, topic, platform[4])[1]
+            users = estimate_platform_users(platform, clock.current_date)
+            platform_text = f"{platform[0]} ({platform[4]}, {fit}, {users:,} users)"
         add_clipped(project, 1, 2, "No project in development", right_width - 4)
         add_clipped(project, 2, 2, f"Next idea: {topic} {genre}", right_width - 4)
         add_clipped(project, 3, 2, f"Combo:    {match}", right_width - 4)
+        add_clipped(project, 4, 2, f"Platform: {platform_text}", right_width - 4)
         add_clipped(project, 5, 2, "Press N to open new game", right_width - 4, curses.color_pair(4))
     else:
         bar_width = max(5, right_width - 18)
         filled_project = int(bar_width * current_project.weeks_done / PROJECT_LENGTH_WEEKS)
         project_bar = "#" * filled_project + "-" * (bar_width - filled_project)
-        add_clipped(project, 1, 2, f"{current_project.topic} {current_project.genre}", right_width - 4)
+        add_clipped(project, 1, 2, f"{current_project.topic} {current_project.genre} on {current_project.platform}", right_width - 4)
         add_clipped(project, 2, 2, f"Progress: [{project_bar}]", right_width - 4)
         add_clipped(project, 3, 2, f"Week {current_project.weeks_done}/{PROJECT_LENGTH_WEEKS}", right_width - 4)
         add_clipped(project, 4, 2, format_project_stats(current_project), right_width - 4)
         add_clipped(project, 5, 2, "Employees add stat points weekly", right_width - 4, curses.color_pair(4))
 
-    content_bottom = draw_middle_content(screen, state, width)
+    content_bottom = draw_middle_content(screen, state, width, height)
 
-    log_height = height - content_bottom - 2
-    log = screen.derwin(log_height, width, content_bottom, 0)
-    visible_logs = max(0, log_height - 2)
-    logs = state.logs or []
-    shown_logs = logs[:visible_logs]
-    draw_box(log, log_height, width, "Activity")
-    for row, message in enumerate(shown_logs, start=1):
-        add_clipped(log, row, 2, message, width - 4)
+    if state.modal != "new_game":
+        log_height = height - content_bottom - 2
+        log = screen.derwin(log_height, width, content_bottom, 0)
+        visible_logs = max(0, log_height - 2)
+        logs = state.logs or []
+        shown_logs = logs[:visible_logs]
+        draw_box(log, log_height, width, "Activity")
+        for row, message in enumerate(shown_logs, start=1):
+            add_clipped(log, row, 2, message, width - 4)
 
     if state.modal == "new_game":
-        controls = " Enter select/start | Backspace back | Up/Down choose | Q quit "
+        controls = " Enter next/start | Backspace back | Arrows choose/adjust | S save | Q quit "
     elif state.modal == "hire":
-        controls = " Enter hire selected | Backspace back | Up/Down choose | Q quit "
+        controls = " Enter hire selected | Backspace back | Up/Down choose | S save | Q quit "
     else:
-        controls = " N new game | E employees | Right faster | Left slower | Space pause/resume | Q quit "
+        controls = " N new game | E employees | S save | Right faster | Left slower | Space pause/resume | Q quit "
     add_clipped(screen, height - 1, 0, controls.ljust(width), width, curses.color_pair(1))
 
 
@@ -404,10 +631,10 @@ def format_project_stats(project: Project) -> str:
     return f"GP {project.gameplay} | GR {project.graphics} | AU {project.audio} | TE {project.tech}"
 
 
-def draw_middle_content(screen: curses.window, state: GameState, width: int) -> int:
+def draw_middle_content(screen: curses.window, state: GameState, width: int, height: int) -> int:
     if state.modal == "new_game":
-        draw_new_game_screen(screen, state, width, 10)
-        return 17
+        draw_new_game_screen(screen, state, width, 10, height - 11)
+        return height - 1
 
     if state.modal == "hire":
         draw_hiring_screen(screen, state, width, 10)
@@ -439,26 +666,78 @@ def draw_main_middle(screen: curses.window, state: GameState, width: int, y: int
         add_clipped(sales, row, 2, text, right_width - 4)
 
 
-def draw_new_game_screen(screen: curses.window, state: GameState, width: int, y: int) -> None:
-    picker_height = 7
-    genre_width = min(24, width // 3)
-    topics_width = width - genre_width - 1
+def draw_new_game_screen(screen: curses.window, state: GameState, width: int, y: int, available_height: int) -> None:
+    picker_height = max(8, available_height - 5)
+    genre_width = max(18, min(28, width // 4))
+    platform_width = max(18, min(34, width // 3))
+    topics_width = width - genre_width - platform_width - 2
     genre_picker = screen.derwin(picker_height, genre_width, y, 0)
     topic_picker = screen.derwin(picker_height, topics_width, y, genre_width + 1)
-    draw_box(genre_picker, picker_height, genre_width, "Genres")
-    draw_box(topic_picker, picker_height, topics_width, "Topics")
+    platform_picker = screen.derwin(picker_height, platform_width, y, genre_width + topics_width + 2)
+    active_column = 3 if state.selecting_focus else 2 if state.selecting_platforms else 1 if state.selecting_topics else 0
+    platforms = available_platforms(state)
+    platform_names = [f"{item[0]} ${item[3]:,}" for item in platforms]
+    state.topic_columns = topic_grid_columns(topics_width)
 
-    for index, genre in enumerate(GENRES[: picker_height - 2]):
-        marker = ">" if index == state.selected_genre else " "
-        attr = curses.color_pair(3) | curses.A_BOLD if index == state.selected_genre and not state.selecting_topics else 0
-        add_clipped(genre_picker, index + 1, 2, f"{marker} {genre}", genre_width - 4, attr)
+    draw_picker(genre_picker, picker_height, genre_width, "Genres", GENRES, state.selected_genre, active_column == 0)
+    draw_topic_picker(topic_picker, picker_height, topics_width, TOPICS, state.selected_topic, active_column == 1)
+    draw_picker(platform_picker, picker_height, platform_width, "Platforms", platform_names, state.selected_platform, active_column == 2)
 
-    topic_start = max(0, min(state.selected_topic - 2, len(TOPICS) - (picker_height - 2)))
-    for row, topic in enumerate(TOPICS[topic_start : topic_start + picker_height - 2], start=1):
-        index = topic_start + row - 1
-        marker = ">" if index == state.selected_topic else " "
-        attr = curses.color_pair(3) | curses.A_BOLD if index == state.selected_topic and state.selecting_topics else 0
-        add_clipped(topic_picker, row, 2, f"{marker} {topic}", topics_width - 4, attr)
+    genre = GENRES[state.selected_genre]
+    focus_y = y + picker_height
+    focus_height = max(3, available_height - picker_height)
+    focus_panel = screen.derwin(focus_height, width, focus_y, 0)
+    draw_box(focus_panel, focus_height, width, "Focus Percentages")
+    focus_text = " | ".join(f"{STATS[index]} {state.focus_percentages[index]}%" for index in range(len(STATS)))
+    add_clipped(focus_panel, 1, 2, f"{genre}: {focus_text}", width - 4, curses.color_pair(3) | curses.A_BOLD if active_column == 3 else 0)
+    if focus_height > 3:
+        selected = state.selected_focus
+        add_clipped(focus_panel, 2, 2, f"Adjusting: {STATS[selected]} ({state.focus_percentages[selected]}%). Total stays 100%.", width - 4, curses.color_pair(4) if active_column == 3 else 0)
+
+
+def draw_picker(window: curses.window, height: int, width: int, title: str, items: list[str], selected: int, active: bool) -> None:
+    draw_box(window, height, width, title)
+    if not items:
+        add_clipped(window, 1, 2, "None available", width - 4)
+        return
+
+    visible = height - 2
+    start = max(0, min(selected - visible // 2, len(items) - visible))
+    for row, item in enumerate(items[start : start + visible], start=1):
+        index = start + row - 1
+        marker = ">" if index == selected else " "
+        attr = curses.color_pair(3) | curses.A_BOLD if index == selected and active else 0
+        add_clipped(window, row, 2, f"{marker} {item}", width - 4, attr)
+
+
+def topic_grid_columns(width: int) -> int:
+    return max(1, (width - 4) // 18)
+
+
+def draw_topic_picker(window: curses.window, height: int, width: int, items: list[str], selected: int, active: bool) -> None:
+    draw_box(window, height, width, "Topics")
+    if not items:
+        add_clipped(window, 1, 2, "None available", width - 4)
+        return
+
+    rows = height - 2
+    columns = topic_grid_columns(width)
+    page_size = rows * columns
+    page_start = (selected // page_size) * page_size
+    column_width = max(12, (width - 4) // columns)
+
+    for offset, item in enumerate(items[page_start : page_start + page_size]):
+        index = page_start + offset
+        row = offset // columns + 1
+        column = offset % columns
+        x = 2 + column * column_width
+        marker = ">" if index == selected else " "
+        attr = curses.color_pair(3) | curses.A_BOLD if index == selected and active else 0
+        add_clipped(window, row, x, f"{marker} {item}", column_width - 1, attr)
+
+    page = page_start // page_size + 1
+    pages = (len(items) + page_size - 1) // page_size
+    add_clipped(window, 0, max(2, width - 14), f" {page}/{pages} ", 12, curses.color_pair(4))
 
 
 def draw_hiring_screen(screen: curses.window, state: GameState, width: int, y: int) -> None:
@@ -482,6 +761,15 @@ def handle_key(state: GameState, key: int) -> bool:
         toggle_pause(state)
         return True
 
+    if key in (ord("s"), ord("S")):
+        try:
+            save_game(state)
+        except OSError as error:
+            state.add_log(f"Save failed: {error}.")
+        else:
+            state.add_log(f"Saved game to {state.save_path}.")
+        return True
+
     if key == 27:
         state.modal = "main"
         return True
@@ -490,7 +778,7 @@ def handle_key(state: GameState, key: int) -> bool:
         if key in (ord("n"), ord("N")):
             if state.studio.current_project is None:
                 state.modal = "new_game"
-                state.selecting_topics = False
+                reset_new_game_steps(state)
             else:
                 state.add_log("Finish the current game before starting another.")
         elif key in (ord("e"), ord("E")):
@@ -512,25 +800,59 @@ def handle_key(state: GameState, key: int) -> bool:
 
 def handle_new_game_key(state: GameState, key: int) -> bool:
     if key in (10, 13, curses.KEY_ENTER):
-        if state.selecting_topics:
+        if state.selecting_focus:
             start_project(state)
+        elif state.selecting_platforms:
+            state.selecting_platforms = False
+            state.selecting_focus = True
+        elif state.selecting_topics:
+            state.selecting_topics = False
+            state.selecting_platforms = True
         else:
             state.selecting_topics = True
     elif key in (8, 127, curses.KEY_BACKSPACE):
-        if state.selecting_topics:
+        if state.selecting_focus:
+            state.selecting_focus = False
+            state.selecting_platforms = True
+        elif state.selecting_platforms:
+            state.selecting_platforms = False
+            state.selecting_topics = True
+        elif state.selecting_topics:
             state.selecting_topics = False
         else:
             state.modal = "main"
     elif key == curses.KEY_UP:
-        if state.selecting_topics:
-            state.selected_topic = (state.selected_topic - 1) % len(TOPICS)
+        if state.selecting_focus:
+            state.selected_focus = (state.selected_focus - 1) % len(STATS)
+        elif state.selecting_platforms:
+            platforms = available_platforms(state)
+            if platforms:
+                state.selected_platform = (state.selected_platform - 1) % len(platforms)
+        elif state.selecting_topics:
+            move_topic_selection(state, 0, -1)
         else:
             state.selected_genre = (state.selected_genre - 1) % len(GENRES)
     elif key == curses.KEY_DOWN:
-        if state.selecting_topics:
-            state.selected_topic = (state.selected_topic + 1) % len(TOPICS)
+        if state.selecting_focus:
+            state.selected_focus = (state.selected_focus + 1) % len(STATS)
+        elif state.selecting_platforms:
+            platforms = available_platforms(state)
+            if platforms:
+                state.selected_platform = (state.selected_platform + 1) % len(platforms)
+        elif state.selecting_topics:
+            move_topic_selection(state, 0, 1)
         else:
             state.selected_genre = (state.selected_genre + 1) % len(GENRES)
+    elif key == curses.KEY_LEFT:
+        if state.selecting_focus:
+            adjust_focus(state, -5)
+        elif state.selecting_topics:
+            move_topic_selection(state, -1, 0)
+    elif key == curses.KEY_RIGHT:
+        if state.selecting_focus:
+            adjust_focus(state, 5)
+        elif state.selecting_topics:
+            move_topic_selection(state, 1, 0)
 
     return True
 
@@ -573,7 +895,7 @@ def decrease_time_speed(state: GameState) -> None:
     state.resume_time_speed_index = max(DEFAULT_TIME_SPEED_INDEX, state.time_speed_index)
 
 
-def run(screen: curses.window) -> None:
+def run(screen: curses.window, load_save: bool, save_path: str) -> None:
     curses.curs_set(0)
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
@@ -583,7 +905,16 @@ def run(screen: curses.window) -> None:
 
     screen.nodelay(True)
     screen.keypad(True)
-    state = GameState(clock=GameClock(), studio=Studio())
+    if load_save:
+        try:
+            state = load_game(save_path)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+            state = GameState(clock=GameClock(), studio=Studio(), save_path=save_path)
+            state.add_log(f"Could not load {save_path}: {error}.")
+        else:
+            state.add_log(f"Loaded game from {save_path}.")
+    else:
+        state = GameState(clock=GameClock(), studio=Studio(), save_path=save_path)
     previous_time = time.monotonic()
     running = True
 
@@ -597,14 +928,24 @@ def run(screen: curses.window) -> None:
         screen.refresh()
 
         key = screen.getch()
-        if key != -1:
+        while key != -1:
             running = handle_key(state, key)
+            if not running:
+                break
+            if key in NAVIGATION_KEYS:
+                curses.flushinp()
+                break
+            key = screen.getch()
 
-        time.sleep(0.1)
+        time.sleep(0.03)
 
 
 def main() -> None:
-    curses.wrapper(run)
+    parser = argparse.ArgumentParser(description="Run GameDev Tycoon Terminal.")
+    parser.add_argument("--load", action="store_true", help="load the saved game before starting")
+    parser.add_argument("--save-file", default=DEFAULT_SAVE_FILE, help=f"save file path (default: {DEFAULT_SAVE_FILE})")
+    args = parser.parse_args()
+    curses.wrapper(run, args.load, args.save_file)
 
 
 if __name__ == "__main__":
