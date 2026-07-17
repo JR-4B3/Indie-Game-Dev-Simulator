@@ -16,7 +16,7 @@ START_DATE = date.today()
 SECONDS_PER_WEEK = 20.0
 SKILLS = ("Design", "Art", "Audio", "Code")
 TIME_SPEEDS = (0.0, 1.0, 2.0, 4.0, 8.0)
-TIME_LABELS = ("PAUSED", "1x", "2x", "4x", "8x")
+TIME_LABELS = ("||", "> 1x", ">> 2x", ">>> 4x", ">>>> 8x")
 
 CHANNELS = (
     {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00},
@@ -344,6 +344,7 @@ class GameState:
     selected_game: int = 0
     selected_promotion: int = 0
     selected_promotion_target: int = 0
+    marketing_tab: int = 0
     modal: str = "main"
     new_game_step: int = 0
     team_tab: int = 0
@@ -373,13 +374,13 @@ class GameState:
         if not self.draft_title:
             refresh_draft_title(self)
         if self.studio.legacy_auto_jobs_cancelled:
-            self.log(f"Removed {self.studio.legacy_auto_jobs_cancelled} legacy auto-accepted queued job(s) because Auto Contracts is OFF.")
+            self.log(f"Removed {self.studio.legacy_auto_jobs_cancelled} legacy auto-accepted queued contract(s) because Auto Contracts is OFF.")
             self.studio.legacy_auto_jobs_cancelled = 0
         if not self.logs:
             self.logs = [
                 f"{self.clock.current_date:%d %b %Y}: you open a bootstrapped indie studio with $75,000.",
                 "Cash is runway. Payroll, software, insurance, tax, refunds, and store cuts are real.",
-                "Start small: N plans a game, J opens the job board, C toggles auto-contracting, E manages the team.",
+                "Start small: N plans a game, J opens the Contract Board, C toggles automatic contracts, and T manages the team (E also works).",
             ]
 
     def log(self, message: str) -> None:
@@ -886,7 +887,7 @@ def refresh_contract_offers(state: GameState, announce: bool = True) -> None:
     studio.contract_offers = [generate_contract_offer(studio, rng, difficulty) for difficulty in difficulties]
     state.selected_contract = 0
     if announce:
-        state.log(f"The contract board refreshed with {len(studio.contract_offers)} jobs.")
+        state.log(f"The Contract Board refreshed with {len(studio.contract_offers)} offers.")
     if studio.auto_contracts:
         queue_all_contracts(state)
 
@@ -915,7 +916,7 @@ def accept_contract_offer(state: GameState, index: int | None = None, automatic:
         state.log(f"Accepted {contract.client}'s {contract.title}: ${contract.payout:,}, {contract.focus}, due in {contract.weeks_left} weeks.")
     else:
         studio.contract_queue.append(contract)
-        state.log(f"Queued {contract.client}'s {contract.title} behind {len(studio.contract_queue)} accepted job(s).")
+        state.log(f"Queued {contract.client}'s {contract.title} behind {len(studio.contract_queue)} accepted contract(s).")
     state.selected_contract = min(state.selected_contract, max(0, len(studio.contract_offers) - 1))
     return True
 
@@ -928,7 +929,7 @@ def queue_all_contracts(state: GameState) -> int:
             if accept_contract_offer(state, index, automatic=True):
                 accepted += 1
     if accepted:
-        state.log(f"Auto-contracting accepted {accepted} eligible job(s); deadlines begin when each job becomes active.")
+        state.log(f"Automatic contracts accepted {accepted} eligible offer(s); deadlines begin when each contract becomes active.")
     return accepted
 
 
@@ -937,13 +938,13 @@ def toggle_auto_contracts(state: GameState) -> bool:
     studio.auto_contracts = not studio.auto_contracts
     if studio.auto_contracts:
         accepted = queue_all_contracts(state)
-        state.log(f"Auto-contracting ON: {accepted} board job(s) added to the work queue.")
+        state.log(f"Automatic Contracts ON: {accepted} board offer(s) added to the queue.")
     else:
         cancelled = [contract for contract in studio.contract_queue if contract.auto_accepted]
         studio.contract_queue = [contract for contract in studio.contract_queue if not contract.auto_accepted]
-        message = f"Auto-contracting OFF. Cancelled {len(cancelled)} unstarted automatic job(s)."
+        message = f"Automatic Contracts OFF. Cancelled {len(cancelled)} unstarted automatic contract(s)."
         if studio.contract and studio.contract.auto_accepted:
-            message += " The active automatic job will finish, then automation stops."
+            message += " The active automatic contract will finish, then automation stops."
         state.log(message)
     return studio.auto_contracts
 
@@ -1418,6 +1419,7 @@ def state_to_data(state: GameState) -> dict:
             "selected_channel": state.selected_channel,
             "selected_scope": state.selected_scope,
             "selected_marketing": state.selected_marketing,
+            "marketing_tab": state.marketing_tab,
             "focus": state.focus,
             "time_speed_index": state.time_speed_index,
             "resume_speed_index": state.resume_speed_index,
@@ -1536,6 +1538,7 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         selected_channel=ui.get("selected_channel", 0),
         selected_scope=ui.get("selected_scope", 0),
         selected_marketing=ui.get("selected_marketing", 0),
+        marketing_tab=ui.get("marketing_tab", 0),
         focus=ui.get("focus", [30, 25, 15, 30]),
         time_speed_index=ui.get("time_speed_index", 1),
         resume_speed_index=ui.get("resume_speed_index", 1),

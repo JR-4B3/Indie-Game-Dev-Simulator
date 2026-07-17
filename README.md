@@ -1,4 +1,4 @@
-# Indie Studio
+# Indie Studio Game Dev Sim
 
 A terminal-based economic simulation about trying to keep a small independent
 game studio alive. The simulation begins on the current date. You start with one
@@ -50,7 +50,7 @@ followers, reputation, and release count are retained where possible; obsolete
   trait. Employees gain experience, can improve, resign when neglected, and cost
   severance to dismiss. As releases, followers, reputation, and revenue grow, the
   suggested headcount and applicant pool grow too; hiring remains your decision.
-- **Studio analytics:** four switchable views provide a studio overview,
+- **Studio statistics:** four switchable views provide a studio overview,
   solid-color revenue/expense breakdowns, vertical monthly cash-flow columns,
   statistics for every genre, and a permanent release catalog. Accounting keeps
   contract and game revenue separate and retains payroll, employer costs,
@@ -62,7 +62,7 @@ followers, reputation, and release count are retained where possible; obsolete
   audiences grow from actual buyers, and established audiences improve sequel
   discoverability without guaranteeing success. Starting a new game first opens
   an Original Game / Sequel chooser populated by prior releases.
-- **Permanent sales catalog:** every released game remains on sale. Genre/theme
+- **Game Catalogue:** every released game remains on sale. Genre/theme
   fit, quality, defects, platform, reputation, followers, scope, and storefront
   reach drive launch sales, while review quality and franchise audience establish
   a permanent weekly sales floor. Refunds, store cuts, hosting, and support costs
@@ -74,11 +74,11 @@ followers, reputation, and release count are retained where possible; obsolete
   falls quickly after launch; a well-rated release can survive after hype fades.
 - **Hype and promotion:** every project and release has hype that naturally
   decays. Launch investment ranges from organic promotion to a showcase launch.
-  The separate Marketing screen sells social pushes, press outreach, creator-key
-  campaigns, streamer placements, festival demos, games-event booths, and premium
-  showcase slots. Better opportunities require game reputation; campaigns cost
+  The separate Promotion Planning screen sells social pushes, press outreach,
+  creator-key promotions, streamer placements, festival demos, games-event booths,
+  and premium showcase slots. Better opportunities require game reputation; promotions cost
   cash, run for multiple weeks, and some consume substantial team time.
-- **Continuous updates:** every released game can independently toggle automatic
+- **Live operations:** every released game can independently toggle automatic
   updates. Choose Bug fixes, Balance, Visual, Audio, or New content and a Patch,
   Content, or Expansion size. Relevant employee skill determines duration; larger
   updates cost more and consume team capacity longer. Shipping a numbered update
@@ -91,20 +91,20 @@ followers, reputation, and release count are retained where possible; obsolete
   may not justify its staff time unless the game is well rated enough to revive.
 - **Per-game profit accounting:** new releases retain setup/store fees, employee
   labor accumulated during development, launch and later marketing, hosting, and
-  update costs. Game History shows revenue, total cost, profit, and the full cost
+  update costs. The Game Catalogue statistics view shows revenue, total cost, profit, and the full cost
   breakdown. Older releases remain marked `n/a` where historical cost allocation
   did not exist instead of showing misleading zero expenses.
-- **Contract business:** the monthly job board offers Design, Art, Audio, Code,
+- **Contract business:** the monthly Contract Board offers Design, Art, Audio, Code,
   and Generalist work with different workloads, payouts, deadlines, difficulty,
   and contractor-reputation requirements. Relevant team skill determines speed.
   Successful delivery builds a separate contractor reputation; missed deadlines
   lose reputation and pay nothing. Active client work diverts production capacity
   and adds fatigue.
 - **Automatic contracting:** toggle automatic work to accept every currently
-  eligible board job and queue them sequentially. New eligible jobs are
+  eligible board offer and queue them sequentially. New eligible contracts are
   automatically queued when the board refreshes each month. Turning automation
   off stops future acceptance and cancels every unstarted automatically accepted
-  job. A job already in progress finishes, and manually selected queued jobs are
+  contract. A contract already in progress finishes, and manually selected queued contracts are
   preserved.
 - **Meaningful upgrades:** workstations, professional tools, QA hardware,
   coworking space, health coverage, and analytics have purchase prices, recurring
@@ -115,30 +115,31 @@ followers, reputation, and release count are retained where possible; obsolete
 ## Controls
 
 - `N`: plan a new game
-- `J`: open the contract job board and accept one selected job
-- `C`: toggle automatic contract acceptance and queue all eligible board jobs
-- `E`: open team management
-- `U`: open infrastructure upgrades
-- `G`: open the live games catalog; inside it, `U` toggles updates
+- `J`: open the Contract Board and accept one selected contract
+- `C`: toggle automatic contract acceptance and queue all eligible board offers
+- `T`: open team management
+- `E`: legacy alias for team management
+- `U`: open Upgrades
+- `G`: open the Game Catalogue; inside it, `U` toggles updates
 - `F`: cycle update focus for the selected live game
 - `Z`: cycle Patch, Content, and Expansion update sizes
-- `M`: open marketing, or promote the selected game from the games catalog
-- `A`: open economic analysis
+- `M`: open Promotion Planning for the current project or selected catalogue game
+- `S`: open Studio Statistics
 - `T`: type a custom game title while planning
 - `R`: generate another title from the selected genre and theme
-- `Enter`: choose an original/sequel project, advance planning, hire, or purchase
-- `Tab`: switch between applicants and current staff
-- `Tab` / `Left` / `Right`: switch analytics views
+- `Enter`: choose a project, greenlight a production plan, hire, or purchase
+- `Tab`: switch planning panels, promotion panels, applicants, or current staff
+- `Tab` / `Left` / `Right`: switch statistics views
 - `D`: dismiss the selected non-founder employee
 - `Up` / `Down`: select an item or planning field
 - `Left` / `Right`: adjust a production plan; on the dashboard, change speed
-- `Backspace` or `Esc`: go back or close a management screen
+- `Backspace` or `Esc`: go back; on the dashboard, `Esc` opens Settings
 - `Space`: pause or resume
-- `S`: save
+- `Ctrl+S`: save
 - `Q`: quit
 
 Every footer control is clickable when the terminal exposes curses mouse events.
-The dashboard panels open production, team, analytics, and the live catalog; rows
+The dashboard panels open production, team, statistics, and the live catalog; rows
 select projects, games, promotions, applicants, employees, upgrades, genres, or
 releases; double-clicking confirms choices or toggles a game's updates; the wheel
 scrolls lists, changes promotion targets, adjusts planning fields, and changes

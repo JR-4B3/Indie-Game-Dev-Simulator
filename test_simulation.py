@@ -6,9 +6,11 @@ from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from main import draw_header, handle_key, handle_mouse, handle_new_game_key, open_new_game, parse_args
+from main import CTRL_S, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_main_content, draw_team_screen, footer_button_ranges, footer_layout, handle_key, handle_mouse, handle_new_game_key, open_new_game, parse_args, team_panel_widths
 from simulation import (
     START_DATE,
+    TIME_LABELS,
+    TIME_SPEEDS,
     GameState,
     accept_contract,
     accept_contract_offer,
@@ -38,7 +40,331 @@ def advance(state: GameState, weeks: int) -> None:
         advance_game(state, 1)
 
 
+def rendered_games_text(state: GameState, width: int, height: int) -> list[str]:
+    screen = MagicMock()
+    windows = []
+
+    def create_window(panel_height, panel_width, _y, _x):
+        window = MagicMock()
+        window.getmaxyx.return_value = (panel_height, panel_width)
+        windows.append(window)
+        return window
+
+    screen.derwin.side_effect = create_window
+    with patch("main.curses.color_pair", return_value=0):
+        draw_games_screen(screen, state, width, height)
+    return [call.args[2] for window in windows for call in window.addstr.call_args_list]
+
+
+def rendered_team_text(state: GameState, width: int, height: int) -> list[str]:
+    screen = MagicMock()
+    windows = []
+
+    def create_window(panel_height, panel_width, _y, _x):
+        window = MagicMock()
+        window.getmaxyx.return_value = (panel_height, panel_width)
+        windows.append(window)
+        return window
+
+    screen.derwin.side_effect = create_window
+    with patch("main.curses.color_pair", return_value=0):
+        draw_team_screen(screen, state, width, height)
+    return [call.args[2] for window in windows for call in window.addstr.call_args_list]
+
+
+def rendered_main_content_text(state: GameState, width: int, height: int) -> list[str]:
+    screen = MagicMock()
+    windows = []
+
+    def create_window(panel_height, panel_width, _y, _x):
+        window = MagicMock()
+        window.getmaxyx.return_value = (panel_height, panel_width)
+        windows.append(window)
+        return window
+
+    screen.derwin.side_effect = create_window
+    with patch("main.curses.color_pair", return_value=0):
+        draw_dashboard(screen, state, width)
+        draw_main_content(screen, state, width, height, 11)
+    return [call.args[2] for window in windows for call in window.addstr.call_args_list]
+
+
 class SimulationTests(unittest.TestCase):
+    def test_footer_highlights_shortcuts_and_right_aligns_global_controls(self) -> None:
+        state = GameState()
+        layout = footer_layout(state, 190)
+        positions = {action: (label, x) for label, action, x in layout}
+
+        self.assertEqual(positions["contracts"][0], "[J]obs")
+        self.assertEqual(positions["marketing"][0], "[M]arketing")
+        self.assertEqual(positions["analysis"][0], "[S]tatistics")
+        self.assertEqual(positions["settings"][0], "[Esc]Settings")
+        self.assertNotIn("toggle_contracts", positions)
+        self.assertGreater(positions["slower"][1], positions["games"][1] + len(positions["games"][0]))
+        self.assertLess(positions["settings"][1], positions["save"][1])
+        self.assertEqual(positions["save"][0], "[Ctrl+S]Save")
+        self.assertEqual(positions["quit"][0], "[Q]Quit")
+        self.assertEqual(positions["quit"][1] + len(positions["quit"][0]), 189)
+
+        screen = MagicMock()
+        screen.getmaxyx.return_value = (50, 190)
+        with patch("main.curses.color_pair", return_value=0):
+            draw_footer(screen, state, 50, 190)
+        shortcut = next(call for call in screen.addstr.call_args_list if call.args[2] == "[J]")
+        word = next(call for call in screen.addstr.call_args_list if call.args[2] == "obs")
+        self.assertTrue(shortcut.args[3] & curses.A_BOLD)
+        self.assertFalse(word.args[3] & curses.A_BOLD)
+
+    def test_dashboard_uses_balanced_team_catalogue_finance_and_contract_panels(self) -> None:
+        state = GameState()
+        advance(state, 4)
+
+        wide_text = rendered_main_content_text(state, 190, 50)
+        compact_text = rendered_main_content_text(state, 74, 40)
+
+        self.assertTrue(any(" Finance " in line for line in wide_text))
+        self.assertTrue(any("RECENT ACTIVITY" in line for line in wide_text))
+        self.assertTrue(any("Production Command" in line for line in wide_text))
+        self.assertTrue(any(line.strip() == "OPERATIONS" for line in wide_text))
+        self.assertTrue(any("Continuous updates" in line and "Active promotions" in line and "|" in line for line in wide_text))
+        self.assertTrue(any(line.strip() == "CONTRACTS" for line in wide_text))
+        self.assertTrue(any("[C] Auto contracts" in line for line in wide_text))
+        self.assertTrue(any("TOP SKILL" in line and "PERSONALITY" in line for line in wide_text))
+        self.assertTrue(any("REVENUE" in line and "PROFIT" in line and "UPDATES" in line for line in wide_text))
+        self.assertFalse(any("Recent Financial Trend" in line for line in wide_text))
+        self.assertTrue(any("Recent Financial Trend" in line for line in compact_text))
+        self.assertTrue(any(" Contracts " in line for line in compact_text))
+        self.assertTrue(any("CONTRACT STATUS" in line for line in compact_text))
+
+        screen = MagicMock()
+        screen.derwin.side_effect = lambda panel_height, panel_width, _y, _x: MagicMock(**{"getmaxyx.return_value": (panel_height, panel_width)})
+        with patch("main.curses.color_pair", return_value=0):
+            draw_dashboard(screen, state, 190)
+            draw_main_content(screen, state, 190, 50, 11)
+        panel_calls = [call.args for call in screen.derwin.call_args_list]
+        finance = next(args for args in panel_calls if args[2:] == (3, 0))
+        production = next(args for args in panel_calls if args[2] == 3 and args[3] > 0)
+        team = next(args for args in panel_calls if args[2:] == (19, 0))
+        catalogue = next(args for args in panel_calls if args[2] == 19 and args[3] > 0)
+        self.assertEqual(finance[0], production[0])
+        self.assertEqual(team[0], catalogue[0])
+
+    def test_production_command_uses_game_and_plan_hierarchy(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        self.assertTrue(accept_contract(state))
+        advance(state, 2)
+
+        text = rendered_main_content_text(state, 190, 50)
+
+        self.assertIn("GAME", text)
+        self.assertIn(state.studio.current_project.title, text)
+        self.assertIn("PLAN", text)
+        self.assertTrue(any("Week 2" in line and "w left /" in line and "w planned" in line for line in text))
+        self.assertTrue(any("Contract is cutting capacity by 45%" in line for line in text))
+        self.assertFalse(any(line == "Contract is cutting project capacity by 45%" for line in text))
+
+    def test_production_progress_keeps_fixed_bar_and_visible_percentage(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        bar_lengths = set()
+
+        for progress in (0.05, 0.34, 0.76, 0.95, 1.0):
+            project.work_done = project.total_work * progress
+            text = rendered_main_content_text(state, 190, 50)
+            progress_line = next(line for line in text if "[" in line and line.rstrip().endswith("%"))
+            if progress == 0.05:
+                self.assertTrue(progress_line.startswith("Prototype ["))
+            bar_lengths.add(len(progress_line.split("[", 1)[1].split("]", 1)[0]))
+            self.assertTrue(progress_line.rstrip().endswith(f"{progress:.0%}"))
+
+        project.work_done = project.total_work * 0.34
+        self.assertTrue(accept_contract(state))
+        toggle_auto_contracts(state)
+        text = rendered_main_content_text(state, 190, 50)
+        progress_line = next(line for line in text if "[" in line and line.rstrip().endswith("%"))
+        bar_lengths.add(len(progress_line.split("[", 1)[1].split("]", 1)[0]))
+        self.assertTrue(progress_line.rstrip().endswith("34%"))
+        self.assertEqual(bar_lengths, {72})
+
+    def test_expanded_team_roster_uses_spare_width_and_height(self) -> None:
+        state = GameState()
+        self.assertTrue(hire_candidate(state))
+        state.team_tab = 1
+
+        text = rendered_team_text(state, 190, 50)
+
+        self.assertTrue(any("SALARY/YR" in line and "COST/MO" in line for line in text))
+        self.assertTrue(any("TEAM OVERVIEW" in line for line in text))
+        self.assertTrue(any("TEAM CAPABILITY" in line for line in text))
+        self.assertTrue(any("SELECTED TEAM MEMBER" in line for line in text))
+
+    def test_header_uses_game_dev_sim_branding(self) -> None:
+        state = GameState()
+        state.clock.week = 429
+        screen = MagicMock()
+        screen.getmaxyx.return_value = (36, 120)
+
+        with patch("main.curses.color_pair", return_value=0):
+            draw_header(screen, state, 120)
+
+        title = screen.addstr.call_args_list[0].args[2]
+        self.assertIn("INDIE STUDIO GAME DEV SIM", title)
+        self.assertTrue(title.rstrip().endswith("INDIE STUDIO GAME DEV SIM"))
+        self.assertIn(f"{state.clock.current_date:%d %b %y}", title[:31])
+        self.assertIn("Y 9", title)
+        self.assertIn("W 13", title)
+        self.assertNotIn("YEAR", title)
+        self.assertNotIn("WEEK", title)
+        self.assertNotIn("/52", title)
+        self.assertIn("> 1x", title)
+
+    def test_header_speed_indicator_matches_four_speed_levels(self) -> None:
+        self.assertEqual(TIME_SPEEDS, (0.0, 1.0, 2.0, 4.0, 8.0))
+        self.assertEqual(TIME_LABELS, ("||", "> 1x", ">> 2x", ">>> 4x", ">>>> 8x"))
+
+        progress_ends = set()
+        metric_starts = set()
+        for speed_index, label in enumerate(TIME_LABELS):
+            state = GameState()
+            state.time_speed_index = speed_index
+            screen = MagicMock()
+            screen.getmaxyx.return_value = (36, 160)
+            with patch("main.curses.color_pair", return_value=0):
+                draw_header(screen, state, 160)
+            self.assertIn(label, screen.addstr.call_args_list[0].args[2])
+            status_line = screen.addstr.call_args_list[1].args[2]
+            progress_ends.add(status_line.index("]"))
+            metric_starts.add(status_line.index("| Team"))
+        self.assertEqual(progress_ends, {36})
+        self.assertEqual(len(metric_starts), 1)
+
+        state = GameState()
+        state.clock.week = 429
+        screen = MagicMock()
+        screen.getmaxyx.return_value = (50, 160)
+        with patch("main.curses.color_pair", return_value=0):
+            draw_header(screen, state, 160)
+        top_line = screen.addstr.call_args_list[0].args[2]
+        date_block = f"{state.clock.current_date:%d %b %Y}  Y 9  W 13  {TIME_LABELS[state.time_speed_index]:<8}"
+        date_start = top_line.index(date_block)
+        self.assertEqual(date_start + (len(date_block) - 1) / 2, (1 + 36) / 2)
+
+    def test_promotion_panels_use_tab_and_contextual_up_down_navigation(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        self.assertTrue(start_project(state))
+        state.modal = "marketing"
+        state.marketing_tab = 0
+
+        handle_key(state, curses.KEY_DOWN)
+        self.assertEqual(state.selected_promotion_target, 1)
+        self.assertEqual(state.selected_promotion, 0)
+        handle_key(state, 9)
+        handle_key(state, curses.KEY_DOWN)
+        self.assertEqual(state.marketing_tab, 1)
+        self.assertEqual(state.selected_promotion_target, 1)
+        self.assertEqual(state.selected_promotion, 1)
+
+        target_before = state.selected_promotion_target
+        handle_key(state, curses.KEY_RIGHT)
+        self.assertEqual(state.selected_promotion_target, target_before)
+        handle_key(state, 9)
+        handle_key(state, 10)
+        self.assertEqual(state.marketing_tab, 1)
+
+        labels = {action: label for label, action, _ in footer_layout(state, 190)}
+        self.assertEqual(labels["switch_marketing_tab"], "[Tab]Targets")
+        self.assertEqual(labels["buy_promotion"], "[Enter]Buy")
+
+    def test_new_game_uses_tab_for_panels_and_enter_to_greenlight(self) -> None:
+        state = GameState()
+        state.modal = "new_game"
+        state.new_game_step = 0
+        genre_before = state.selected_genre
+
+        handle_new_game_key(state, curses.KEY_DOWN)
+        self.assertNotEqual(state.selected_genre, genre_before)
+        handle_new_game_key(state, 9)
+        self.assertEqual(state.new_game_step, 1)
+        labels = {action: label for label, action, _ in footer_layout(state, 190)}
+        self.assertEqual(labels["next_new_game_panel"], "[Tab]Storefront")
+        self.assertEqual(labels["new_game_selection"], "[Up/Down]Theme")
+        self.assertEqual(labels["confirm"], "[Enter]Greenlight")
+
+        handle_new_game_key(state, 10)
+        self.assertIsNotNone(state.studio.current_project)
+        self.assertEqual(state.modal, "main")
+
+    def test_compact_main_footer_keeps_every_mouse_target_visible(self) -> None:
+        ranges = footer_button_ranges(GameState(), 74)
+
+        self.assertLessEqual(ranges[-1][2], 74)
+        self.assertEqual([action for action, _, _ in ranges][1:6], ["contracts", "marketing", "team", "upgrades", "games"])
+
+        states = []
+        for step in range(4):
+            state = GameState(modal="new_game", new_game_step=step)
+            states.append(state)
+        states.extend([GameState(modal="marketing", marketing_tab=0), GameState(modal="marketing", marketing_tab=1)])
+        for state in states:
+            self.assertLessEqual(footer_button_ranges(state, 74)[-1][2], 74)
+
+    def test_statistics_settings_control_save_and_quit_shortcuts(self) -> None:
+        state = GameState()
+        handle_key(state, ord("s"))
+        self.assertEqual(state.modal, "analysis")
+
+        state.modal = "main"
+        handle_key(state, 27)
+        self.assertEqual(state.modal, "settings")
+        handle_key(state, 27)
+        self.assertEqual(state.modal, "main")
+
+        with tempfile.TemporaryDirectory() as directory:
+            state.save_path = str(Path(directory) / "ctrl-save.json")
+            self.assertTrue(handle_key(state, CTRL_S))
+            self.assertTrue(Path(state.save_path).is_file())
+        self.assertFalse(handle_key(state, ord("q")))
+        state.modal = "new_game"
+        state.naming_game = True
+        state.draft_title = ""
+        self.assertTrue(handle_key(state, ord("q")))
+        self.assertEqual(state.draft_title, "q")
+        state.naming_game = False
+        self.assertFalse(handle_key(state, ord("Q")))
+
+    def test_wide_games_screen_exposes_detailed_management_sections(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+
+        text = rendered_games_text(state, 200, 60)
+
+        self.assertTrue(any("Game Catalogue | 1 game" in line for line in text))
+        self.assertTrue(any("Live Operations" in line for line in text))
+        self.assertTrue(any("Promotion Planning" in line for line in text))
+        self.assertTrue(any("CURRENT PLAN" in line for line in text))
+        self.assertTrue(any("PROMOTION CAPACITY" in line for line in text))
+        self.assertTrue(any("CATALOGUE RETURNS" in line for line in text))
+        self.assertTrue(any("CURRENT SNAPSHOT" in line for line in text))
+        self.assertFalse(any("permanently on sale" in line for line in text))
+
+    def test_games_screen_still_renders_at_minimum_terminal_size(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+
+        text = rendered_games_text(state, 74, 24)
+
+        self.assertTrue(any("Game Catalogue | 1 game" in line for line in text))
+        self.assertTrue(any("Monthly players" in line for line in text))
+
     def test_new_studio_starts_today_with_real_overhead(self) -> None:
         state = GameState()
 
@@ -184,7 +510,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(state.studio.catalog[0].auto_updates)
 
         handle_key(state, ord("m"))
-        promotion_row = (0, 42, 4, 0, curses.BUTTON1_DOUBLE_CLICKED)
+        promotion_row = (0, 42, 5, 0, curses.BUTTON1_DOUBLE_CLICKED)
         with patch("main.curses.getmouse", return_value=promotion_row):
             handle_mouse(state, (38, 120))
         self.assertEqual(len(state.studio.active_promotions), 1)
@@ -264,7 +590,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded.studio.contract_queue, [])
         self.assertIn("Removed", loaded.logs[0])
 
-    def test_active_contract_does_not_replace_week_progress_bar(self) -> None:
+    def test_header_shows_studio_reputation_instead_of_contract_progress(self) -> None:
         state = GameState()
         self.assertTrue(accept_contract(state))
         state.studio.contract.work_done = state.studio.contract.required_work * 0.4
@@ -275,12 +601,20 @@ class SimulationTests(unittest.TestCase):
             draw_header(screen, state, 120)
 
         status_line = screen.addstr.call_args_list[1].args[2]
-        self.assertIn("Next week [", status_line)
+        self.assertTrue(status_line.startswith(" ["))
+        self.assertNotIn("Next week", status_line)
         self.assertIn("░", status_line)
-        self.assertIn("JOB", status_line)
+        self.assertIn("Games", status_line)
+        self.assertIn("Team 1", status_line)
+        self.assertNotIn("suggested", status_line)
+        self.assertIn("Fans", status_line)
+        self.assertIn("GRep", status_line)
+        self.assertIn("CRep", status_line)
+        self.assertNotIn(state.studio.contract.title, status_line)
 
     def test_version_two_save_round_trip(self) -> None:
         state = GameState()
+        state.marketing_tab = 1
         start_project(state)
         advance(state, 3)
         with tempfile.TemporaryDirectory() as directory:
@@ -294,6 +628,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded.studio.current_project.work_done, state.studio.current_project.work_done)
         self.assertEqual(len(loaded.studio.applicants), 6)
         self.assertEqual(len(loaded.studio.contract_offers), len(state.studio.contract_offers))
+        self.assertEqual(loaded.marketing_tab, 1)
 
     def test_accounting_preserves_expense_categories(self) -> None:
         state = GameState()
@@ -340,6 +675,18 @@ class SimulationTests(unittest.TestCase):
             handle_mouse(state, (36, 120))
         self.assertEqual(state.analysis_view, 1)
 
+        state.modal = "main"
+        combined_contract_section = (0, 170, 12, 0, curses.BUTTON1_CLICKED)
+        with patch("main.curses.getmouse", return_value=combined_contract_section):
+            handle_mouse(state, (50, 190))
+        self.assertEqual(state.modal, "contracts")
+
+        state.modal = "main"
+        expanded_team_panel = (0, 20, 25, 0, curses.BUTTON1_CLICKED)
+        with patch("main.curses.getmouse", return_value=expanded_team_panel):
+            handle_mouse(state, (50, 190))
+        self.assertEqual(state.modal, "team")
+
     def test_footer_mouse_can_start_and_choose_a_new_game(self) -> None:
         state = GameState()
         new_button = (0, 2, 35, 0, curses.BUTTON1_CLICKED)
@@ -348,10 +695,16 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(state.modal, "new_game")
         self.assertEqual(state.new_game_step, -1)
 
-        choose_button = (0, 9, 35, 0, curses.BUTTON1_CLICKED)
+        choose_button = (0, 26, 35, 0, curses.BUTTON1_CLICKED)
         with patch("main.curses.getmouse", return_value=choose_button):
             handle_mouse(state, (36, 120))
         self.assertEqual(state.new_game_step, 0)
+
+        marketing_state = GameState()
+        marketing_button = (0, 16, 35, 0, curses.BUTTON1_CLICKED)
+        with patch("main.curses.getmouse", return_value=marketing_button):
+            handle_mouse(marketing_state, (36, 120))
+        self.assertEqual(marketing_state.modal, "marketing")
 
     def test_mouse_can_open_board_and_accept_a_single_contract(self) -> None:
         state = GameState()
@@ -360,11 +713,30 @@ class SimulationTests(unittest.TestCase):
             handle_mouse(state, (36, 120))
         self.assertEqual(state.modal, "contracts")
 
-        first_job = (0, 2, 4, 0, curses.BUTTON1_DOUBLE_CLICKED)
+        first_job = (0, 2, 5, 0, curses.BUTTON1_DOUBLE_CLICKED)
         with patch("main.curses.getmouse", return_value=first_job):
             handle_mouse(state, (36, 120))
         self.assertIsNotNone(state.studio.contract)
         self.assertEqual(len(state.studio.contract_offers), 5)
+
+    def test_t_opens_team_and_e_remains_legacy_alias(self) -> None:
+        state = GameState()
+        handle_key(state, ord("t"))
+        self.assertEqual(state.modal, "team")
+        state.modal = "main"
+        handle_key(state, ord("e"))
+        self.assertEqual(state.modal, "team")
+
+    def test_active_team_side_receives_more_table_width(self) -> None:
+        state = GameState()
+        state.team_tab = 0
+        roster_narrow, applicants_wide = team_panel_widths(state, 190)
+        state.team_tab = 1
+        roster_wide, applicants_narrow = team_panel_widths(state, 190)
+
+        self.assertGreater(applicants_wide, roster_narrow)
+        self.assertGreater(roster_wide, applicants_narrow)
+        self.assertGreater(roster_wide, roster_narrow)
 
     def test_custom_title_and_sequel_lineage_are_persistent(self) -> None:
         state = GameState()
