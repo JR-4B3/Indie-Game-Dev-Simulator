@@ -15,6 +15,7 @@ from simulation import (
     accept_contract,
     accept_contract_offer,
     advance_game,
+    bump_version,
     buy_promotion,
     contract_weekly_output,
     cycle_game_update_size,
@@ -24,12 +25,12 @@ from simulation import (
     hire_candidate,
     load_game,
     monthly_fixed_cost,
+    queue_game_update,
     recommended_team_size,
     refresh_applicants,
     save_game,
     start_project,
     toggle_auto_contracts,
-    toggle_game_updates,
 )
 
 
@@ -126,11 +127,11 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(any("RECENT ACTIVITY" in line for line in wide_text))
         self.assertTrue(any("Production Command" in line for line in wide_text))
         self.assertTrue(any(line.strip() == "OPERATIONS" for line in wide_text))
-        self.assertTrue(any("Continuous updates" in line and "Active promotions" in line and "|" in line for line in wide_text))
+        self.assertTrue(any("Update queue" in line and "Active promotions" in line and "|" in line for line in wide_text))
         self.assertTrue(any(line.strip() == "CONTRACTS" for line in wide_text))
         self.assertTrue(any("[C] Auto contracts" in line for line in wide_text))
         self.assertTrue(any("TOP SKILL" in line and "PERSONALITY" in line for line in wide_text))
-        self.assertTrue(any("REVENUE" in line and "PROFIT" in line and "UPDATES" in line for line in wide_text))
+        self.assertTrue(any("REVENUE" in line and "PROFIT" in line and "BUGS" in line for line in wide_text))
         self.assertFalse(any("Recent Financial Trend" in line for line in wide_text))
         self.assertTrue(any("Recent Financial Trend" in line for line in compact_text))
         self.assertTrue(any(" Contracts " in line for line in compact_text))
@@ -313,6 +314,12 @@ class SimulationTests(unittest.TestCase):
         for state in states:
             self.assertLessEqual(footer_button_ranges(state, 74)[-1][2], 74)
 
+        game_state = GameState(modal="games")
+        self.assertTrue(start_project(game_state))
+        game_state.studio.current_project.work_done = game_state.studio.current_project.total_work - 1
+        advance(game_state, 1)
+        self.assertLessEqual(footer_button_ranges(game_state, 100)[-1][2], 100)
+
     def test_statistics_settings_control_save_and_quit_shortcuts(self) -> None:
         state = GameState()
         handle_key(state, ord("s"))
@@ -354,6 +361,14 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(any("CURRENT SNAPSHOT" in line for line in text))
         self.assertFalse(any("permanently on sale" in line for line in text))
 
+        game = state.studio.catalog[0]
+        queue_game_update(state, game.game_id)
+        queue_game_update(state, game.game_id)
+        text = rendered_games_text(state, 200, 60)
+        self.assertTrue(any("UPDATE QUEUE (1 waiting)" in line for line in text))
+        self.assertTrue(any(game.title in line and "-> v" in line for line in text))
+        self.assertFalse(any(line == "CONTROLS" for line in text))
+
     def test_games_screen_still_renders_at_minimum_terminal_size(self) -> None:
         state = GameState()
         self.assertTrue(start_project(state))
@@ -385,6 +400,60 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(state.studio.released_games, 1)
         self.assertGreaterEqual(state.studio.followers, 40)
         self.assertLess(state.studio.cash, setup_cash)
+
+    def test_testing_and_players_reveal_only_part_of_real_bug_count(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        advance(state, 5)
+        project = state.studio.current_project
+        self.assertGreater(project.defects, 0)
+        self.assertGreaterEqual(project.known_defects, 0)
+        self.assertLess(project.known_defects, project.defects)
+
+        project.work_done = project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        self.assertLess(game.known_bugs, game.actual_bugs)
+        game.actual_bugs = 20
+        game.known_bugs = 1
+        game.reported_bug_count = 1
+        state.studio.active_sales[0].weekly_units = 10_000
+
+        advance(state, 1)
+
+        self.assertGreater(game.known_bugs, 1)
+        self.assertLess(game.known_bugs, game.actual_bugs)
+        self.assertTrue(any("complained online" in message for message in state.logs))
+
+    def test_bug_fix_update_removes_existing_bugs_but_can_miss_hidden_ones(self) -> None:
+        state = GameState()
+        start_project(state)
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        game.actual_bugs = 20
+        game.known_bugs = 10
+        game.reported_bug_count = 10
+        game.update_size = "Hotfix"
+        game.update_focus = "Bug fixes"
+        queue_game_update(state, game.game_id)
+        state.studio.active_update.work_done = state.studio.active_update.required_work
+        state.studio.active_update.bugs_fixed = state.studio.active_update.bugs_found
+
+        advance(state, 1)
+
+        self.assertAlmostEqual(game.actual_bugs, 16.2)
+        self.assertLess(game.known_bugs, 10)
+        self.assertLess(game.known_bugs, game.actual_bugs)
+
+        game.actual_bugs = 0
+        game.known_bugs = 0
+        game.reported_bug_count = 0
+        queue_game_update(state, game.game_id)
+        state.studio.active_update.work_done = state.studio.active_update.required_work
+        state.studio.active_update.bugs_fixed = state.studio.active_update.bugs_found
+        advance(state, 1)
+        self.assertEqual(game.actual_bugs, 0)
 
     def test_legacy_campaign_name_can_finish_saved_project(self) -> None:
         state = GameState()
@@ -429,17 +498,18 @@ class SimulationTests(unittest.TestCase):
         self.assertGreaterEqual(sale.weekly_units, sale.evergreen_units)
         self.assertGreater(game.units_sold, 0)
 
-    def test_continuous_updates_ship_and_raise_live_game_activity(self) -> None:
+    def test_queued_update_ships_and_raises_live_game_activity(self) -> None:
         state = GameState()
         self.assertTrue(start_project(state))
         advance(state, 40)
         game = state.studio.catalog[0]
-        self.assertTrue(toggle_game_updates(state, game.game_id))
+        self.assertTrue(queue_game_update(state, game.game_id))
 
         advance(state, 30)
 
         self.assertGreaterEqual(game.updates_released, 1)
-        self.assertTrue(game.auto_updates)
+        self.assertEqual(game.version, "1.00.10")
+        self.assertIsNone(state.studio.active_update)
 
     def test_update_size_changes_estimated_development_length(self) -> None:
         state = GameState()
@@ -454,6 +524,118 @@ class SimulationTests(unittest.TestCase):
 
         self.assertEqual(game.update_size, "Expansion")
         self.assertGreater(expansion_weeks, patch_weeks * 4)
+
+    def test_update_scopes_use_fixed_version_steps_and_carry(self) -> None:
+        self.assertEqual(bump_version("1.00.00", "Hotfix"), "1.00.01")
+        self.assertEqual(bump_version("1.00.00", "Patch"), "1.00.10")
+        self.assertEqual(bump_version("1.00.00", "Content"), "1.01.00")
+        self.assertEqual(bump_version("1.00.00", "Expansion"), "1.10.00")
+        self.assertEqual(bump_version("1.99.95", "Patch"), "2.00.05")
+
+    def test_update_queue_snapshots_plans_and_requires_bug_fixing(self) -> None:
+        state = GameState()
+        start_project(state)
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        game.update_size = "Hotfix"
+        game.update_focus = "Balance pass"
+        self.assertTrue(queue_game_update(state, game.game_id))
+        game.update_size = "Content"
+        game.update_focus = "New content"
+        self.assertTrue(queue_game_update(state, game.game_id))
+
+        active = state.studio.active_update
+        self.assertEqual((active.size, active.focus, active.target_version), ("Hotfix", "Balance pass", "1.00.01"))
+        self.assertEqual((state.studio.update_queue[0].size, state.studio.update_queue[0].focus), ("Content", "New content"))
+        self.assertEqual(state.studio.update_queue[0].target_version, "1.01.01")
+
+        active.work_done = active.required_work - 0.01
+        advance(state, 1)
+        self.assertEqual(game.version, "1.00.00")
+        self.assertEqual(state.studio.active_update.phase, "Bug fixing")
+        self.assertEqual(state.studio.active_update.bugs_fixed, 0)
+
+        advance(state, 1)
+        self.assertEqual(game.version, "1.00.01")
+        self.assertEqual(game.updates_released, 1)
+        self.assertEqual(state.studio.active_update.size, "Content")
+
+    def test_update_queue_and_versions_survive_save_load(self) -> None:
+        state = GameState()
+        start_project(state)
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        game.update_size = "Patch"
+        queue_game_update(state, game.game_id)
+        game.update_size = "Expansion"
+        queue_game_update(state, game.game_id)
+        state.studio.active_update.work_done = 12
+
+        with tempfile.TemporaryDirectory() as directory:
+            state.save_path = str(Path(directory) / "updates.json")
+            save_game(state)
+            loaded = load_game(state.save_path)
+
+        self.assertEqual(loaded.studio.catalog[0].version, "1.00.00")
+        self.assertEqual(loaded.studio.active_update.target_version, "1.00.10")
+        self.assertEqual(loaded.studio.active_update.work_done, 12)
+        self.assertEqual(loaded.studio.update_queue[0].target_version, "1.10.10")
+
+    def test_old_update_plans_migrate_with_paused_and_automatic_progress(self) -> None:
+        state = GameState()
+        for _ in range(2):
+            start_project(state)
+            state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+            advance(state, 1)
+        first, second = state.studio.catalog
+        first.updates_released = 3
+        first.update_progress = 25
+        second.update_progress = 50
+        second.auto_updates = True
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "old-updates.json"
+            state.save_path = str(path)
+            save_game(state)
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["studio"].pop("active_update")
+            data["studio"].pop("update_queue")
+            data["studio"].pop("next_update_id")
+            for game_data in data["studio"]["catalog"]:
+                game_data.pop("version")
+            path.write_text(json.dumps(data), encoding="utf-8")
+            loaded = load_game(str(path))
+
+        self.assertEqual(loaded.studio.active_update.game_id, second.game_id)
+        self.assertEqual(loaded.studio.catalog[0].version, "1.00.30")
+        self.assertEqual(loaded.studio.active_update.target_version, "1.00.10")
+        self.assertAlmostEqual(loaded.studio.active_update.work_done, loaded.studio.active_update.required_work * 0.50)
+        self.assertEqual(loaded.studio.update_queue[0].game_id, first.game_id)
+        self.assertAlmostEqual(loaded.studio.update_queue[0].work_done, loaded.studio.update_queue[0].required_work * 0.25)
+        self.assertTrue(all(not game.auto_updates for game in loaded.studio.catalog))
+
+    def test_expanded_update_planner_shows_scope_area_qa_and_queue(self) -> None:
+        state = GameState()
+        start_project(state)
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        state.modal = "games"
+        state.games_tab = 1
+        queue_game_update(state, state.studio.catalog[0].game_id)
+        queue_game_update(state, state.studio.catalog[0].game_id)
+
+        wide_text = rendered_games_text(state, 200, 60)
+        compact_text = rendered_games_text(state, 74, 24)
+
+        self.assertTrue(any("Update Planner & Queue" in line for line in wide_text))
+        self.assertTrue(any("Hotfix" in line and "+0.00.01" in line for line in wide_text))
+        self.assertTrue(any("UPDATE AREA" in line for line in wide_text))
+        self.assertTrue(any("mandatory QA" in line for line in wide_text))
+        self.assertTrue(any("Update Planner" in line for line in compact_text))
+        self.assertTrue(any("fix" in line and "bugs" in line for line in compact_text))
+        self.assertTrue(any("QUEUE (1)" in line for line in compact_text))
 
     def test_rating_controls_hype_decay_and_player_retention(self) -> None:
         low = GameState()
@@ -499,7 +681,7 @@ class SimulationTests(unittest.TestCase):
         self.assertLess(state.studio.cash, before_cash)
         self.assertGreater(state.studio.current_project.hype, before_hype)
 
-    def test_mouse_controls_live_updates_and_promotion(self) -> None:
+    def test_only_enter_queues_updates_while_mouse_still_selects_games(self) -> None:
         state = GameState()
         start_project(state)
         advance(state, 40)
@@ -507,7 +689,21 @@ class SimulationTests(unittest.TestCase):
         game_row = (0, 2, 5, 0, curses.BUTTON1_DOUBLE_CLICKED)
         with patch("main.curses.getmouse", return_value=game_row):
             handle_mouse(state, (38, 120))
-        self.assertTrue(state.studio.catalog[0].auto_updates)
+        self.assertIsNone(state.studio.active_update)
+
+        narrow_first_row = (0, 2, 4, 0, curses.BUTTON1_DOUBLE_CLICKED)
+        with patch("main.curses.getmouse", return_value=narrow_first_row):
+            handle_mouse(state, (24, 74))
+        self.assertIsNone(state.studio.active_update)
+        handle_key(state, ord("u"))
+        self.assertIsNone(state.studio.active_update)
+        enter_action = next((start, end) for action, start, end in footer_button_ranges(state, 120) if action == "enter_only")
+        footer_click = (0, enter_action[0], 37, 0, curses.BUTTON1_CLICKED)
+        with patch("main.curses.getmouse", return_value=footer_click):
+            handle_mouse(state, (38, 120))
+        self.assertIsNone(state.studio.active_update)
+        handle_key(state, 10)
+        self.assertIsNotNone(state.studio.active_update)
 
         handle_key(state, ord("m"))
         promotion_row = (0, 42, 5, 0, curses.BUTTON1_DOUBLE_CLICKED)
@@ -783,6 +979,9 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(loaded.studio.catalog), 1)
         self.assertEqual(loaded.studio.catalog[0].title, "Music: Visual Novel")
         self.assertEqual(loaded.studio.catalog[0].units_sold, 1_573)
+        self.assertGreater(loaded.studio.catalog[0].actual_bugs, 0)
+        self.assertGreater(loaded.studio.catalog[0].known_bugs, 0)
+        self.assertLess(loaded.studio.catalog[0].known_bugs, loaded.studio.catalog[0].actual_bugs)
         self.assertEqual(loaded.studio.contracts_completed, 2)
         self.assertEqual(loaded.studio.contractor_reputation, 3.0)
 

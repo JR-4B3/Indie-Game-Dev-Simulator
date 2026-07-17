@@ -44,7 +44,8 @@ followers, reputation, and release count are retained where possible; obsolete
   hardware, and time diverted to client contracts.
 - **Production phases and defects:** projects move through prototype,
   pre-production, production, alpha, and beta. Team code skill and QA equipment
-  influence defect load and launch refunds.
+  influence defect load and launch refunds. Testing reveals only part of the real
+  defect count, so the interface reports known bugs rather than perfect information.
 - **A real small team:** six new applicants are generated each month with a role,
   seniority, salary expectation, four skills, morale, fatigue, and a working
   trait. Employees gain experience, can improve, resign when neglected, and cost
@@ -67,6 +68,8 @@ followers, reputation, and release count are retained where possible; obsolete
   reach drive launch sales, while review quality and franchise audience establish
   a permanent weekly sales floor. Refunds, store cuts, hosting, and support costs
   still apply, so a bad game may sell one copy per week without being profitable.
+  Buyers discover previously hidden bugs while playing and complain online; the
+  catalogue bug column increases as those reports arrive.
 - **Rating versus hype:** rating and hype are independent. Hype controls exposure
   and can produce an enormous launch spike even for a bad game, but rating controls
   conversion, week-to-week sales retention, evergreen demand, player retention,
@@ -78,13 +81,14 @@ followers, reputation, and release count are retained where possible; obsolete
   creator-key promotions, streamer placements, festival demos, games-event booths,
   and premium showcase slots. Better opportunities require game reputation; promotions cost
   cash, run for multiple weeks, and some consume substantial team time.
-- **Live operations:** every released game can independently toggle automatic
-  updates. Choose Bug fixes, Balance, Visual, Audio, or New content and a Patch,
-  Content, or Expansion size. Relevant employee skill determines duration; larger
-  updates cost more and consume team capacity longer. Shipping a numbered update
-  restores hype, sales, and monthly players in proportion to the game's rating.
-  Rating, hype, weekly sales, monthly/peak players, update status, focus, size,
-  progress, and shipped-update count remain visible wherever games appear.
+- **Live operations:** updates are planned and added to a studio-wide FIFO queue.
+  Choose Bug fixes, Balance, Visual, Audio, or New content and a Hotfix, Patch,
+  Content, or Expansion scope. Relevant employee skill determines duration; every
+  update must then clear a bug-fixing phase before it can ship. Scopes advance the
+  public version by `0.00.01`, `0.00.10`, `0.01.00`, or `0.10.00`. Larger updates
+  cost more and consume more team capacity. Shipping restores hype, sales, and
+  monthly players in proportion to the game's rating. Bug-fix-focused updates also
+  remove existing defects, although a small number of new defects can escape QA.
 - **Monthly active players:** this is the estimated number of distinct people who
   played during the recent month, not copies sold. A game can continue selling
   while having almost no active players, which is a warning that another update
@@ -120,15 +124,17 @@ followers, reputation, and release count are retained where possible; obsolete
 - `T`: open team management
 - `E`: legacy alias for team management
 - `U`: open Upgrades
-- `G`: open the Game Catalogue; inside it, `U` toggles updates
-- `F`: cycle update focus for the selected live game
-- `Z`: cycle Patch, Content, and Expansion update sizes
+- `G`: open the Game Catalogue
+- `Tab`: expand or close the Update Planner inside the Game Catalogue
+- `Enter`: queue the selected game's update plan
+- `F`: cycle the update area for the selected live game
+- `Z`: cycle Hotfix, Patch, Content, and Expansion update scopes
 - `M`: open Promotion Planning for the current project or selected catalogue game
 - `S`: open Studio Statistics
 - `T`: type a custom game title while planning
 - `R`: generate another title from the selected genre and theme
-- `Enter`: choose a project, greenlight a production plan, hire, or purchase
-- `Tab`: switch planning panels, promotion panels, applicants, or current staff
+- `Enter`: choose a project, greenlight a production plan, queue an update, hire, or purchase
+- `Tab`: switch planning panels, update views, promotion panels, applicants, or current staff
 - `Tab` / `Left` / `Right`: switch statistics views
 - `D`: dismiss the selected non-founder employee
 - `Up` / `Down`: select an item or planning field
@@ -138,11 +144,12 @@ followers, reputation, and release count are retained where possible; obsolete
 - `Ctrl+S`: save
 - `Q`: quit
 
-Every footer control is clickable when the terminal exposes curses mouse events.
+Footer controls are clickable when the terminal exposes curses mouse events, except
+queueing an update, which deliberately requires the `Enter` key.
 The dashboard panels open production, team, statistics, and the live catalog; rows
 select projects, games, promotions, applicants, employees, upgrades, genres, or
-releases; double-clicking confirms choices or toggles a game's updates; the wheel
-scrolls lists, changes promotion targets, adjusts planning fields, and changes
+releases; double-clicking confirms choices where available; the wheel scrolls lists,
+changes promotion targets, adjusts planning fields, and changes
 dashboard speed; right-click closes the current screen. Game titles still require
 keyboard text input, but generated and randomized titles are clickable.
 

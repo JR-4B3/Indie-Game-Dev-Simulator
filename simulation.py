@@ -63,9 +63,10 @@ UPDATE_FOCUSES = (
 )
 
 UPDATE_SIZES = (
-    {"name": "Patch", "work": 70, "cost": 250, "hype": 7, "sales": 2},
-    {"name": "Content", "work": 170, "cost": 900, "hype": 18, "sales": 4},
-    {"name": "Expansion", "work": 380, "cost": 3_500, "hype": 42, "sales": 9},
+    {"name": "Hotfix", "work": 24, "bugs": 3, "fixes": 4, "escaped": 0.2, "cost": 75, "hype": 2, "sales": 1, "version": (0, 0, 1), "team": 0.06},
+    {"name": "Patch", "work": 70, "bugs": 8, "fixes": 10, "escaped": 0.8, "cost": 250, "hype": 7, "sales": 2, "version": (0, 0, 10), "team": 0.12},
+    {"name": "Content", "work": 170, "bugs": 20, "fixes": 25, "escaped": 2.5, "cost": 900, "hype": 18, "sales": 4, "version": (0, 1, 0), "team": 0.20},
+    {"name": "Expansion", "work": 380, "bugs": 45, "fixes": 55, "escaped": 6.0, "cost": 3_500, "hype": 42, "sales": 9, "version": (0, 10, 0), "team": 0.30},
 )
 
 LEGACY_MARKETING_NAMES = {
@@ -182,6 +183,7 @@ class Project:
     labor_cost: float = 0.0
     marketing_cost: float = 0.0
     cost_history_complete: bool = False
+    known_defects: float = 0.0
 
     @property
     def progress(self) -> float:
@@ -246,6 +248,37 @@ class ReleasedGame:
     marketing_cost: float = 0.0
     post_launch_cost: float = 0.0
     cost_history_complete: bool = False
+    version: str = "1.00.00"
+    actual_bugs: float = 0.0
+    known_bugs: float = 0.0
+    reported_bug_count: int = 0
+
+    @property
+    def known_bug_count(self) -> int:
+        return max(0, math.floor(self.known_bugs))
+
+
+@dataclass
+class UpdateJob:
+    update_id: int
+    game_id: int
+    game_title: str
+    focus: str
+    size: str
+    target_version: str
+    required_work: float
+    bugs_found: float
+    work_done: float = 0.0
+    bugs_fixed: float = 0.0
+
+    @property
+    def phase(self) -> str:
+        return "Development" if self.work_done < self.required_work else "Bug fixing"
+
+    @property
+    def progress(self) -> float:
+        total = self.required_work + self.bugs_found
+        return min(1.0, (self.work_done + self.bugs_fixed) / max(1, total))
 
 
 @dataclass
@@ -308,6 +341,8 @@ class Studio:
     contracts_completed: int = 0
     contracts_failed: int = 0
     legacy_auto_jobs_cancelled: int = 0
+    active_update: UpdateJob | None = None
+    update_queue: list[UpdateJob] = field(default_factory=list)
     active_promotions: list[Promotion] = field(default_factory=list)
     upgrades: list[str] = field(default_factory=list)
     ledger: list[LedgerMonth] = field(default_factory=list)
@@ -320,6 +355,7 @@ class Studio:
     next_employee_id: int = 2
     next_game_id: int = 1
     next_contract_id: int = 1
+    next_update_id: int = 1
     next_promotion_id: int = 1
     seed: int = 481516
     insolvent_weeks: int = 0
@@ -345,6 +381,7 @@ class GameState:
     selected_promotion: int = 0
     selected_promotion_target: int = 0
     marketing_tab: int = 0
+    games_tab: int = 0
     modal: str = "main"
     new_game_step: int = 0
     team_tab: int = 0
@@ -562,6 +599,13 @@ def game_by_id(studio: Studio, game_id: int) -> ReleasedGame | None:
     return next((game for game in studio.catalog if game.game_id == game_id), None)
 
 
+def infer_legacy_game_bugs(game: ReleasedGame) -> None:
+    game.actual_bugs = max(1.0, (75 - game.score) * 0.22 + 1.5)
+    exposure = min(0.92, 0.25 + math.log10(max(1, game.units_sold) + 1) * 0.13)
+    game.known_bugs = game.actual_bugs * exposure
+    game.reported_bug_count = game.known_bug_count
+
+
 def sale_for_game(studio: Studio, game_id: int) -> ActiveSale | None:
     return next((sale for sale in studio.active_sales if sale.game_id == game_id), None)
 
@@ -571,25 +615,65 @@ def update_focus_by_name(name: str) -> dict:
 
 
 def update_size_by_name(name: str) -> dict:
-    return next((size for size in UPDATE_SIZES if size["name"] == name), UPDATE_SIZES[0])
+    return next((size for size in UPDATE_SIZES if size["name"] == name), UPDATE_SIZES[1])
 
 
-def update_weekly_output(studio: Studio, game: ReleasedGame) -> float:
-    focus = update_focus_by_name(game.update_focus)
+def update_weekly_output(studio: Studio, game_or_focus: ReleasedGame | str) -> float:
+    focus_name = game_or_focus.update_focus if isinstance(game_or_focus, ReleasedGame) else game_or_focus
+    focus = update_focus_by_name(focus_name)
     skill_index = {"Design": 0, "Art": 1, "Audio": 2, "Code": 3}.get(focus["skill"])
     output = 0.0
     for employee in studio.team:
         skill = sum(employee.skills) / 4 if skill_index is None else employee.skills[skill_index]
         availability = max(0.35, employee.morale / 100) * max(0.35, 1 - employee.fatigue / 130)
         output += skill * availability * 0.16
-    active_updates = max(1, sum(item.auto_updates for item in studio.catalog))
-    return max(1.0, output / active_updates)
+    return max(1.0, output)
+
+
+def bump_version(version: str, size_name: str) -> str:
+    try:
+        major, minor, patch = (int(part) for part in version.split("."))
+    except (AttributeError, TypeError, ValueError):
+        major, minor, patch = 1, 0, 0
+    delta = update_size_by_name(size_name)["version"]
+    patch += delta[2]
+    minor += delta[1] + patch // 100
+    patch %= 100
+    major += delta[0] + minor // 100
+    minor %= 100
+    return f"{major}.{minor:02d}.{patch:02d}"
+
+
+def planned_update_version(studio: Studio, game: ReleasedGame, size_name: str) -> str:
+    version = game.version
+    jobs = ([studio.active_update] if studio.active_update else []) + studio.update_queue
+    for job in jobs:
+        if job.game_id == game.game_id:
+            version = job.target_version
+    return bump_version(version, size_name)
 
 
 def estimated_update_weeks(studio: Studio, game: ReleasedGame) -> int:
     size = update_size_by_name(game.update_size)
-    remaining = size["work"] * max(0, 1 - game.update_progress / 100)
-    return max(1, math.ceil(remaining / update_weekly_output(studio, game)))
+    build_weeks = math.ceil(size["work"] / update_weekly_output(studio, game.update_focus))
+    bug_weeks = math.ceil(size["bugs"] / update_weekly_output(studio, "Bug fixes"))
+    return max(1, build_weeks + bug_weeks)
+
+
+def estimated_update_job_weeks(studio: Studio, job: UpdateJob) -> int:
+    build_remaining = max(0, job.required_work - job.work_done)
+    bugs_remaining = max(0, job.bugs_found - job.bugs_fixed)
+    build_weeks = math.ceil(build_remaining / update_weekly_output(studio, job.focus))
+    bug_weeks = math.ceil(bugs_remaining / update_weekly_output(studio, "Bug fixes"))
+    return build_weeks + bug_weeks
+
+
+def estimated_update_delivery_weeks(studio: Studio, game: ReleasedGame) -> int:
+    waiting = sum(
+        estimated_update_job_weeks(studio, job)
+        for job in ([studio.active_update] if studio.active_update else []) + studio.update_queue
+    )
+    return waiting + estimated_update_weeks(studio, game)
 
 
 def game_total_cost(game: ReleasedGame) -> float:
@@ -605,7 +689,9 @@ def marketing_team_load(studio: Studio) -> float:
 
 
 def update_team_load(studio: Studio) -> float:
-    return min(0.55, sum(0.12 for game in studio.catalog if game.auto_updates))
+    if studio.active_update is None:
+        return 0.0
+    return update_size_by_name(studio.active_update.size)["team"]
 
 
 def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
@@ -632,19 +718,19 @@ def recover_catalog_from_logs(studio: Studio, logs: list[str]) -> None:
             continue
         game_id = studio.next_game_id
         studio.next_game_id += 1
-        studio.catalog.append(
-            ReleasedGame(
-                game_id,
-                title,
-                genre,
-                topic,
-                "Historical store",
-                50,
-                "Historical",
-                units_sold=int(units_text.replace(",", "")),
-                net_revenue=float(revenue_text.replace(",", "")),
-            )
+        game = ReleasedGame(
+            game_id,
+            title,
+            genre,
+            topic,
+            "Historical store",
+            50,
+            "Historical",
+            units_sold=int(units_text.replace(",", "")),
+            net_revenue=float(revenue_text.replace(",", "")),
         )
+        infer_legacy_game_bugs(game)
+        studio.catalog.append(game)
         known_titles.add(title)
     if studio.catalog and not studio.genre_fans:
         legacy_fans = max(0, studio.followers - 40)
@@ -992,6 +1078,7 @@ def finish_project(state: GameState) -> None:
     evergreen_units = max(1, round((score / 100) ** 4 * scope_multiplier * 10 + genre_audience / 800))
     game_id = studio.next_game_id
     studio.next_game_id += 1
+    known_bugs = min(project.known_defects, max(0, project.defects - 0.01))
     game = ReleasedGame(
         game_id,
         project.title,
@@ -1010,6 +1097,9 @@ def finish_project(state: GameState) -> None:
         labor_cost=project.labor_cost,
         marketing_cost=project.marketing_cost,
         cost_history_complete=project.cost_history_complete,
+        actual_bugs=project.defects,
+        known_bugs=known_bugs,
+        reported_bug_count=math.floor(known_bugs),
     )
     studio.catalog.append(game)
     for promotion in studio.active_promotions:
@@ -1036,7 +1126,7 @@ def finish_project(state: GameState) -> None:
     studio.followers += launch_followers
     studio.genre_fans[project.genre] = studio.genre_fans.get(project.genre, 0) + launch_followers
     studio.topic_fans[project.topic] = studio.topic_fans.get(project.topic, 0) + launch_followers
-    state.log(f"Released {project.title} after {project.weeks} weeks: {score}/100, {refund_rate:.0%} expected refunds.")
+    state.log(f"Released {project.title} after {project.weeks} weeks: {score}/100, {refund_rate:.0%} expected refunds, {math.floor(known_bugs)} known bugs.")
     state.log(f"The store predicts {units:,} first-week units. You keep {(1 - project.platform_cut):.0%} before refunds.")
 
 
@@ -1099,6 +1189,18 @@ def develop_project(state: GameState) -> None:
     code_skill = sum(employee.code for employee in studio.team) / len(studio.team)
     defect_factor *= 0.75 if "qa" in studio.upgrades else 1.0
     project.defects += total_output * max(0.015, (0.13 - code_skill / 900)) * defect_factor
+    if project.progress < 0.30:
+        discovery_rate = 0.04
+    elif project.progress < 0.72:
+        discovery_rate = 0.09
+    elif project.progress < 0.90:
+        discovery_rate = 0.18
+    else:
+        discovery_rate = 0.32
+    if "qa" in studio.upgrades:
+        discovery_rate *= 1.25
+    undiscovered = max(0, project.defects - project.known_defects)
+    project.known_defects = min(project.defects * 0.98, project.known_defects + undiscovered * discovery_rate)
     project.weeks += 1
     project.hype *= 0.985
     if project.work_done >= project.total_work - 0.01:
@@ -1169,24 +1271,13 @@ def process_promotions(state: GameState) -> None:
         state.log(f"{promotion.name} for {promotion.target_title} finished.")
 
 
-def toggle_game_updates(state: GameState, game_id: int) -> bool:
-    game = game_by_id(state.studio, game_id)
-    if game is None:
-        return False
-    game.auto_updates = not game.auto_updates
-    status = "ON" if game.auto_updates else "OFF"
-    state.log(f"Continuous updates {status} for {game.title}.")
-    return game.auto_updates
-
-
 def cycle_game_update_focus(state: GameState, game_id: int, delta: int = 1) -> str | None:
     game = game_by_id(state.studio, game_id)
     if game is None:
         return None
     index = next((index for index, focus in enumerate(UPDATE_FOCUSES) if focus["name"] == game.update_focus), 0)
     game.update_focus = UPDATE_FOCUSES[(index + delta) % len(UPDATE_FOCUSES)]["name"]
-    game.update_progress = 0
-    state.log(f"{game.title} update focus changed to {game.update_focus}; update progress reset.")
+    state.log(f"{game.title} planned update area changed to {game.update_focus}.")
     return game.update_focus
 
 
@@ -1196,43 +1287,110 @@ def cycle_game_update_size(state: GameState, game_id: int, delta: int = 1) -> st
         return None
     index = next((index for index, size in enumerate(UPDATE_SIZES) if size["name"] == game.update_size), 0)
     game.update_size = UPDATE_SIZES[(index + delta) % len(UPDATE_SIZES)]["name"]
-    game.update_progress = 0
-    state.log(f"{game.title} update size changed to {game.update_size}; update progress reset.")
+    state.log(f"{game.title} planned update scope changed to {game.update_size}.")
     return game.update_size
 
 
+def start_next_update(state: GameState) -> None:
+    studio = state.studio
+    while studio.active_update is None and studio.update_queue:
+        job = studio.update_queue.pop(0)
+        if game_by_id(studio, job.game_id) is None:
+            state.log(f"Cancelled queued update for missing game {job.game_title}.")
+            continue
+        studio.active_update = job
+        state.log(f"Started {job.size} {job.focus} update for {job.game_title}; target v{job.target_version}.")
+
+
+def queue_game_update(state: GameState, game_id: int) -> bool:
+    studio = state.studio
+    game = game_by_id(studio, game_id)
+    if game is None:
+        return False
+    size = update_size_by_name(game.update_size)
+    job = UpdateJob(
+        studio.next_update_id,
+        game.game_id,
+        game.title,
+        game.update_focus,
+        game.update_size,
+        planned_update_version(studio, game, game.update_size),
+        float(size["work"]),
+        float(size["bugs"]),
+    )
+    studio.next_update_id += 1
+    studio.update_queue.append(job)
+    state.log(f"Queued {job.size} {job.focus} update for {game.title}; planned v{job.target_version}.")
+    start_next_update(state)
+    return True
+
+
+def finish_game_update(state: GameState, job: UpdateJob, game: ReleasedGame) -> None:
+    size = update_size_by_name(job.size)
+    focus = update_focus_by_name(job.focus)
+    game.updates_released += 1
+    game.version = job.target_version
+    game.update_progress = 0
+    fixed_existing = 0.0
+    if job.focus == "Bug fixes":
+        fixed_existing = min(game.actual_bugs, float(size["fixes"]))
+        known_fixed = min(game.known_bugs, fixed_existing)
+        game.actual_bugs -= fixed_existing
+        game.known_bugs -= known_fixed
+    escaped_bugs = float(size["escaped"])
+    if job.focus == "Bug fixes":
+        escaped_bugs = min(escaped_bugs, fixed_existing * 0.1)
+    game.actual_bugs += escaped_bugs
+    if game.actual_bugs > 0:
+        game.known_bugs = min(game.known_bugs, game.actual_bugs * 0.98)
+    game.reported_bug_count = min(game.reported_bug_count, game.known_bug_count)
+    rating_factor = max(0.10, (game.score / 100) ** 2)
+    hype_gain = size["hype"] * focus["hype"] * rating_factor
+    game.hype = min(200, game.hype + hype_gain)
+    returning_players = round(
+        (game.monthly_players * 0.20 + game.units_sold * 0.012)
+        * size["sales"]
+        * focus["players"]
+        * rating_factor
+    )
+    game.active_players += returning_players / 3
+    sale = sale_for_game(state.studio, game.game_id)
+    if sale:
+        sale.weekly_units += max(1, round(sale.evergreen_units * size["sales"] * rating_factor))
+    add_expense(state.studio, size["cost"], "Live operations")
+    game.post_launch_cost += size["cost"]
+    state.log(
+        f"Released v{game.version} ({job.size} {job.focus}) for {game.title} after fixing "
+        f"{job.bugs_found:.0f} update bugs"
+        f"{' and ' + format(fixed_existing, '.0f') + ' existing bugs' if fixed_existing else ''}: "
+        f"+{hype_gain:.1f} hype, about {returning_players:,} players returned."
+    )
+
+
 def process_game_updates(state: GameState) -> None:
-    games = [game for game in state.studio.catalog if game.auto_updates]
-    if not games:
+    studio = state.studio
+    start_next_update(state)
+    job = studio.active_update
+    if job is None:
+        return
+    game = game_by_id(studio, job.game_id)
+    if game is None:
+        studio.active_update = None
+        start_next_update(state)
         return
     for employee in state.studio.team:
-        employee.fatigue = min(100, employee.fatigue + 0.35 * len(games))
-    for game in games:
-        size = update_size_by_name(game.update_size)
-        focus = update_focus_by_name(game.update_focus)
-        game.update_progress += update_weekly_output(state.studio, game) / size["work"] * 100
-        while game.update_progress >= 100:
-            game.update_progress -= 100
-            game.updates_released += 1
-            rating_factor = max(0.10, (game.score / 100) ** 2)
-            hype_gain = size["hype"] * focus["hype"] * rating_factor
-            game.hype = min(200, game.hype + hype_gain)
-            returning_players = round(
-                (game.monthly_players * 0.20 + game.units_sold * 0.012)
-                * size["sales"]
-                * focus["players"]
-                * rating_factor
-            )
-            game.active_players += returning_players / 3
-            sale = sale_for_game(state.studio, game.game_id)
-            if sale:
-                sale.weekly_units += max(1, round(sale.evergreen_units * size["sales"] * rating_factor))
-            add_expense(state.studio, size["cost"], "Live operations")
-            game.post_launch_cost += size["cost"]
-            state.log(
-                f"Released update #{game.updates_released} ({game.update_size} {game.update_focus}) for {game.title}: "
-                f"+{hype_gain:.1f} hype, about {returning_players:,} players returned."
-            )
+        employee.fatigue = min(100, employee.fatigue + 0.5)
+    if job.phase == "Development":
+        job.work_done = min(job.required_work, job.work_done + update_weekly_output(studio, job.focus))
+        if job.work_done >= job.required_work:
+            state.log(f"v{job.target_version} for {job.game_title} entered bug fixing with {job.bugs_found:.0f} issues found.")
+    else:
+        job.bugs_fixed = min(job.bugs_found, job.bugs_fixed + update_weekly_output(studio, "Bug fixes"))
+    game.update_progress = job.progress * 100
+    if job.work_done >= job.required_work and job.bugs_fixed >= job.bugs_found:
+        finish_game_update(state, job, game)
+        studio.active_update = None
+        start_next_update(state)
 
 
 def process_sales(state: GameState) -> None:
@@ -1263,6 +1421,15 @@ def process_sales(state: GameState) -> None:
             game.active_players = game.active_players * retention + units * 0.70
             game.monthly_players = max(0, round(game.active_players * 3.2))
             game.peak_monthly_players = max(game.peak_monthly_players, game.monthly_players)
+            undiscovered = max(0, game.actual_bugs - game.known_bugs)
+            if undiscovered > 0:
+                discovery_rate = min(0.35, 0.015 + units / 10_000 + game.monthly_players / 100_000)
+                game.known_bugs = min(game.actual_bugs * 0.98, game.known_bugs + undiscovered * discovery_rate)
+                newly_reported = game.known_bug_count - game.reported_bug_count
+                if newly_reported > 0:
+                    game.reported_bug_count = game.known_bug_count
+                    game.hype = max(0, game.hype - newly_reported * 0.35)
+                    state.log(f"Players reported {newly_reported} newly discovered bug(s) in {game.title} and complained online.")
         else:
             hype_lift = 0
         tail = min(0.91, 0.55 + sale.score * 0.0035 + (0.02 if "analytics" in studio.upgrades else 0))
@@ -1420,6 +1587,7 @@ def state_to_data(state: GameState) -> dict:
             "selected_scope": state.selected_scope,
             "selected_marketing": state.selected_marketing,
             "marketing_tab": state.marketing_tab,
+            "games_tab": state.games_tab,
             "focus": state.focus,
             "time_speed_index": state.time_speed_index,
             "resume_speed_index": state.resume_speed_index,
@@ -1436,9 +1604,20 @@ def studio_from_data(data: dict) -> Studio:
     values["team"] = [employee_from_data(item) for item in values.get("team", [])]
     values["applicants"] = [employee_from_data(item) for item in values.get("applicants", [])]
     if values.get("current_project"):
-        values["current_project"] = Project(**values["current_project"])
+        project_data = dict(values["current_project"])
+        if "known_defects" not in project_data:
+            project_data["known_defects"] = project_data.get("defects", 0) * 0.4
+        values["current_project"] = Project(**project_data)
     values["active_sales"] = [ActiveSale(**item) for item in values.get("active_sales", [])]
-    catalog = [ReleasedGame(**item) for item in values.get("catalog", [])]
+    catalog = []
+    for item in values.get("catalog", []):
+        game = ReleasedGame(**item)
+        if "actual_bugs" not in item:
+            infer_legacy_game_bugs(game)
+        if "version" not in item:
+            for _ in range(game.updates_released):
+                game.version = bump_version(game.version, game.update_size)
+        catalog.append(game)
     if not catalog:
         for sale in values["active_sales"]:
             topic, separator, genre = sale.title.partition(": ")
@@ -1446,19 +1625,19 @@ def studio_from_data(data: dict) -> Studio:
                 game_id = len(catalog) + 1
                 sale.game_id = game_id
                 sale.genre = genre
-                catalog.append(
-                    ReleasedGame(
-                        game_id,
-                        sale.title,
-                        genre,
-                        topic,
-                        sale.channel,
-                        sale.score,
-                        "Historical",
-                        units_sold=sale.units_sold,
-                        net_revenue=sale.net_revenue,
-                    )
+                game = ReleasedGame(
+                    game_id,
+                    sale.title,
+                    genre,
+                    topic,
+                    sale.channel,
+                    sale.score,
+                    "Historical",
+                    units_sold=sale.units_sold,
+                    net_revenue=sale.net_revenue,
                 )
+                infer_legacy_game_bugs(game)
+                catalog.append(game)
     values["catalog"] = catalog
     values["next_game_id"] = max(values.get("next_game_id", 1), max((game.game_id for game in catalog), default=0) + 1)
     if catalog and not values.get("genre_fans"):
@@ -1484,6 +1663,13 @@ def studio_from_data(data: dict) -> Studio:
     if values.get("contract"):
         contract_ids.append(values["contract"].contract_id)
     values["next_contract_id"] = max(values.get("next_contract_id", 1), max(contract_ids, default=0) + 1)
+    if values.get("active_update"):
+        values["active_update"] = UpdateJob(**values["active_update"])
+    values["update_queue"] = [UpdateJob(**item) for item in values.get("update_queue", [])]
+    update_ids = [job.update_id for job in values["update_queue"]]
+    if values.get("active_update"):
+        update_ids.append(values["active_update"].update_id)
+    values["next_update_id"] = max(values.get("next_update_id", 1), max(update_ids, default=0) + 1)
     values["active_promotions"] = [Promotion(**item) for item in values.get("active_promotions", [])]
     values["next_promotion_id"] = max(
         values.get("next_promotion_id", 1),
@@ -1530,7 +1716,7 @@ def state_from_data(data: dict, save_path: str) -> GameState:
     recover_catalog_from_logs(studio, data.get("logs", []))
     recover_contractor_history(studio, data.get("logs", []))
     ensure_catalog_sales(studio)
-    return GameState(
+    state = GameState(
         clock=clock,
         studio=studio,
         selected_genre=ui.get("selected_genre", 0),
@@ -1539,6 +1725,7 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         selected_scope=ui.get("selected_scope", 0),
         selected_marketing=ui.get("selected_marketing", 0),
         marketing_tab=ui.get("marketing_tab", 0),
+        games_tab=ui.get("games_tab", 0),
         focus=ui.get("focus", [30, 25, 15, 30]),
         time_speed_index=ui.get("time_speed_index", 1),
         resume_speed_index=ui.get("resume_speed_index", 1),
@@ -1548,6 +1735,26 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         save_path=save_path,
         logs=data.get("logs", []),
     )
+    old_update_model = "active_update" not in data["studio"] and "update_queue" not in data["studio"]
+    if old_update_model:
+        raw_games = {item.get("game_id"): item for item in data["studio"].get("catalog", [])}
+        old_plans = []
+        for index, game in enumerate(studio.catalog):
+            previous_progress = game.update_progress
+            was_automatic = raw_games.get(game.game_id, {}).get("auto_updates", False)
+            game.auto_updates = False
+            if previous_progress > 0 or was_automatic:
+                old_plans.append((not was_automatic, index, game, previous_progress))
+        for _, _, game, previous_progress in sorted(old_plans):
+            queue_game_update(state, game.game_id)
+            job = next(
+                candidate
+                for candidate in ([studio.active_update] if studio.active_update else []) + studio.update_queue
+                if candidate.game_id == game.game_id
+            )
+            job.work_done = job.required_work * min(1, previous_progress / 100)
+            game.update_progress = job.progress * 100
+    return state
 
 
 def save_game(state: GameState) -> None:
