@@ -1,52 +1,161 @@
-# GameDev
-Little GameDev (Tycoon) Game, Terminal only (for now) 
+# Indie Studio
+
+A terminal-based economic simulation about trying to keep a small independent
+game studio alive. The simulation begins on the current date. You start with one
+founder, personal runway, no guaranteed audience, and the same tradeoffs a small
+studio faces: scope, payroll, contract work, discoverability, refunds, taxes, and
+burnout.
 
 ## Run
+
+The game uses only the Python standard library and requires a terminal of at
+least 74 columns by 24 rows.
 
 ```bash
 python main.py
 ```
 
-Load the default save file:
+Load the default save or choose another save file:
 
 ```bash
 python main.py --load
+python main.py gamedev_save.json
+python main.py --load gamedev_save.json
+python main.py --load --save-file my_studio.json
 ```
 
-Use a custom save file:
+A positional filename implies `--load`. Use `--save-file` without `--load` when
+you want a new studio that will save under a custom filename.
 
-```bash
-python main.py --load --save-file my_save.json
-```
+An old version-one save is migrated into a present-day studio. Its cash,
+followers, reputation, and release count are retained where possible; obsolete
+1970s projects and fixed employees are not.
 
-The game starts on `1 Jan 1976`. Time speed can be changed while playing.
+## The Simulation
+
+- **Real calendar and accounting:** weeks use the current calendar. Salaries,
+  employer payroll burden, software seats, insurance, administration, upgrade
+  subscriptions, and estimated quarterly income tax affect cash.
+- **Runway, not points:** the key studio metric is how many months remain at the
+  currently committed burn. The game prevents a hire or purchase when it would
+  leave less than one month for bills.
+- **Production by work:** Micro, Small, and Ambitious projects require different
+  amounts of work. Completion time changes with team skill, morale, fatigue,
+  hardware, and time diverted to client contracts.
+- **Production phases and defects:** projects move through prototype,
+  pre-production, production, alpha, and beta. Team code skill and QA equipment
+  influence defect load and launch refunds.
+- **A real small team:** six new applicants are generated each month with a role,
+  seniority, salary expectation, four skills, morale, fatigue, and a working
+  trait. Employees gain experience, can improve, resign when neglected, and cost
+  severance to dismiss. As releases, followers, reputation, and revenue grow, the
+  suggested headcount and applicant pool grow too; hiring remains your decision.
+- **Studio analytics:** four switchable views provide a studio overview,
+  solid-color revenue/expense breakdowns, vertical monthly cash-flow columns,
+  statistics for every genre, and a permanent release catalog. Accounting keeps
+  contract and game revenue separate and retains payroll, employer costs,
+  operations, development, marketing, taxes, equipment, hosting, recruiting,
+  and severance categories.
+- **Named games and franchises:** every project starts with a generated title
+  based on its genre and theme. Reroll it or type a custom name. Releases retain
+  score, units, net revenue, genre, theme, and sequel lineage. Genre and theme
+  audiences grow from actual buyers, and established audiences improve sequel
+  discoverability without guaranteeing success. Starting a new game first opens
+  an Original Game / Sequel chooser populated by prior releases.
+- **Permanent sales catalog:** every released game remains on sale. Genre/theme
+  fit, quality, defects, platform, reputation, followers, scope, and storefront
+  reach drive launch sales, while review quality and franchise audience establish
+  a permanent weekly sales floor. Refunds, store cuts, hosting, and support costs
+  still apply, so a bad game may sell one copy per week without being profitable.
+- **Rating versus hype:** rating and hype are independent. Hype controls exposure
+  and can produce an enormous launch spike even for a bad game, but rating controls
+  conversion, week-to-week sales retention, evergreen demand, player retention,
+  and how many owners return for updates. A badly rated viral release therefore
+  falls quickly after launch; a well-rated release can survive after hype fades.
+- **Hype and promotion:** every project and release has hype that naturally
+  decays. Launch investment ranges from organic promotion to a showcase launch.
+  The separate Marketing screen sells social pushes, press outreach, creator-key
+  campaigns, streamer placements, festival demos, games-event booths, and premium
+  showcase slots. Better opportunities require game reputation; campaigns cost
+  cash, run for multiple weeks, and some consume substantial team time.
+- **Continuous updates:** every released game can independently toggle automatic
+  updates. Choose Bug fixes, Balance, Visual, Audio, or New content and a Patch,
+  Content, or Expansion size. Relevant employee skill determines duration; larger
+  updates cost more and consume team capacity longer. Shipping a numbered update
+  restores hype, sales, and monthly players in proportion to the game's rating.
+  Rating, hype, weekly sales, monthly/peak players, update status, focus, size,
+  progress, and shipped-update count remain visible wherever games appear.
+- **Monthly active players:** this is the estimated number of distinct people who
+  played during the recent month, not copies sold. A game can continue selling
+  while having almost no active players, which is a warning that another update
+  may not justify its staff time unless the game is well rated enough to revive.
+- **Per-game profit accounting:** new releases retain setup/store fees, employee
+  labor accumulated during development, launch and later marketing, hosting, and
+  update costs. Game History shows revenue, total cost, profit, and the full cost
+  breakdown. Older releases remain marked `n/a` where historical cost allocation
+  did not exist instead of showing misleading zero expenses.
+- **Contract business:** the monthly job board offers Design, Art, Audio, Code,
+  and Generalist work with different workloads, payouts, deadlines, difficulty,
+  and contractor-reputation requirements. Relevant team skill determines speed.
+  Successful delivery builds a separate contractor reputation; missed deadlines
+  lose reputation and pay nothing. Active client work diverts production capacity
+  and adds fatigue.
+- **Automatic contracting:** toggle automatic work to accept every currently
+  eligible board job and queue them sequentially. New eligible jobs are
+  automatically queued when the board refreshes each month. Turning automation
+  off stops future acceptance and cancels every unstarted automatically accepted
+  job. A job already in progress finishes, and manually selected queued jobs are
+  preserved.
+- **Meaningful upgrades:** workstations, professional tools, QA hardware,
+  coworking space, health coverage, and analytics have purchase prices, recurring
+  costs, and simulation effects.
+- **Failure:** a negative bank balance starts an eight-week insolvency clock. If
+  it is not recovered, the studio closes.
 
 ## Controls
 
-- `N`: open the new game screen
-- `E`: open the employee screen
-- `Enter`: confirm/select genre, topic, platform, focus, or employee
-- `Backspace`: go back from topic selection or close the current modal screen
-- `Up` / `Down`: change the current selection
-- `Left` / `Right`: move across topic columns or adjust focus percentages
-- `Right`: increase time speed on the main screen
-- `Left`: decrease time speed on the main screen
-- `Space`: pause/resume time
-- `S`: save the current game to `gamedev_save.json`
+- `N`: plan a new game
+- `J`: open the contract job board and accept one selected job
+- `C`: toggle automatic contract acceptance and queue all eligible board jobs
+- `E`: open team management
+- `U`: open infrastructure upgrades
+- `G`: open the live games catalog; inside it, `U` toggles updates
+- `F`: cycle update focus for the selected live game
+- `Z`: cycle Patch, Content, and Expansion update sizes
+- `M`: open marketing, or promote the selected game from the games catalog
+- `A`: open economic analysis
+- `T`: type a custom game title while planning
+- `R`: generate another title from the selected genre and theme
+- `Enter`: choose an original/sequel project, advance planning, hire, or purchase
+- `Tab`: switch between applicants and current staff
+- `Tab` / `Left` / `Right`: switch analytics views
+- `D`: dismiss the selected non-founder employee
+- `Up` / `Down`: select an item or planning field
+- `Left` / `Right`: adjust a production plan; on the dashboard, change speed
+- `Backspace` or `Esc`: go back or close a management screen
+- `Space`: pause or resume
+- `S`: save
 - `Q`: quit
 
-Games take 8 in-game weeks to develop. Every game chooses a `Genre`, `Topic`,
-and active `Platform`. Every game has `Gameplay`, `Graphics`, `Audio`, and
-`Tech` points. Employees have the same four abilities and add those points every
-development week.
+Every footer control is clickable when the terminal exposes curses mouse events.
+The dashboard panels open production, team, analytics, and the live catalog; rows
+select projects, games, promotions, applicants, employees, upgrades, genres, or
+releases; double-clicking confirms choices or toggles a game's updates; the wheel
+scrolls lists, changes promotion targets, adjusts planning fields, and changes
+dashboard speed; right-click closes the current screen. Game titles still require
+keyboard text input, but generated and randomized titles are clickable.
 
-Genre/topic matches, your chosen focus percentages, hidden genre focus ideals,
-target groups, platform audiences, platform preferences, and active platform user
-bases affect review scores and sales. The data is based on the Mad Games Tycoon
-2 guide where it fits this terminal version.
+## Verification
 
-On release, the game receives a press score and public score. These affect how
-long the game sells, how much money it earns each week, and how many fans it gains
-while it is still on the market. Employees cost monthly wages every 4 in-game weeks.
-The activity feed only shows recent events; once old entries leave the screen they
-are discarded to keep the terminal responsive.
+Run the automated simulation tests:
+
+```bash
+python -m unittest -v
+```
+
+Advance a studio without curses to inspect long-term accounting behavior:
+
+```bash
+python main.py --simulate 52
+python main.py --load --simulate 12
+```
