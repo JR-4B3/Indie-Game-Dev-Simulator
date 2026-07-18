@@ -383,6 +383,9 @@ class GameState:
     marketing_tab: int = 0
     games_tab: int = 0
     modal: str = "main"
+    settings_open: bool = False
+    settings_resume_on_close: bool = False
+    selected_setting_action: int = 0
     new_game_step: int = 0
     team_tab: int = 0
     analysis_view: int = 0
@@ -417,7 +420,7 @@ class GameState:
             self.logs = [
                 f"{self.clock.current_date:%d %b %Y}: you open a bootstrapped indie studio with $75,000.",
                 "Cash is runway. Payroll, software, insurance, tax, refunds, and store cuts are real.",
-                "Start small: N plans a game, J opens the Contract Board, C toggles automatic contracts, and T manages the team (E also works).",
+                "Start in the Hub for an overview. Tab cycles pages; G opens Game, J opens Jobs, and T opens Team.",
             ]
 
     def log(self, message: str) -> None:
@@ -684,8 +687,15 @@ def game_profit(game: ReleasedGame) -> float:
     return game.net_revenue - game_total_cost(game)
 
 
+def clamp_player_counts(game: ReleasedGame) -> None:
+    owners = max(0, game.units_sold)
+    game.active_players = max(0.0, min(game.active_players, float(owners)))
+    game.monthly_players = max(0, min(game.monthly_players, owners))
+    game.peak_monthly_players = max(game.monthly_players, min(game.peak_monthly_players, owners))
+
+
 def marketing_team_load(studio: Studio) -> float:
-    return min(0.45, sum(promotion.team_share for promotion in studio.active_promotions))
+    return min(0.45, studio.active_promotions[0].team_share if studio.active_promotions else 0.0)
 
 
 def update_team_load(studio: Studio) -> float:
@@ -699,9 +709,14 @@ def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
     state.selected_topic = TOPICS.index(game.topic)
     state.selected_channel = next((index for index, channel in enumerate(CHANNELS) if channel["name"] == game.channel), 0)
     state.sequel_game_id = game.game_id
-    state.draft_title = f"{game.title} {roman_number(game.generation + 1)}"
+    base_title = game.title
+    if game.generation > 1:
+        current_suffix = f" {roman_number(game.generation)}"
+        if base_title.endswith(current_suffix):
+            base_title = base_title[: -len(current_suffix)]
+    state.draft_title = f"{base_title} {roman_number(game.generation + 1)}"
     state.modal = "new_game"
-    state.new_game_step = 3
+    state.new_game_step = 2
     state.selected_focus = 0
 
 
@@ -853,7 +868,7 @@ def start_project(state: GameState) -> bool:
     add_expense(studio, channel["fee"], "Store fees")
     add_expense(studio, marketing["cost"], "Marketing")
     studio.current_project = project
-    state.modal = "main"
+    state.modal = "games"
     state.new_game_step = 0
     state.naming_game = False
     state.sequel_game_id = None
@@ -1090,9 +1105,9 @@ def finish_project(state: GameState) -> None:
         project.sequel_of,
         project.generation,
         hype=min(150, project.hype + score / 5),
-        active_players=units * 0.75,
-        monthly_players=max(1, round(units * 0.9)),
-        peak_monthly_players=max(1, round(units * 0.9)),
+        active_players=0.0,
+        monthly_players=0,
+        peak_monthly_players=0,
         production_cost=project.production_cost,
         labor_cost=project.labor_cost,
         marketing_cost=project.marketing_cost,
@@ -1233,42 +1248,45 @@ def buy_promotion(state: GameState, game_id: int, promotion_index: int) -> bool:
         game = game_by_id(studio, game_id)
         if game:
             game.marketing_cost += promotion["cost"]
-    studio.active_promotions.append(
-        Promotion(
-            studio.next_promotion_id,
-            promotion["name"],
-            game_id,
-            target_title,
-            promotion["weeks"],
-            promotion["weeks"],
-            float(promotion["hype"]),
-            promotion["team"],
-        )
+    queued = Promotion(
+        studio.next_promotion_id,
+        promotion["name"],
+        game_id,
+        target_title,
+        promotion["weeks"],
+        promotion["weeks"],
+        float(promotion["hype"]),
+        promotion["team"],
     )
+    was_idle = not studio.active_promotions
+    studio.active_promotions.append(queued)
     studio.next_promotion_id += 1
-    state.log(f"Started {promotion['name']} for {target_title}: ${promotion['cost']:,}, {promotion['weeks']} weeks, +{promotion['hype']} potential hype.")
+    status = "Started" if was_idle else "Queued"
+    state.log(f"{status} {promotion['name']} for {target_title}: ${promotion['cost']:,}, {promotion['weeks']} weeks, +{promotion['hype']} potential hype.")
     return True
 
 
 def process_promotions(state: GameState) -> None:
-    finished = []
-    for promotion in state.studio.active_promotions:
-        hype_gain = promotion.hype_total / promotion.total_weeks
-        if promotion.game_id == 0 and state.studio.current_project:
-            state.studio.current_project.hype = min(200, state.studio.current_project.hype + hype_gain)
-        else:
-            game = game_by_id(state.studio, promotion.game_id)
-            if game:
-                game.hype = min(200, game.hype + hype_gain)
-                sale = sale_for_game(state.studio, game.game_id)
-                if sale:
-                    sale.weekly_units += max(1, round(hype_gain / 4))
-        promotion.weeks_left -= 1
-        if promotion.weeks_left <= 0:
-            finished.append(promotion)
-    for promotion in finished:
-        state.studio.active_promotions.remove(promotion)
+    if not state.studio.active_promotions:
+        return
+    promotion = state.studio.active_promotions[0]
+    hype_gain = promotion.hype_total / promotion.total_weeks
+    if promotion.game_id == 0 and state.studio.current_project:
+        state.studio.current_project.hype = min(200, state.studio.current_project.hype + hype_gain)
+    else:
+        game = game_by_id(state.studio, promotion.game_id)
+        if game:
+            game.hype = min(200, game.hype + hype_gain)
+            sale = sale_for_game(state.studio, game.game_id)
+            if sale:
+                sale.weekly_units += max(1, round(hype_gain / 4))
+    promotion.weeks_left -= 1
+    if promotion.weeks_left <= 0:
+        state.studio.active_promotions.pop(0)
         state.log(f"{promotion.name} for {promotion.target_title} finished.")
+        if state.studio.active_promotions:
+            next_promotion = state.studio.active_promotions[0]
+            state.log(f"Started queued {next_promotion.name} for {next_promotion.target_title}.")
 
 
 def cycle_game_update_focus(state: GameState, game_id: int, delta: int = 1) -> str | None:
@@ -1354,6 +1372,7 @@ def finish_game_update(state: GameState, job: UpdateJob, game: ReleasedGame) -> 
         * rating_factor
     )
     game.active_players += returning_players / 3
+    clamp_player_counts(game)
     sale = sale_for_game(state.studio, game.game_id)
     if sale:
         sale.weekly_units += max(1, round(sale.evergreen_units * size["sales"] * rating_factor))
@@ -1421,6 +1440,7 @@ def process_sales(state: GameState) -> None:
             game.active_players = game.active_players * retention + units * 0.70
             game.monthly_players = max(0, round(game.active_players * 3.2))
             game.peak_monthly_players = max(game.peak_monthly_players, game.monthly_players)
+            clamp_player_counts(game)
             undiscovered = max(0, game.actual_bugs - game.known_bugs)
             if undiscovered > 0:
                 discovery_rate = min(0.35, 0.015 + units / 10_000 + game.monthly_players / 100_000)
@@ -1617,6 +1637,7 @@ def studio_from_data(data: dict) -> Studio:
         if "version" not in item:
             for _ in range(game.updates_released):
                 game.version = bump_version(game.version, game.update_size)
+        clamp_player_counts(game)
         catalog.append(game)
     if not catalog:
         for sale in values["active_sales"]:
