@@ -80,7 +80,7 @@ followers, reputation, and release count are retained where possible; obsolete
   The separate Promotion Planning screen sells social pushes, press outreach,
   creator-key promotions, streamer placements, festival demos, games-event booths,
   and premium showcase slots. Better opportunities require game reputation; promotions cost
-  cash, run for multiple weeks, and some consume substantial team time.
+  cash, enter a FIFO queue, and consume team time only while active.
 - **Live operations:** updates are planned and added to a studio-wide FIFO queue.
   Choose Bug fixes, Balance, Visual, Audio, or New content and a Hotfix, Patch,
   Content, or Expansion scope. Relevant employee skill determines duration; every
@@ -114,44 +114,50 @@ followers, reputation, and release count are retained where possible; obsolete
   coworking space, health coverage, and analytics have purchase prices, recurring
   costs, and simulation effects.
 - **Failure:** a negative bank balance starts an eight-week insolvency clock. If
-  it is not recovered, the studio closes.
+  it is not recovered, the studio closes permanently. A blocking insolvency popup
+  requires deleting that run's save before a fresh studio can begin.
 
 ## Controls
 
-- `N`: plan a new game
-- `J`: open the Contract Board and accept one selected contract
-- `C`: toggle automatic contract acceptance and queue all eligible board offers
-- `T`: open team management
-- `E`: legacy alias for team management
-- `U`: open Upgrades
-- `G`: open the Game Catalogue
-- `Tab`: expand or close the Update Planner inside the Game Catalogue
-- `Enter`: queue the selected game's update plan
-- `F`: cycle the update area for the selected live game
-- `Z`: cycle Hotfix, Patch, Content, and Expansion update scopes
-- `M`: open Promotion Planning for the current project or selected catalogue game
-- `S`: open Studio Statistics
-- `T`: type a custom game title while planning
-- `R`: generate another title from the selected genre and theme
-- `Enter`: choose a project, greenlight a production plan, queue an update, hire, or purchase
-- `Tab`: switch planning panels, update views, promotion panels, applicants, or current staff
-- `Tab` / `Left` / `Right`: switch statistics views
+- `Tab`: cycle `Hub -> Game -> Team -> Statistics`
+- `H` / `G` / `T` / `S`: jump directly to a top-level page; `T` also selects the Team roster
+- `J`: open Jobs from the Hub
+- `N`: plan an original game or sequel from the Hub or Game page
+- `U`: open Upgrades from the Hub or Update Planner from the Game Catalogue
+- `P`: open Promotion Planning from the Game page
+- `Enter`: choose, advance New Game planning, greenlight, buy, hire, or queue the selected update
+- `E`: select Employ while on the Team page, or edit a game title while planning
+- `R`: regenerate a game title while planning
+- `Left` / `Right`: adjust simulation speed everywhere except Production Plan and Statistics
 - `D`: dismiss the selected non-founder employee
 - `Up` / `Down`: select an item or planning field
-- `Left` / `Right`: adjust a production plan; on the dashboard, change speed
-- `Backspace` or `Esc`: go back; on the dashboard, `Esc` opens Settings
+- `Backspace`: go back within the current page or workflow
+- `Esc`: open or close the centered Settings popup from anywhere
+- `<` / `>`: activate the bottom `</>` controls; these adjust speed normally, Production Plan values while planning, or Statistics views
 - `Space`: pause or resume
 - `Ctrl+S`: save
 - `Q`: quit
 
-Footer controls are clickable when the terminal exposes curses mouse events, except
-queueing an update, which deliberately requires the `Enter` key.
-The dashboard panels open production, team, statistics, and the live catalog; rows
-select projects, games, promotions, applicants, employees, upgrades, genres, or
-releases; double-clicking confirms choices where available; the wheel scrolls lists,
-changes promotion targets, adjusts planning fields, and changes
-dashboard speed; right-click closes the current screen. Game titles still require
-keyboard text input, but generated and randomized titles are clickable.
+The original footer-style tabs and contextual controls now sit at the top and are
+clickable when the terminal exposes curses mouse events, except queueing an update,
+which deliberately requires the `Enter` key. Settings stays at the top-right, with
+Save and Quit inside its popup. Progress and studio metrics sit above the bottom date bar; playback
+controls sit beside date/year/week and display `||`, `>`, `>>`, and so on. The Hub
+is a read-focused studio overview.
+Opening Settings temporarily pauses a running game and restores its previous speed
+when closed; a game that was already paused stays paused. Use Up/Down to select
+Close, Save, or Quit and Enter to activate the highlighted action.
+During New Game planning, Enter locks in each step and advances from Genre through
+Theme and Production Plan to Storefront, where Enter greenlights the game. Backspace
+returns to the previous step.
+Update Planner keeps the Game Catalogue and planner visible together. Up/Down first
+selects a game, then an update scope, then an update area. Enter locks each step and
+queues the update from the final step; Backspace moves through those steps in reverse
+and returns to the Game page from game selection.
+Rows select games, promotions, applicants,
+employees, upgrades, genres, or releases; double-clicking confirms choices where
+available; the wheel scrolls lists and changes selections. Game titles still
+require keyboard text input.
 
 ## Verification
 
