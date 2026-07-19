@@ -42,6 +42,7 @@ from ui_chrome import (
     footer_button_ranges,
     footer_layout,
     global_action_layout,
+    status_segments,
     top_context_uses_second_row,
     top_control_layout,
     top_tab_actions,
@@ -54,7 +55,7 @@ from ui_hub import draw_dashboard, draw_main_content
 from ui_input import CTRL_S, handle_key, handle_mouse, handle_new_game_key, open_new_game
 from ui_newgame import draw_new_game, new_game_panel_geometry
 from ui_stats import draw_analysis
-from ui_team import draw_team_screen, team_panel_widths
+from ui_team import draw_team_screen, team_layout
 from ui_upgrades import draw_upgrades
 
 
@@ -74,9 +75,36 @@ SCREEN_DRAWERS = {
 }
 
 
+_LAYOUT_STATE: tuple | None = None
+
+
 def draw_screen(screen: curses.window, state: GameState) -> None:
     height, width = screen.getmaxyx()
-    screen.erase()
+    global _LAYOUT_STATE
+    layout_state = (
+        state.modal,
+        state.team_tab,
+        state.games_tab,
+        state.marketing_tab,
+        state.analysis_view,
+        state.new_game_step,
+        state.settings_open,
+        state.training_open,
+        bool(state.studio.current_project),
+        len(state.studio.team),
+        len(state.studio.applicants),
+        len(state.studio.catalog),
+        height,
+        width,
+    )
+    if layout_state != _LAYOUT_STATE:
+        # Geometry changed: force a full repaint so cells from the previous
+        # layout cannot linger (diff redraw alone can leave ghosts when
+        # panels move or resize between frames).
+        screen.clear()
+        _LAYOUT_STATE = layout_state
+    else:
+        screen.erase()
     if height < 24 or width < 74:
         add_text(screen, 0, 0, "Terminal too small. Need at least 74x24. Resize or press Q.", width)
         return

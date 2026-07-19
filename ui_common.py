@@ -84,6 +84,13 @@ def meter(value: float, maximum: float, width: int) -> str:
     return "█" * filled + "░" * (width - filled)
 
 
+def range_meter(low: float, high: float, maximum: float, width: int) -> str:
+    """Uncertainty bar: the [low, high] interval is filled on a 0..maximum scale."""
+    start = max(0, min(width, round(width * low / max(1, maximum))))
+    end = max(start, min(width, round(width * high / max(1, maximum))))
+    return "░" * start + "█" * (end - start) + "░" * (width - end)
+
+
 def update_status(game) -> str:
     return f"v{game.version} | {game.updates_released} update{'s' if game.updates_released != 1 else ''} shipped"
 
@@ -196,6 +203,23 @@ def queue_header(title: str, active: int, waiting: int, suffix: str = "") -> str
     """The uniform queue status line: ``TITLE (total) | a active | w waiting``."""
     extra = f" | {suffix}" if suffix else ""
     return f"{title} ({active + waiting}) | {active} active | {waiting} waiting{extra}"
+
+
+def wrap_text(text: str, width: int) -> list[str]:
+    """Word-wrap ``text`` to ``width`` columns (no mid-word breaks)."""
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) <= width or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    return lines
 
 
 def live_games(state) -> list:

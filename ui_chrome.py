@@ -26,6 +26,7 @@ from simulation import (
     PRODUCTION_DECISIONS,
     TIME_LABELS,
     GameState,
+    runway_months,
     save_game,
     selected_roster_employee,
     start_employee_training,
@@ -154,20 +155,33 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
         panel_names = ("Genre", "Theme", "Production Plan", "Storefront")
         if compact:
             actions = [(control_label("Bksp", "Prev"), "back"), ("[Up/Dn]", "new_game_selection")]
+            if state.new_game_step in (0, 1):
+                actions.append(("[B]", "toggle_blend"))
             actions.extend([("[E]", "type_title"), ("[R]", "random_title")])
             actions.append((control_label("Enter", "Green" if state.new_game_step == 3 else "Next"), "confirm"))
         else:
             actions = [(control_label("Backspace", "Previous"), "back"), (control_label("Up/Down", panel_names[state.new_game_step]), "new_game_selection")]
             enter_label = control_label("Enter", "Greenlight" if state.new_game_step == 3 else "Next")
+            if state.new_game_step in (0, 1):
+                actions.append((control_label("B", "Blend"), "toggle_blend"))
+            elif state.new_game_step == 2:
+                actions.append((control_label("</>", "Change"), "new_game_adjust_right"))
             actions.extend([(control_label("E", "Edit title"), "type_title"), (control_label("R", "Random"), "random_title"), (enter_label, "confirm")])
         return actions
     if state.modal == "team":
-        if compact:
-            actions = [("[E]", "applicants"), ("[T]", "roster"), ("[Enter]", "hire"), ("[D]", "dismiss")]
+        hiring = state.team_tab == 0
+        employ = control_label("E", "Employ") if not compact else "[E]"
+        team = control_label("T", "Team") if not compact else "[T]"
+        actions = [(f">{employ}<" if hiring else employ, "applicants"), (team if hiring else f">{team}<", "roster")]
+        if hiring:
+            if state.studio.applicants:
+                actions.append(("[Enter]" if compact else control_label("Enter", "Hire"), "hire"))
         else:
-            actions = [(control_label("E", "Employ"), "applicants"), (control_label("T", "Team"), "roster"), (control_label("Enter", "Hire"), "hire"), (control_label("D", "Dismiss"), "dismiss")]
-        if state.team_tab == 1 and selected_roster_employee(state):
-            actions.append(("[L]" if compact else control_label("L", "Learn"), "train"))
+            selected = selected_roster_employee(state)
+            if selected:
+                actions.append(("[L]" if compact else control_label("L", "Learn"), "train"))
+                if not selected.founder:
+                    actions.append(("[D]" if compact else control_label("D", "Dismiss"), "dismiss"))
         return actions
     if state.modal == "contracts":
         auto = "ON" if state.studio.auto_contracts else "OFF"
@@ -243,7 +257,7 @@ def bottom_date_text(state: GameState, width: int) -> str:
 
 def horizontal_actions(state: GameState) -> tuple[str, str]:
     """What </> and Left/Right mean in the current context."""
-    if state.modal == "new_game" and state.new_game_step in (0, 1, 2):
+    if state.modal == "new_game" and state.new_game_step == 2:
         return "new_game_adjust_left", "new_game_adjust_right"
     if state.modal == "analysis":
         return "previous_view", "next_view"
@@ -287,8 +301,59 @@ def draw_footer_label(screen: curses.window, y: int, x: int, label: str, width: 
         cursor = shortcut_end
 
 
-def draw_footer(screen: curses.window, state: GameState, height: int, width: int) -> None:
+def status_segments(state: GameState, width: int) -> list[tuple[str, int]]:
+    """The persistent studio status shown on every page, most critical first.
+
+    Cash and runway lead as bare values; in-progress production and contract
+    work follow with live meters (the contract meter stays narrower than the
+    development meter, mirroring the overview) whenever they exist so their
+    progress is visible from any page.
+    """
     studio = state.studio
+    runway = runway_months(studio)
+    segments = [
+        (money(studio.cash), curses.A_BOLD if studio.cash >= 0 else curses.color_pair(5) | curses.A_BOLD),
+        (f"{runway:.1f} mo" if runway < 99 else "99+ mo", curses.color_pair(5) | curses.A_BOLD if runway < 4 else 0),
+    ]
+    if width >= 150:
+        dev_width, job_width = 16, 8
+    elif width >= 120:
+        dev_width, job_width = 12, 6
+    elif width >= 100:
+        dev_width, job_width = 10, 5
+    else:
+        dev_width, job_width = 8, 4
+    project = studio.current_project
+    if project is not None:
+        segments.append((f"DEV {meter(project.progress, 1, dev_width)}", curses.color_pair(4) | curses.A_BOLD))
+    contract = studio.contract
+    if contract is not None:
+        progress = 0 if contract.required_work <= 0 else contract.work_done / contract.required_work
+        segments.append((f"JOB {meter(progress, 1, job_width)}", curses.color_pair(4) | curses.A_BOLD))
+    if width >= 150:
+        segments.append((f"Fans {studio.followers:,}", 0))
+        segments.append((f"PTrust {studio.reputation:.1f}", 0))
+        segments.append((f"CTrust {studio.contractor_reputation:.1f}", 0))
+    elif width >= 100:
+        segments.append((f"Fans {studio.followers:,}", 0))
+    return segments
+
+
+def draw_status_segments(screen: curses.window, y: int, x: int, segments: list[tuple[str, int]], width: int) -> None:
+    cursor = x
+    for index, (text, attr) in enumerate(segments):
+        start = cursor + (3 if index else 0)
+        if width - start < len(text):
+            break
+        if index:
+            add_text(screen, y, cursor, " | ", 3, curses.color_pair(4))
+        if not attr & curses.A_COLOR:
+            attr |= curses.color_pair(4)
+        add_text(screen, y, start, text, len(text), attr)
+        cursor = start + len(text)
+
+
+def draw_footer(screen: curses.window, state: GameState, height: int, width: int) -> None:
     title = "INDIE GAME DEV SIM"
     if width >= 150:
         progress_width = 34
@@ -298,13 +363,8 @@ def draw_footer(screen: curses.window, state: GameState, height: int, width: int
         progress_width = 20
     bar_width = width - 2
     progress = meter(state.clock.progress, 1, progress_width)
-    if width >= 150:
-        line = f" [{progress}] | Games {studio.released_games} | Team {len(studio.team)} | Fans {studio.followers:,} | Game reputation {studio.reputation:.1f} | Contractor reputation {studio.contractor_reputation:.1f}"
-    elif width >= 100:
-        line = f" [{progress}] | Games {studio.released_games} | Team {len(studio.team)} | Fans {studio.followers:,} | GRep {studio.reputation:.1f} | CRep {studio.contractor_reputation:.1f}"
-    else:
-        line = f" [{progress}] | G {studio.released_games} | T {len(studio.team)} | F {studio.followers:,} | GR {studio.reputation:.1f} | CR {studio.contractor_reputation:.1f}"
-    add_text(screen, height - 2, 1, line.ljust(bar_width), bar_width, curses.color_pair(4))
+    add_text(screen, height - 2, 1, f" [{progress}] ".ljust(bar_width), bar_width, curses.color_pair(4))
+    draw_status_segments(screen, height - 2, 4 + progress_width, status_segments(state, width), bar_width)
     add_text(screen, height - 1, 1, " " * bar_width, bar_width, curses.color_pair(1))
     date_text = bottom_date_text(state, width)
     add_text(screen, height - 1, 2, date_text, len(date_text), curses.color_pair(1) | curses.A_BOLD)

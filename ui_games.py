@@ -10,11 +10,13 @@ from simulation import (
     UPDATE_FOCUSES,
     UPDATE_SIZES,
     GameState,
+    capacity_drains,
     estimated_update_delivery_weeks,
     game_profit,
     game_total_cost,
     monthly_fixed_cost,
     planned_update_version,
+    projected_weekly_output,
     sale_for_game,
 )
 from ui_common import (
@@ -30,6 +32,7 @@ from ui_common import (
     promotion_targets,
     queue_header,
     rating_text,
+    wrap_text,
 )
 
 
@@ -44,8 +47,27 @@ def update_jobs_for_game(state: GameState, game_id: int) -> list:
 
 
 def catalogue_table_height(count: int, panel_height: int) -> int:
-    """Height of the catalogue table strip on the Game/Promotion pages."""
-    return min(15, max(9, min(count + 4, panel_height // 3 + 2)))
+    """Height of the catalogue table strip: sized to content, capped by space."""
+    return min(15, max(7, count + 4), max(7, panel_height // 2))
+
+
+PRODUCTION_BANNER_HEIGHT = 5
+
+
+def draw_production_banner(panel: curses.window, state: GameState, width: int) -> None:
+    """The in-development project's progress and, critically, what is slowing
+    it down — contract work, promotions, updates, training, live titles."""
+    studio = state.studio
+    project = studio.current_project
+    draw_box(panel, f"In Production | {project.title}")
+    weekly_output = projected_weekly_output(studio, project.focus)
+    remaining = max(1, round((project.total_work - project.work_done) / weekly_output))
+    bar_width = max(10, min(48, width // 4))
+    add_text(panel, 1, 2, f"{project.phase} [{meter(project.progress, 1, bar_width)}] {project.progress:.0%} | week {project.weeks} / ~{project.planned_weeks} planned | ~{remaining}w left", width - 4, curses.color_pair(4))
+    drains = capacity_drains(studio)
+    drain_text = " | ".join(drains) if drains else "none - full capacity"
+    add_text(panel, 2, 2, f"Capacity {weekly_output:.1f} work/wk | Drains: {drain_text}", width - 4, curses.color_pair(5) if studio.contract else 0)
+    add_text(panel, 3, 2, f"Known bugs {int(project.known_defects)} | Hype {project.hype:.0f} | {project.scope} / {project.channel}", width - 4)
 
 
 def games_list_width(width: int, planner_open: bool) -> int:
@@ -193,11 +215,17 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     games = live_games(state)
     planner_open = state.modal == "update_planner"
     game_count = f"{len(games)} {'game' if len(games) == 1 else 'games'}"
+    top = 2
+    if state.studio.current_project:
+        banner = screen.derwin(PRODUCTION_BANNER_HEIGHT, width, top, 0)
+        draw_production_banner(banner, state, width)
+        top += PRODUCTION_BANNER_HEIGHT
+        panel_height -= PRODUCTION_BANNER_HEIGHT
     if width < 120:
         list_width = games_list_width(width, planner_open)
         detail_width = width - list_width - 1
-        games_panel = screen.derwin(panel_height, list_width, 2, 0)
-        detail = screen.derwin(panel_height, detail_width, 2, list_width + 1)
+        games_panel = screen.derwin(panel_height, list_width, top, 0)
+        detail = screen.derwin(panel_height, detail_width, top, list_width + 1)
         development = f" | IN DEV {state.studio.current_project.title}" if state.studio.current_project else ""
         draw_box(games_panel, f"Game Catalogue | {game_count}{development}")
         draw_box(detail, "Update Planner" if planner_open else "Commercial Performance")
@@ -250,7 +278,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         return
 
     catalog_height = panel_height if not games else catalogue_table_height(len(games), panel_height)
-    games_panel = screen.derwin(catalog_height, width, 2, 0)
+    games_panel = screen.derwin(catalog_height, width, top, 0)
     if not games:
         draw_box(games_panel, f"Game Catalogue | {game_count}")
         project = state.studio.current_project
@@ -279,7 +307,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
 
     game = games[state.selected_game]
     sale = sale_for_game(state.studio, game.game_id)
-    bottom_y = 2 + catalog_height
+    bottom_y = top + catalog_height
     bottom_height = panel_height - catalog_height
     detail_height = bottom_height if bottom_height < 24 else 20
     summary_height = bottom_height - detail_height
@@ -316,7 +344,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     strategy = screen.derwin(detail_height, third_width, bottom_y, first_width + second_width + 2)
     draw_box(commercial, "Commercial Performance")
     draw_box(live_ops, "Live Operations")
-    draw_box(strategy, "Promotion Planning")
+    draw_box(strategy, "Advisor")
 
     rating_attr = curses.color_pair(4) if game.score >= 70 else curses.color_pair(5) if game.score < 45 else 0
     size = next((item for item in UPDATE_SIZES if item["name"] == game.update_size), UPDATE_SIZES[1])
@@ -420,7 +448,8 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     recommendation_attr = curses.color_pair(recommendation_color) if recommendation_color in (4, 5) else 0
     audience_attr = curses.color_pair(audience_color) if audience_color in (4, 5) else 0
     add_text(strategy, 1, 2, "RECOMMENDED ACTION", third_width - 4, curses.A_BOLD)
-    add_text(strategy, 2, 2, recommendation, third_width - 4, recommendation_attr)
+    for wrap_row, wrap_line in enumerate(wrap_text(recommendation, third_width - 4)[:2], 2):
+        add_text(strategy, wrap_row, 2, wrap_line, third_width - 4, recommendation_attr)
     add_text(strategy, 4, 2, "AUDIENCE HEALTH", third_width - 4, curses.A_BOLD)
     add_text(strategy, 5, 2, f"{audience_status:<8} Rating {rating_text(game):>3}/100 | Hype {game.hype:>5.0f}/200", third_width - 4, audience_attr)
     add_text(strategy, 6, 2, f"Retention  {retention:>6.1%} | {game.monthly_players:,} monthly / {game.peak_monthly_players:,} peak", third_width - 4)
@@ -439,11 +468,10 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     if summary_height >= 5:
         summary_y = bottom_y + detail_height
         left_width = max(42, width // 3)
-        right_width = width - left_width - 1
-        economics = screen.derwin(summary_height, left_width, summary_y, 0)
-        activity = screen.derwin(summary_height, right_width, summary_y, left_width + 1)
-        draw_box(economics, "Game Catalogue | Economics")
-        draw_box(activity, f"Recent Activity | {game_title(game)}")
+        right_x = left_width + 3
+        right_width = width - right_x - 2
+        panel = screen.derwin(summary_height, width, summary_y, 0)
+        draw_box(panel, f"Catalogue Economics & Activity | {game_title(game)}")
         catalog = state.studio.catalog
         tracked_games = [item for item in catalog if item.cost_history_complete]
         tracked_revenue = sum(item.net_revenue for item in tracked_games)
@@ -475,14 +503,15 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
             (f"Promotion queue           {len(state.studio.active_promotions)} | Team load {campaign_load:.0%}", curses.color_pair(5) if campaign_load >= 0.30 else 0),
             (f"Largest live audience     {game_title(top_audience)} ({top_audience.monthly_players:,})", 0),
         ]
-        draw_lines(economics, economics_lines[: summary_height - 2], 1, 2, left_width - 4)
+        draw_lines(panel, economics_lines[: summary_height - 2], 1, 2, left_width - 4)
+        for divider_row in range(1, summary_height - 1):
+            add_text(panel, divider_row, left_width + 1, "|", 1, curses.color_pair(2))
 
         related_logs = [message for message in state.logs if game.title in message]
-        add_text(activity, 1, 2, "RECENT EVENTS", right_width - 4, curses.A_BOLD)
-        journal_slots = min(len(related_logs), max(1, summary_height - 10))
+        add_text(panel, 1, right_x, "RECENT EVENTS", right_width, curses.A_BOLD)
+        journal_slots = min(len(related_logs), max(1, summary_height - 3))
         if not related_logs:
-            add_text(activity, 2, 2, "[INFO] No journal entries recorded for this game yet.", right_width - 4, curses.color_pair(2))
-            journal_slots = 1
+            add_text(panel, 2, right_x, "[INFO] No journal entries recorded for this game yet.", right_width, curses.color_pair(2))
         for row, message in enumerate(related_logs[:journal_slots], 2):
             lower_message = message.lower()
             if "released update" in lower_message or "finished" in lower_message:
@@ -497,17 +526,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
                 event, attr = "PLAN", 0
             else:
                 event, attr = "INFO", 0
-            add_text(activity, row, 2, f"[{event:<6}] {message}", right_width - 4, attr)
-
-        snapshot_row = min(summary_height - 7, journal_slots + 3)
-        if snapshot_row > 2:
-            add_text(activity, snapshot_row, 2, "CURRENT SNAPSHOT", right_width - 4, curses.A_BOLD)
-            add_text(activity, snapshot_row + 1, 2, f"Lifecycle   {game.release_date} | Generation {game.generation} | Storefront {game.channel}", right_width - 4)
-            add_text(activity, snapshot_row + 2, 2, f"Demand      {weekly_sales:,}/w vs {evergreen:,}/w floor ({demand_multiple:.1f}x)", right_width - 4)
-            add_text(activity, snapshot_row + 3, 2, f"Audience    {game.monthly_players:,} monthly | {retention:.1%} of peak | {audience_status}", right_width - 4, audience_attr)
-            add_text(activity, snapshot_row + 4, 2, f"Live ops    {status} | v{game.version} | {game.updates_released} shipped | {len(promotions)} promotions queued", right_width - 4)
-            result = money(game_profit(game)) if game.cost_history_complete else "cost history unavailable"
-            add_text(activity, snapshot_row + 5, 2, f"Economics   {money(game.net_revenue)} net revenue | {result} profit", right_width - 4, curses.color_pair(5) if game.cost_history_complete and game_profit(game) < 0 else 0)
+            add_text(panel, row, right_x, f"[{event:<6}] {message}", right_width, attr)
 
 
 def draw_marketing_screen(screen: curses.window, state: GameState, width: int, height: int) -> None:

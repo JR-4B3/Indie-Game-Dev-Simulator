@@ -178,9 +178,35 @@ followers, reputation, and release count are retained where possible; obsolete
 The original footer-style tabs and contextual controls now sit at the top and are
 clickable when the terminal exposes curses mouse events, except queueing an update,
 which deliberately requires the `Enter` key. Settings stays at the top-right, with
-Save and Quit inside its popup. Progress and studio metrics sit above the bottom date bar; playback
+Save and Quit inside its popup. The bottom status strip is visible on every page:
+week progress, cash, runway, and — whenever they exist — live progress meters for
+the in-development game (`DEV`) and the active contract (`JOB`, a narrower bar),
+plus fans and player/contractor trust (`PTrust`/`CTrust`) on wide terminals. Playback
 controls sit beside date/year/week and display `||`, `>`, `>>`, and so on. The Hub
 is a read-focused studio overview.
+The Team page shows a full-width roster with a Person Detail panel — stacked skill
+meters on the left, wellbeing (or an applicant's offer with its exact burn and
+runway impact) to their right. In the roster and applicant tables the best value
+in each skill column is crowned in green bold, and column headers align with the
+row content. Its action bar is side-aware: Hire appears only while
+employing, Dismiss/Learn only for a roster selection, and the active side is
+marked `>[E]mploy<` / `>[T]eam<`.
+The Game page opens with an In Production banner while a game is being made:
+phase bar, weeks vs plan, ETA, and every current capacity drain (contract,
+promotions, updates, training). The Advisor panel recommends the next move.
+While planning a game, the theme list is tiered by market signal — themes you
+have a proven audience for, then good genre fits (both green), then the rest —
+so 300+ themes never need blind scrubbing. Pressing `B` switches the Genre or
+Theme list into blend mode (the header swaps PRIMARY for BLEND, your primary
+stays marked yellow) so Up/Down picks the mix partner directly — Enter confirms
+the blend, `B` again cancels it back to a single genre/theme; a confirmed blend
+shows in the panel border (`1 Genre  + Building Game`). On the Production Plan
+step the highlighted field shows its value in `<…>` and an adaptive Options row
+lists every choice for it (clickable), while the plan list and brief keep your
+earlier decisions in view. The Creative
+Brief panel groups the concept into Plan, Market (fit range bar, confidence
+meter), and Workload (runway vs needed weeks bars) sections, ending with a
+plain-language recap of the concept.
 Opening Settings temporarily pauses a running game and restores its previous speed
 when closed; a game that was already paused stays paused. Use Up/Down to select
 Close, Save, or Quit and Enter to activate the highlighted action.
@@ -210,8 +236,9 @@ pieces instead of bespoke layouts:
   the shared scrolling selection list (`> ` marker, accent highlight),
   table cells, key/value lines, and queue headers.
 - `ui_chrome.py`: the frame around every page — top tabs plus the current
-  page's context actions, bottom metrics/date/playback bars, and all
-  centered popups (Settings, Training, Production Event, Insolvency).
+  page's context actions, the persistent bottom status strip (cash, runway,
+  `DEV`/`JOB` progress), date/playback bars, and all centered popups
+  (Settings, Training, Production Event, Insolvency).
 - One module per page: `ui_hub.py`, `ui_newgame.py`, `ui_team.py`,
   `ui_contracts.py`, `ui_games.py` (catalogue, Update Planner, Promotion
   Planning), `ui_upgrades.py`, `ui_stats.py`.

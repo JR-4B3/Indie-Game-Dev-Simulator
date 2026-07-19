@@ -525,6 +525,8 @@ class GameState:
     selected_release_strategy: int = 0
     selected_project_decision: int = 0
     selected_focus: int = 0
+    mix_blend: bool = False
+    mix_blend_backup: tuple = (0, 0)
     focus: list[int] = field(default_factory=lambda: [30, 25, 15, 30])
     selected_employee: int = 0
     selected_roster: int = 0
@@ -1193,6 +1195,33 @@ def update_team_load(studio: Studio) -> float:
     if studio.active_update is None:
         return 0.0
     return update_size_by_name(studio.active_update.size)["team"]
+
+
+def capacity_drains(studio: Studio) -> list[str]:
+    """Human-readable list of everything currently slowing original work.
+
+    Read-only presentation helper: mirrors the multipliers in
+    :func:`projected_weekly_output` so screens can show *why* capacity is
+    reduced instead of just that it is.
+    """
+    drains = []
+    contract = studio.contract
+    if contract:
+        progress = 0 if contract.required_work <= 0 else contract.work_done / contract.required_work
+        drains.append(f"JOB {contract.client} -45% ({progress:.0%} done, due {contract.weeks_left}w)")
+    if marketing_team_load(studio) > 0:
+        drains.append(f"promotions {marketing_team_load(studio):.0%}")
+    if update_team_load(studio) > 0:
+        drains.append(f"updates {update_team_load(studio):.0%}")
+    training = sum(1 for employee in studio.team if employee.training_weeks_left)
+    if training:
+        drains.append(f"{training} in training")
+    live_titles = len(studio.active_sales)
+    if live_titles:
+        support_load = min(0.30, 0.04 * live_titles)
+        noun = "title" if live_titles == 1 else "titles"
+        drains.append(f"supporting {live_titles} live {noun} -{support_load:.0%}")
+    return drains
 
 
 def prepare_sequel(state: GameState, game: ReleasedGame) -> None:

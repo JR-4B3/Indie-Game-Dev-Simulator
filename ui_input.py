@@ -60,10 +60,10 @@ from ui_chrome import (
 )
 from ui_common import list_start, live_games, promotion_targets
 from ui_contracts import contract_board_width
-from ui_games import catalogue_table_height, games_list_width, summary_panel_width
-from ui_newgame import new_game_panel_geometry, sequel_choices
+from ui_games import PRODUCTION_BANNER_HEIGHT, catalogue_table_height, games_list_width, summary_panel_width
+from ui_newgame import PLAN_FIELDS, new_game_panel_geometry, select_topic_at, sequel_choices, topic_order, topic_position
 from ui_stats import ANALYSIS_TABS
-from ui_team import team_panel_widths
+from ui_team import team_layout, visible_roster
 
 
 CTRL_S = 19
@@ -87,6 +87,7 @@ def open_new_game(state: GameState) -> None:
     state.new_game_step = -1
     state.selected_focus = 0
     state.selected_sequel_choice = 0
+    state.mix_blend = False
 
 
 def enter_queue_cancellation(state: GameState) -> bool:
@@ -260,6 +261,9 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         state.selected_sequel_choice = (state.selected_sequel_choice + 1) % len(choices)
     elif action == "new_game_selection":
         handle_new_game_key(state, curses.KEY_DOWN)
+    elif action == "toggle_blend":
+        if state.modal == "new_game" and state.new_game_step in (0, 1):
+            handle_new_game_key(state, ord("b"))
     elif action == "new_game_adjust_left":
         handle_new_game_key(state, curses.KEY_LEFT)
     elif action == "new_game_adjust_right":
@@ -295,6 +299,24 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     return True
 
 
+def open_blend(state: GameState) -> None:
+    """Enter blend picking: remember the current mix so B can cancel it."""
+    attribute = "selected_secondary_genre" if state.new_game_step == 0 else "selected_secondary_topic"
+    state.mix_blend_backup = (state.new_game_step, getattr(state, attribute))
+    state.mix_blend = True
+
+
+def close_blend(state: GameState, confirm: bool) -> None:
+    """Leave blend picking: Enter keeps the new mix, B restores the old one."""
+    if not state.mix_blend:
+        return
+    if not confirm:
+        step, value = state.mix_blend_backup
+        attribute = "selected_secondary_genre" if step == 0 else "selected_secondary_topic"
+        setattr(state, attribute, value)
+    state.mix_blend = False
+
+
 def handle_new_game_key(state: GameState, key: int) -> None:
     if state.new_game_step == -1:
         choices = sequel_choices(state)
@@ -318,12 +340,22 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         return
     previous_concept = (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
     if key in (10, 13, curses.KEY_ENTER):
-        if state.new_game_step < 3:
+        if state.mix_blend and state.new_game_step in (0, 1):
+            close_blend(state, confirm=True)
+        elif state.new_game_step < 3:
             state.new_game_step += 1
         else:
             start_project(state)
     elif key in (8, 127, curses.KEY_BACKSPACE):
-        state.new_game_step = max(-1, state.new_game_step - 1)
+        if state.mix_blend:
+            close_blend(state, confirm=False)
+        else:
+            state.new_game_step = max(-1, state.new_game_step - 1)
+    elif key in (ord("b"), ord("B")) and state.new_game_step in (0, 1):
+        if state.mix_blend:
+            close_blend(state, confirm=False)
+        else:
+            open_blend(state)
     elif key in (ord("e"), ord("E")):
         state.naming_game = True
         state.draft_title = ""
@@ -332,40 +364,65 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         refresh_draft_title(state)
     elif key == curses.KEY_UP:
         if state.new_game_step == 0:
-            state.selected_genre = (state.selected_genre - 1) % len(GENRES)
+            if state.mix_blend:
+                state.selected_secondary_genre = (state.selected_secondary_genre - 1) % len(GENRES)
+            else:
+                had_blend = state.selected_secondary_genre != state.selected_genre
+                state.selected_genre = (state.selected_genre - 1) % len(GENRES)
+                if not had_blend:
+                    state.selected_secondary_genre = state.selected_genre
         elif state.new_game_step == 1:
-            state.selected_topic = (state.selected_topic - 1) % len(TOPICS)
+            order = topic_order(state)
+            if state.mix_blend:
+                current = TOPICS[state.selected_secondary_topic]
+                position = next((index for index, (topic, _) in enumerate(order) if topic == current), 0)
+                state.selected_secondary_topic = TOPICS.index(order[(position - 1) % len(order)][0])
+            else:
+                had_blend = state.selected_secondary_topic != state.selected_topic
+                select_topic_at(state, order, topic_position(state, order) - 1)
+                if not had_blend:
+                    state.selected_secondary_topic = state.selected_topic
         elif state.new_game_step == 2:
             state.selected_focus = (state.selected_focus - 1) % 7
         else:
             state.selected_channel = (state.selected_channel - 1) % len(CHANNELS)
     elif key == curses.KEY_DOWN:
         if state.new_game_step == 0:
-            state.selected_genre = (state.selected_genre + 1) % len(GENRES)
+            if state.mix_blend:
+                state.selected_secondary_genre = (state.selected_secondary_genre + 1) % len(GENRES)
+            else:
+                had_blend = state.selected_secondary_genre != state.selected_genre
+                state.selected_genre = (state.selected_genre + 1) % len(GENRES)
+                if not had_blend:
+                    state.selected_secondary_genre = state.selected_genre
         elif state.new_game_step == 1:
-            state.selected_topic = (state.selected_topic + 1) % len(TOPICS)
+            order = topic_order(state)
+            if state.mix_blend:
+                current = TOPICS[state.selected_secondary_topic]
+                position = next((index for index, (topic, _) in enumerate(order) if topic == current), 0)
+                state.selected_secondary_topic = TOPICS.index(order[(position + 1) % len(order)][0])
+            else:
+                had_blend = state.selected_secondary_topic != state.selected_topic
+                select_topic_at(state, order, topic_position(state, order) + 1)
+                if not had_blend:
+                    state.selected_secondary_topic = state.selected_topic
         elif state.new_game_step == 2:
             state.selected_focus = (state.selected_focus + 1) % 7
         else:
             state.selected_channel = (state.selected_channel + 1) % len(CHANNELS)
-    elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step in (0, 1, 2):
+    elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step == 2:
         delta = -1 if key == curses.KEY_LEFT else 1
-        if state.new_game_step == 0:
-            state.selected_secondary_genre = (state.selected_secondary_genre + delta) % len(GENRES)
-        elif state.new_game_step == 1:
-            state.selected_secondary_topic = (state.selected_secondary_topic + delta) % len(TOPICS)
-        else:
-            fields = (
-                ("selected_scope", len(SCOPES)),
-                ("selected_format", len(GAME_FORMATS)),
-                ("selected_audience", len(AUDIENCES)),
-                ("selected_creative_primary", len(CREATIVE_DIRECTIONS)),
-                ("selected_creative_secondary", len(CREATIVE_DIRECTIONS)),
-                ("selected_release_strategy", len(RELEASE_STRATEGIES)),
-                ("selected_marketing", len(MARKETING)),
-            )
-            attribute, count = fields[state.selected_focus]
-            setattr(state, attribute, (getattr(state, attribute) + delta) % count)
+        fields = (
+            ("selected_scope", len(SCOPES)),
+            ("selected_format", len(GAME_FORMATS)),
+            ("selected_audience", len(AUDIENCES)),
+            ("selected_creative_primary", len(CREATIVE_DIRECTIONS)),
+            ("selected_creative_secondary", len(CREATIVE_DIRECTIONS)),
+            ("selected_release_strategy", len(RELEASE_STRATEGIES)),
+            ("selected_marketing", len(MARKETING)),
+        )
+        attribute, count = fields[state.selected_focus]
+        setattr(state, attribute, (getattr(state, attribute) + delta) % count)
     if previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic):
         state.sequel_game_id = None
         state.title_roll += 1
@@ -378,14 +435,16 @@ def handle_team_key(state: GameState, key: int) -> None:
     elif key in (ord("e"), ord("E")):
         state.team_tab = 0
     elif key == curses.KEY_UP:
-        if state.team_tab == 0 and state.studio.applicants:
-            state.selected_employee = (state.selected_employee - 1) % len(state.studio.applicants)
+        if state.team_tab == 0:
+            if state.studio.applicants:
+                state.selected_employee = (state.selected_employee - 1) % len(state.studio.applicants)
         else:
             choices = len(state.studio.team)
             state.selected_roster = state.selected_roster % choices - 1
     elif key == curses.KEY_DOWN:
-        if state.team_tab == 0 and state.studio.applicants:
-            state.selected_employee = (state.selected_employee + 1) % len(state.studio.applicants)
+        if state.team_tab == 0:
+            if state.studio.applicants:
+                state.selected_employee = (state.selected_employee + 1) % len(state.studio.applicants)
         else:
             choices = len(state.studio.team)
             state.selected_roster = (state.selected_roster + 2) % choices - 1
@@ -584,17 +643,18 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     resolve_project_decision(state, option_row)
             return
         games = live_games(state)
+        top = 2 + (PRODUCTION_BANNER_HEIGHT if state.studio.current_project else 0)
         if width >= 120:
-            row = y - 4
-            panel_height = height - 4
+            row = y - top - 2
+            panel_height = height - 4 - (top - 2)
             catalog_height = catalogue_table_height(len(games), panel_height)
-            in_catalog = 4 <= y < 2 + catalog_height - 1
+            in_catalog = top + 2 <= y < top + catalog_height - 1
             visible = catalog_height - 3
         else:
-            row = y - 3
+            row = y - top - 1
             list_width = games_list_width(width, state.modal == "update_planner")
             in_catalog = x <= list_width and row >= 0
-            visible = height - 6
+            visible = height - 6 - (top - 2)
         catalog_active = state.modal == "games" or state.games_tab == 0
         if catalog_active and in_catalog and row >= 0 and games:
             start = list_start(state.selected_game, len(games), visible)
@@ -631,24 +691,29 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         return
 
     if state.modal == "team":
-        roster_width, _ = team_panel_widths(state, width)
-        row = y - 4
-        if row < 0:
-            return
-        if x <= roster_width:
+        layout = team_layout(state, width, height)
+        rect = layout["roster"]
+        if rect and rect[0] < y < rect[0] + rect[2] - 1 and rect[1] <= x < rect[1] + rect[3]:
+            selected = selected_roster_employee(state)
+            selected_index = state.studio.team.index(selected) if selected in state.studio.team else 0
             state.team_tab = 1
-            visible_team = state.studio.team[: height - 7]
-            if row < len(visible_team):
+            row = y - rect[0] - 2
+            visible_team = visible_roster(state.studio.team, rect[2], selected_index)
+            if 0 <= row < len(visible_team):
                 employee = visible_team[row]
                 if employee.founder:
                     state.selected_roster = -1
                 else:
                     removable = [item for item in state.studio.team if not item.founder]
                     state.selected_roster = removable.index(employee)
-        else:
+            return
+        rect = layout["applicants"]
+        if rect and rect[0] < y < rect[0] + rect[2] - 1 and rect[1] <= x < rect[1] + rect[3]:
             state.team_tab = 0
-            if row < len(state.studio.applicants):
-                state.selected_employee = row
+            visible = max(1, rect[2] - 3)
+            index = list_start(state.selected_employee, len(state.studio.applicants), visible) + y - rect[0] - 2
+            if 0 <= index < len(state.studio.applicants):
+                state.selected_employee = index
                 if double_click:
                     hire_candidate(state)
         return
@@ -666,26 +731,61 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     if double_click:
                         handle_new_game_key(state, 10)
             return
-        top_height, genre_width, theme_width, _, storefront_height = new_game_panel_geometry(width, height)
+        top_height, genre_width, theme_width, plan_width, storefront_height = new_game_panel_geometry(width, height)
         plan_x = genre_width + theme_width + 2
-        if 4 <= y < 2 + top_height - 2:
-            visible = top_height - 5
+        if 4 <= y < 2 + top_height - 1:
+            visible = top_height - 3
             row = y - 4
+            target_step = 0 if x < genre_width else 1 if genre_width < x < plan_x else 2
+            if state.mix_blend and target_step != state.new_game_step:
+                close_blend(state, confirm=False)
             if x < genre_width:
+                was_blend = state.mix_blend
                 state.new_game_step = 0
-                index = list_start(state.selected_genre, len(GENRES), visible) + row
-                state.selected_genre = min(index, len(GENRES) - 1)
+                cursor = state.selected_secondary_genre if was_blend else state.selected_genre
+                index = list_start(cursor, len(GENRES), visible) + row
+                if was_blend:
+                    state.selected_secondary_genre = min(index, len(GENRES) - 1)
+                else:
+                    had_blend = state.selected_secondary_genre != state.selected_genre
+                    state.selected_genre = min(index, len(GENRES) - 1)
+                    if not had_blend:
+                        state.selected_secondary_genre = state.selected_genre
             elif genre_width < x < plan_x:
+                was_blend = state.mix_blend
                 state.new_game_step = 1
-                index = list_start(state.selected_topic, len(TOPICS), visible) + row
-                state.selected_topic = min(index, len(TOPICS) - 1)
+                order = topic_order(state)
+                if was_blend:
+                    current = TOPICS[state.selected_secondary_topic]
+                    position = next((i for i, (topic, _) in enumerate(order) if topic == current), 0)
+                    start = list_start(position, len(order), visible)
+                    state.selected_secondary_topic = TOPICS.index(order[min(start + row, len(order) - 1)][0])
+                else:
+                    had_blend = state.selected_secondary_topic != state.selected_topic
+                    start = list_start(topic_position(state, order), len(order), visible)
+                    select_topic_at(state, order, min(start + row, len(order) - 1))
+                    if not had_blend:
+                        state.selected_secondary_topic = state.selected_topic
             elif x >= plan_x:
+                was_step = state.new_game_step
                 state.new_game_step = 2
                 if y == 3:
                     state.naming_game = True
                     state.draft_title = ""
                     return
-                field = y - 4
+                if y == 13 and was_step == 2:
+                    _, attribute, options = PLAN_FIELDS[state.selected_focus]
+                    chip_x = 11
+                    for index, option in enumerate(options):
+                        chip = option["name"]
+                        if chip_x + len(chip) > plan_width - 2:
+                            break
+                        if plan_x + chip_x <= x < plan_x + chip_x + len(chip):
+                            setattr(state, attribute, index)
+                            break
+                        chip_x += len(chip) + 2
+                    return
+                field = y - 6
                 if 0 <= field < 7:
                     state.selected_focus = field
                     if double_click:
