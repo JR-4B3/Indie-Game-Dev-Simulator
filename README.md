@@ -201,6 +201,33 @@ employees, upgrades, genres, or releases; double-clicking confirms choices where
 available; the wheel scrolls lists and changes selections. Game titles still
 require keyboard text input.
 
+## Code Layout
+
+The UI follows one design system; every page is assembled from the same
+pieces instead of bespoke layouts:
+
+- `ui_common.py`: primitives — clipped text, titled panels, meters, money,
+  the shared scrolling selection list (`> ` marker, accent highlight),
+  table cells, key/value lines, and queue headers.
+- `ui_chrome.py`: the frame around every page — top tabs plus the current
+  page's context actions, bottom metrics/date/playback bars, and all
+  centered popups (Settings, Training, Production Event, Insolvency).
+- One module per page: `ui_hub.py`, `ui_newgame.py`, `ui_team.py`,
+  `ui_contracts.py`, `ui_games.py` (catalogue, Update Planner, Promotion
+  Planning), `ui_upgrades.py`, `ui_stats.py`.
+- `ui_input.py`: keyboard and mouse. Overlays capture input first; then
+  global keys; then page keys. Mouse hit-testing calls the same layout
+  helpers the screens draw with, so clicks cannot drift from rendering.
+- `main.py`: entry point — screen dispatch table, curses run loop,
+  `--simulate`, CLI parsing.
+- `simulation.py` / `game_data.py`: game rules and static data; UI modules
+  read them but never the other way around.
+
+Navigation rules are global: `Up/Down` moves a selection, `Enter` is the
+primary action, `Backspace` goes one level up, `Left/Right` adjusts the
+context's horizontal axis (speed, planning values, statistics views),
+`Tab`/`H`/`G`/`T`/`S` switch pages, `Esc` opens Settings.
+
 ## Verification
 
 Run the automated simulation tests:
