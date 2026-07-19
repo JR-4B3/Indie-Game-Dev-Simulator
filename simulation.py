@@ -540,6 +540,9 @@ class GameState:
     marketing_tab: int = 0
     games_tab: int = 0
     modal: str = "main"
+    title_screen: bool = False
+    title_menu_index: int = 0
+    title_message: str = ""
     settings_open: bool = False
     settings_resume_on_close: bool = False
     selected_setting_action: int = 0

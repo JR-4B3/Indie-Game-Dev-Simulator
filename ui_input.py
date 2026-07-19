@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import curses
+import json
 
 from game_data import GENRES, TOPICS
 from simulation import (
@@ -27,6 +28,7 @@ from simulation import (
     cycle_game_update_size,
     dismiss_employee,
     hire_candidate,
+    load_game,
     prepare_sequel,
     queue_game_update,
     refresh_draft_title,
@@ -64,6 +66,7 @@ from ui_games import PRODUCTION_BANNER_HEIGHT, catalogue_table_height, games_lis
 from ui_newgame import PLAN_FIELDS, new_game_panel_geometry, select_topic_at, sequel_choices, topic_order, topic_position
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
+from ui_title import TITLE_MENU, title_layout
 
 
 CTRL_S = 19
@@ -806,6 +809,65 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     handle_new_game_key(state, 10)
 
 
+def activate_title_choice(state: GameState) -> bool:
+    choice = TITLE_MENU[state.title_menu_index]
+    if choice == "New Game":
+        fresh_state = GameState(save_path=state.save_path)
+        state.__dict__.clear()
+        state.__dict__.update(fresh_state.__dict__)
+        state.log("Started a new studio from the title screen.")
+        return True
+    if choice == "Load Game":
+        try:
+            loaded_state = load_game(state.save_path)
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
+            state.title_message = f"Could not load save: {error}"
+            return True
+        state.__dict__.clear()
+        state.__dict__.update(loaded_state.__dict__)
+        state.log(f"Loaded studio from {state.save_path}.")
+        return True
+    if choice == "Settings":
+        open_settings(state)
+        return True
+    return False
+
+
+def handle_title_key(state: GameState, key: int, dimensions: tuple[int, int] | None = None) -> bool:
+    if key == curses.KEY_UP:
+        state.title_menu_index = (state.title_menu_index - 1) % len(TITLE_MENU)
+        state.title_message = ""
+    elif key == curses.KEY_DOWN:
+        state.title_menu_index = (state.title_menu_index + 1) % len(TITLE_MENU)
+        state.title_message = ""
+    elif key in (10, 13, curses.KEY_ENTER):
+        return activate_title_choice(state)
+    elif key in ESCAPE_KEYS or key in (ord("q"), ord("Q")):
+        return False
+    elif key == curses.KEY_MOUSE and dimensions is not None:
+        try:
+            _, _x, y, _, buttons = curses.getmouse()
+        except curses.error:
+            return True
+        height, width = dimensions
+        if buttons & getattr(curses, "BUTTON4_PRESSED", 0):
+            state.title_menu_index = (state.title_menu_index - 1) % len(TITLE_MENU)
+            state.title_message = ""
+        elif buttons & getattr(curses, "BUTTON5_PRESSED", 0):
+            state.title_menu_index = (state.title_menu_index + 1) % len(TITLE_MENU)
+            state.title_message = ""
+        elif buttons & (
+            getattr(curses, "BUTTON1_CLICKED", 0)
+            | getattr(curses, "BUTTON1_RELEASED", 0)
+            | getattr(curses, "BUTTON1_PRESSED", 0)
+        ):
+            for index, (row, _item_x, _label) in enumerate(title_layout(width, height)["items"]):
+                if y == row:
+                    state.title_menu_index = index
+                    return activate_title_choice(state)
+    return True
+
+
 def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = None) -> bool:
     if state.studio.closed:
         if key in (10, 13, curses.KEY_ENTER):
@@ -828,6 +890,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
         elif key == curses.KEY_MOUSE and dimensions is not None:
             return handle_mouse(state, dimensions) is not False
         return True
+    if state.title_screen:
+        return handle_title_key(state, key, dimensions)
     if state.training_open:
         if key in ESCAPE_KEYS or key in (8, 127, curses.KEY_BACKSPACE):
             close_training(state)

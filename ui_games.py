@@ -47,8 +47,15 @@ def update_jobs_for_game(state: GameState, game_id: int) -> list:
 
 
 def catalogue_table_height(count: int, panel_height: int) -> int:
-    """Height of the catalogue table strip: sized to content, capped by space."""
-    return min(15, max(7, count + 4), max(7, panel_height // 2))
+    """Height of the catalogue table strip: sized to content, capped by space.
+
+    The table scrolls around the selection, so extra games never need extra
+    rows: the cap also reserves room for the detail panels and the economics
+    & activity strip below (which only renders with 25+ rows), keeping them
+    on screen when the catalogue is large or a production banner is up.
+    """
+    minimum_bottom = 25
+    return min(15, max(7, count + 4), max(7, panel_height // 2), max(7, panel_height - minimum_bottom))
 
 
 PRODUCTION_BANNER_HEIGHT = 5

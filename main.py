@@ -6,6 +6,7 @@ The UI is layered; each module has one job:
 - ``ui_chrome``    -- the frame around every page: top tabs/action bar,
                       bottom metric/date bars, and all popups.
 - ``ui_hub``       -- Hub page (studio dashboard).
+- ``ui_title``     -- fullscreen title screen (New Game / Load Game / Settings / Quit).
 - ``ui_newgame``   -- New Game wizard.
 - ``ui_team``      -- Team page.
 - ``ui_contracts`` -- Contract Board page.
@@ -56,6 +57,7 @@ from ui_input import CTRL_S, handle_key, handle_mouse, handle_new_game_key, open
 from ui_newgame import draw_new_game, new_game_panel_geometry
 from ui_stats import draw_analysis
 from ui_team import draw_team_screen, team_layout
+from ui_title import draw_title_screen
 from ui_upgrades import draw_upgrades
 
 
@@ -83,6 +85,7 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
     global _LAYOUT_STATE
     layout_state = (
         state.modal,
+        state.title_screen,
         state.team_tab,
         state.games_tab,
         state.marketing_tab,
@@ -107,6 +110,11 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
         screen.erase()
     if height < 24 or width < 74:
         add_text(screen, 0, 0, "Terminal too small. Need at least 74x24. Resize or press Q.", width)
+        return
+    if state.title_screen:
+        draw_title_screen(screen, state, width, height)
+        if state.settings_open:
+            draw_settings_popup(screen, state, width, height)
         return
     draw_header(screen, state, width)
     drawer = SCREEN_DRAWERS.get(state.modal)
@@ -154,11 +162,12 @@ def run(screen: curses.window, load_save: bool, save_path: str) -> None:
             state.log(f"Could not load save: {error}. Started a new studio.")
     else:
         state = GameState(save_path=save_path)
+    state.title_screen = True
     previous_time = time.monotonic()
     running = True
     while running:
         now = time.monotonic()
-        weeks = state.clock.update((now - previous_time) * TIME_SPEEDS[state.time_speed_index])
+        weeks = 0 if state.title_screen else state.clock.update((now - previous_time) * TIME_SPEEDS[state.time_speed_index])
         previous_time = now
         advance_game(state, weeks)
         draw_screen(screen, state)
