@@ -1,7 +1,7 @@
 S = lambda value: value.split("|")
 
 GENRES = S(
-    "Action|Adventure|Building Game|Economic Simulation|Fighting Game|First-Person Shooter|Interactive Movie|Platformer|Puzzle Game|Racing|Real-Time Strategy|Role-Playing Game|Simulation|Skill Game|Sports Game|Strategy|Survival Game|Third-Person Shooter|Visual Novel"
+    "Action|Adventure|Building Game|Economic Simulation|Fighting Game|First-Person Shooter|Interactive Movie|Platformer|Puzzle Game|Racing|Real-Time Strategy|Role-Playing Game|Simulation|Skill Game|Sports Game|Strategy|Survival Game|Third-Person Shooter|Visual Novel|Battle Royale|Extraction Shooter|Survivors-like|Roguelike|Roguelite|Deckbuilder|Automation|Cozy Game|Social Deduction|Immersive Sim|Soulslike|Metroidvania"
 )
 
 _GENRE_PROFILES = {
@@ -24,6 +24,18 @@ _GENRE_PROFILES = {
     "Survival Game": (["Teenagers", "Adults", "Seniors"], (30, 30, 10, 30)),
     "Third-Person Shooter": (["Teenagers", "Adults"], (20, 40, 20, 20)),
     "Visual Novel": (["Children", "Teenagers", "Adults", "Seniors", "All"], (40, 40, 10, 10)),
+    "Battle Royale": (["Teenagers", "Adults"], (28, 24, 8, 40)),
+    "Extraction Shooter": (["Adults"], (32, 18, 10, 40)),
+    "Survivors-like": (["Teenagers", "Adults"], (48, 18, 8, 26)),
+    "Roguelike": (["Adults", "Seniors"], (54, 12, 8, 26)),
+    "Roguelite": (["Teenagers", "Adults"], (46, 20, 10, 24)),
+    "Deckbuilder": (["Teenagers", "Adults", "Seniors"], (58, 16, 8, 18)),
+    "Automation": (["Adults", "Seniors"], (44, 14, 6, 36)),
+    "Cozy Game": (["Children", "Teenagers", "Adults"], (42, 32, 16, 10)),
+    "Social Deduction": (["Teenagers", "Adults"], (52, 16, 14, 18)),
+    "Immersive Sim": (["Adults"], (44, 18, 10, 28)),
+    "Soulslike": (["Teenagers", "Adults"], (42, 28, 10, 20)),
+    "Metroidvania": (["Teenagers", "Adults"], (40, 30, 12, 18)),
 }
 
 GENRE_PROFILES = {name: {"targets": targets, "priorities": priorities} for name, (targets, priorities) in _GENRE_PROFILES.items()}
@@ -53,6 +65,26 @@ GOOD_MATCHES = {
     "Third-Person Shooter": set(S("Agents|Aliens|Ancient|Ancient China|Ancient Egypt|Androids|Angels|Apocalypse|Archery|Assassins|Atlantis|Aztecs|Barbarians|Bards|Bounty Hunter|Boxing|Bunker|Castles|Climbing|Conquest|Conspiracies|Contract Killer|Cowboys|Crime|Cyberpunk|Cyberspace|Cyborgs|Demons|Desert|Detective|Devils|Dieselpunk|Dinosaurs|Dragons|Druids|Dungeons|Dwarfs|Elves|End Times|Espionage|Fantasy|Fencing|Fruit|Gangsters|Ghosts|Goblins|Gods|Graveyards|Greek Mythology|Helicopters|Hell|Hiking|Historical|Horror|Ice Age|Inca|Insects|Jungle|Karate|Knights|Mafia|Magic|Martial Arts|Mecha|Mercenary|Middle Ages|Monster|Mummies|Mutants|Ninjas|Oceans|Orcs|Parallel Worlds|Parkour|Pharaohs|Physics|Police|Portals|Predators|Prison|Puzzles|Radioactivity|Revolution|Riding|Robots|Roman Empire|Romans|Saboteurs|Sailing|Samurai|Sandbox|Secret Society|Sewers|Skeletons|Skydiving|Space|Space Stations|Spaceships|Special Forces|Spiders|Steampunk|Stone Age|Submarines|Super Villains|Superheroes|Survivalism|Tanks|Thieves|Time Travel|Treasure Hunters|Trolls|UFOs|Vampires|Vikings|Werewolves|Wild West|Witches|Wizards|World Wars|Yakuza|Zombies|Pets")),
     "Visual Novel": set(S("Androids|Angels|Anime|Art|Assassins|Birds|Books|Cats|Chickens|Comedy|Conspiracies|Contract Killer|Court Case|Cowboys|Curses|Cyberpunk|Dancing|Dating|Demons|Detective|Doctors|Dogs|Dragons|Drawing|Elves|Erotica|Everyday Life|Fairies|Fantasy|Fashion|Ghosts|Gladiators|Goats|Horror|Hospital|Hunting|Kids|Magic|Makeup|Mermaids|Middle Ages|Military|Mountaineering|Movies|Music|Ninjas|Noble Houses|Parties|Photography|Politics|Rabbits|Reporters|Romance|Samurai|School|Secret Society|Sheep|Showbiz|Singing|Steampunk|Stuffed Animals|Super Villains|Superheroes|Theme Parks|Thieves|Toys|Treasure|University|Werewolves|Wild West|World Wars|Zombies|Zoo|Pets")),
 }
+
+# Contemporary genre labels build on the broader genre/theme relationships above.
+# Keeping those relationships composable also lets a mixed concept be evaluated
+# without maintaining another large, brittle compatibility table.
+GOOD_MATCHES.update(
+    {
+        "Battle Royale": GOOD_MATCHES["First-Person Shooter"] | GOOD_MATCHES["Survival Game"],
+        "Extraction Shooter": GOOD_MATCHES["First-Person Shooter"] | GOOD_MATCHES["Strategy"],
+        "Survivors-like": GOOD_MATCHES["Action"] | GOOD_MATCHES["Skill Game"],
+        "Roguelike": GOOD_MATCHES["Role-Playing Game"] | GOOD_MATCHES["Strategy"],
+        "Roguelite": GOOD_MATCHES["Action"] | GOOD_MATCHES["Role-Playing Game"],
+        "Deckbuilder": GOOD_MATCHES["Strategy"] | GOOD_MATCHES["Puzzle Game"],
+        "Automation": GOOD_MATCHES["Building Game"] | GOOD_MATCHES["Economic Simulation"],
+        "Cozy Game": GOOD_MATCHES["Simulation"] | GOOD_MATCHES["Visual Novel"],
+        "Social Deduction": GOOD_MATCHES["Strategy"] | GOOD_MATCHES["Adventure"],
+        "Immersive Sim": GOOD_MATCHES["Simulation"] | GOOD_MATCHES["First-Person Shooter"],
+        "Soulslike": GOOD_MATCHES["Action"] | GOOD_MATCHES["Role-Playing Game"],
+        "Metroidvania": GOOD_MATCHES["Platformer"] | GOOD_MATCHES["Adventure"],
+    }
+)
 
 PLATFORMS = [
     ("Tapple I", (1976, 1), (1977, 10), 3300, "PC"), ("Arcade System 500", (1976, 1), (1981, 2), 17000, "Arcade"), ("Fairtech-CF", (1976, 1), (1983, 3), 3300, "Console"),

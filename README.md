@@ -27,7 +27,8 @@ python main.py --load --save-file my_studio.json
 A positional filename implies `--load`. Use `--save-file` without `--load` when
 you want a new studio that will save under a custom filename.
 
-An old version-one save is migrated into a present-day studio. Its cash,
+An old version-one save is migrated into a present-day studio, and version-two
+and version-three saves load into the current planning model. Legacy cash,
 followers, reputation, and release count are retained where possible; obsolete
 1970s projects and fixed employees are not.
 
@@ -39,18 +40,43 @@ followers, reputation, and release count are retained where possible; obsolete
 - **Runway, not points:** the key studio metric is how many months remain at the
   currently committed burn. The game prevents a hire or purchase when it would
   leave less than one month for bills.
-- **Production by work:** Micro, Small, and Ambitious projects require different
-  amounts of work. Completion time changes with team skill, morale, fatigue,
-  hardware, and time diverted to client contracts.
+- **Concept room:** a game can combine two genres and two themes, including
+  Battle Royale, Extraction Shooter, Survivors-like, Roguelike, Roguelite,
+  Deckbuilder, Automation, Cozy, Social Deduction, Immersive Sim, Soulslike, and
+  Metroidvania concepts. Instead of moving abstract focus percentages, choose a
+  target audience, game format, lead and supporting creative bets, launch-life
+  strategy, scope, marketing level, and store. Every bet states its tradeoff.
+- **Uncertain market validation:** the brief estimates ranges for addressable
+  players, overlapping competing releases, market fit, workload, schedule, risk,
+  and post-setup runway before greenlight. Genre/theme mix, audience, format,
+  creative bets, trend, release plan, and store move the underlying market much
+  more strongly. The report is not simulation truth: employee Research determines
+  confidence and interval width, and even a strong signal can be wrong.
+- **Production by work:** Micro, Compact, Small, Mid-size, Ambitious, Large, and
+  Blockbuster projects require increasingly serious teams, reputation, capital,
+  and work. Completion time changes with team skill, morale, fatigue, hardware,
+  creative commitments, online infrastructure, and time diverted to client work.
+- **Multiplayer ambition:** Offline Solo, Online Co-op, Competitive Online,
+  Persistent World, and MMO formats are visible from the beginning. Networking,
+  server setup, staffing, reputation gates, launch risk, retention, and recurring
+  hosting costs make the biggest formats something a new studio can inspect but
+  cannot responsibly greenlight.
+- **Occasional production events:** a project schedules zero to two events based
+  on its scale rather than interrupting every phase. An event appears as a blocking
+  popup over any page and offers two explicit schedule/quality/market/defect
+  tradeoffs. Time and other controls remain locked until the decision is made.
 - **Production phases and defects:** projects move through prototype,
   pre-production, production, alpha, and beta. Team code skill and QA equipment
   influence defect load and launch refunds. Testing reveals only part of the real
   defect count, so the interface reports known bugs rather than perfect information.
-- **A real small team:** six new applicants are generated each month with a role,
-  seniority, salary expectation, four skills, morale, fatigue, and a working
-  trait. Employees gain experience, can improve, resign when neglected, and cost
-  severance to dismiss. As releases, followers, reputation, and revenue grow, the
-  suggested headcount and applicant pool grow too; hiring remains your decision.
+- **A developing small team:** six new applicants are generated each month with a
+  role, seniority, salary expectation, four production skills, Research, morale,
+  fatigue, a work style, and a separate quirk. Every style and quirk combines an
+  advantage with a liability. Project, contract, and live-operations experience
+  improves staff over time; stronger employees demand raises. The Team page can
+  send a selected employee to four weeks of paid Design, Art, Audio, Code, or
+  Research education. They are unavailable while studying and receive a skill
+  increase and salary review on completion.
 - **Studio statistics:** four switchable views provide a studio overview,
   solid-color revenue/expense breakdowns, vertical monthly cash-flow columns,
   statistics for every genre, and a permanent release catalog. Accounting keeps
@@ -58,13 +84,17 @@ followers, reputation, and release count are retained where possible; obsolete
   operations, development, marketing, taxes, equipment, hosting, recruiting,
   and severance categories.
 - **Named games and franchises:** every project starts with a generated title
-  based on its genre and theme. Reroll it or type a custom name. Releases retain
-  score, units, net revenue, genre, theme, and sequel lineage. Genre and theme
+  based on its primary genre and theme. Reroll it or type a custom name. Releases
+  retain the complete concept brief, market position, scope, score, units, net
+  revenue, genre/theme mix, production decisions, and sequel lineage. Genre and theme
   audiences grow from actual buyers, and established audiences improve sequel
   discoverability without guaranteeing success. Starting a new game first opens
   an Original Game / Sequel chooser populated by prior releases.
-- **Game Catalogue:** every released game remains on sale. Genre/theme
-  fit, quality, defects, platform, reputation, followers, scope, and storefront
+- **Game portfolio:** the empty Game tab explains the concept loop; active
+  production shows its market position and creative commitments; a mature
+  catalogue combines commercial performance, live operations, DLC history, and
+  the next game in development. Every released game remains on sale. Genre/theme
+  fit, audience, competition, quality, defects, platform, reputation, followers, scope, and storefront
   reach drive launch sales, while review quality and franchise audience establish
   a permanent weekly sales floor. Refunds, store cuts, hosting, and support costs
   still apply, so a bad game may sell one copy per week without being profitable.
@@ -80,15 +110,19 @@ followers, reputation, and release count are retained where possible; obsolete
   The separate Promotion Planning screen sells social pushes, press outreach,
   creator-key promotions, streamer placements, festival demos, games-event booths,
   and premium showcase slots. Better opportunities require game reputation; promotions cost
-  cash, enter a FIFO queue, and consume team time only while active.
-- **Live operations:** updates are planned and added to a studio-wide FIFO queue.
+  cash, enter a FIFO queue, and consume team time only while active. Waiting
+  promotions can be cancelled for an 80% refund; the active campaign is committed.
+- **Live operations and DLC:** updates are planned and added to a studio-wide FIFO queue.
   Choose Bug fixes, Balance, Visual, Audio, or New content and a Hotfix, Patch,
-  Content, or Expansion scope. Relevant employee skill determines duration; every
+  Content, Expansion, or Paid DLC scope. Relevant employee skill determines duration; every
   update must then clear a bug-fixing phase before it can ship. Scopes advance the
-  public version by `0.00.01`, `0.00.10`, `0.01.00`, or `0.10.00`. Larger updates
+  public version by `0.00.01`, `0.00.10`, `0.01.00`, `0.10.00`, or `1.00.00`. Larger updates
   cost more and consume more team capacity. Shipping restores hype, sales, and
   monthly players in proportion to the game's rating. Bug-fix-focused updates also
   remove existing defects, although a small number of new defects can escape QA.
+  Paid DLC has its own launch sales and net revenue; a DLC roadmap improves take-up
+  but does not remove its production cost or QA burden. Waiting updates can be
+  cancelled for 15% of their ship budget; active development cannot be cancelled.
 - **Monthly active players:** this is the estimated number of distinct people who
   played during the recent month, not copies sold. A game can continue selling
   while having almost no active players, which is a warning that another update
@@ -125,11 +159,14 @@ followers, reputation, and release count are retained where possible; obsolete
 - `N`: plan an original game or sequel from the Hub or Game page
 - `U`: open Upgrades from the Hub or Update Planner from the Game Catalogue
 - `P`: open Promotion Planning from the Game page
+- `C`: select waiting work to cancel in Promotion Planning or Update Planner
 - `Enter`: choose, advance New Game planning, greenlight, buy, hire, or queue the selected update
 - `E`: select Employ while on the Team page, or edit a game title while planning
 - `R`: regenerate a game title while planning
-- `Left` / `Right`: adjust simulation speed everywhere except Production Plan and Statistics
+- `Left` / `Right`: adjust the secondary genre/theme or selected creative-brief
+  field during concept planning; otherwise adjust simulation speed except in Statistics
 - `D`: dismiss the selected non-founder employee
+- `L`: open professional training for the selected Team-roster member, including the founder
 - `Up` / `Down`: select an item or planning field
 - `Backspace`: go back within the current page or workflow
 - `Esc`: open or close the centered Settings popup from anywhere
@@ -147,13 +184,18 @@ is a read-focused studio overview.
 Opening Settings temporarily pauses a running game and restores its previous speed
 when closed; a game that was already paused stays paused. Use Up/Down to select
 Close, Save, or Quit and Enter to activate the highlighted action.
-During New Game planning, Enter locks in each step and advances from Genre through
-Theme and Production Plan to Storefront, where Enter greenlights the game. Backspace
-returns to the previous step.
+During New Game planning, Enter advances from Genre Mix through Theme Mix and the
+Creative Brief to Market & Store, where Enter greenlights an eligible game.
+Up/Down chooses a primary genre/theme or planning field; Left/Right chooses the
+secondary influence or changes the highlighted concrete decision. Backspace returns
+to the previous step. Production-event popups use Up/Down and Enter while all
+other simulation controls are locked.
 Update Planner keeps the Game Catalogue and planner visible together. Up/Down first
 selects a game, then an update scope, then an update area. Enter locks each step and
 queues the update from the final step; Backspace moves through those steps in reverse
-and returns to the Game page from game selection.
+and returns to the Game page from game selection. In either queue page, press `C`,
+use Up/Down to select waiting work, and press Enter to cancel it. Selection remains
+active for further cancellations until Backspace returns to ordinary planning.
 Rows select games, promotions, applicants,
 employees, upgrades, genres, or releases; double-clicking confirms choices where
 available; the wheel scrolls lists and changes selections. Game titles still
