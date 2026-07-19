@@ -19,7 +19,7 @@ from simulation import (
 from ui_common import add_text, draw_box, draw_selectable_list, game_title, live_games, money, rating_text
 
 
-ANALYSIS_TABS = ("Overview", "Cash Flow", "Genres", "Game Catalogue")
+ANALYSIS_TABS = ("Overview", "Cash Flow", "Genres", "Game Catalogue", "Market")
 
 
 def draw_breakdown_bars(panel: curses.window, title: str, data: dict[str, int], y: int, x: int, width: int, color: int) -> None:
@@ -176,6 +176,41 @@ def draw_game_catalog(panel: curses.window, state: GameState) -> None:
     add_text(panel, height - 2, 2, costs, width - 4, curses.color_pair(4) if game.cost_history_complete and game_profit(game) >= 0 else curses.color_pair(5))
 
 
+def draw_market_view(panel: curses.window, state: GameState) -> None:
+    height, width = panel.getmaxyx()
+    studio = state.studio
+    own_width = max(30, width // 3)
+    add_text(panel, 3, 2, "YOUR IPs", own_width - 2, curses.A_BOLD)
+    if studio.franchises:
+        for row, franchise in enumerate(studio.franchises[: max(0, height - 6)], 4):
+            add_text(panel, row, 2, f"{franchise.name[:18]:<18} {franchise.rank_name:<10} r{franchise.entries}", own_width - 2, curses.color_pair(3) if franchise.rank >= 3 else 0)
+    else:
+        add_text(panel, 4, 2, "Release a game to found an IP.", own_width - 2)
+    competitors = studio.competitors
+    state.selected_stat = min(state.selected_stat, max(0, len(competitors) - 1))
+    x = own_width + 4
+    available = width - x - 2
+    header = f"  {'COMPETITOR':<22} {'TIER':<9} {'FANS':>10} {'REP':>4}  IPs / ACTIVITY"
+    add_text(panel, 3, x, header, available, curses.A_BOLD)
+    rows = []
+    for competitor in competitors:
+        ips = ", ".join(item.name for item in competitor.franchises[:2]) or "-"
+        activity = []
+        if competitor.in_development:
+            activity.append(f"dev: {competitor.in_development[0].title} ({competitor.in_development[0].weeks_left}w)")
+        if competitor.recent_releases:
+            activity.append(f"out: {competitor.recent_releases[0].title} {competitor.recent_releases[0].quality}/100")
+        text = f"{competitor.name[:22]:<22} {competitor.tier:<9} {competitor.fanbase:>10,} {competitor.reputation:>4.0f}  {ips}"
+        rows.append((text[:available], curses.color_pair(2)))
+    draw_selectable_list(panel, rows, state.selected_stat, True, y=4, width=available, visible=max(1, height - 9))
+    if competitors:
+        selected = competitors[state.selected_stat]
+        detail_y = height - 3
+        franchises = "; ".join(f"{item.name} ({item.rank_name}, {item.entries} releases)" for item in selected.franchises) or "no known IPs"
+        add_text(panel, detail_y - 1, x, f"{selected.name} IPs: {franchises}"[:available], available, curses.color_pair(4))
+        add_text(panel, detail_y, x, ("Active: " + "; ".join(activity))[:available] if (activity := [f"developing {g.title} ({g.weeks_left}w)" for g in selected.in_development] + [f"recent {g.title} {g.quality}/100" for g in selected.recent_releases[:2]]) else "", available, curses.color_pair(4))
+
+
 def draw_analysis(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel = screen.derwin(height - 4, width, 2, 0)
     draw_box(panel, "Studio Statistics")
@@ -189,5 +224,7 @@ def draw_analysis(screen: curses.window, state: GameState, width: int, height: i
         draw_vertical_cashflow(panel, state)
     elif state.analysis_view == 2:
         draw_genre_statistics(panel, state)
-    else:
+    elif state.analysis_view == 3:
         draw_game_catalog(panel, state)
+    else:
+        draw_market_view(panel, state)

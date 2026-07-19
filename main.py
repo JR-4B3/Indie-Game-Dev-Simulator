@@ -30,7 +30,7 @@ import time
 from datetime import timedelta
 from pathlib import Path
 
-from simulation import TIME_SPEEDS, GameState, advance_game, load_game, runway_months
+from simulation import TIME_SPEEDS, GameState, advance_days, advance_game, load_game, runway_months
 from ui_chrome import (
     active_top_tab,
     bottom_time_layout,
@@ -167,9 +167,9 @@ def run(screen: curses.window, load_save: bool, save_path: str) -> None:
     running = True
     while running:
         now = time.monotonic()
-        weeks = 0 if state.title_screen else state.clock.update((now - previous_time) * TIME_SPEEDS[state.time_speed_index])
+        days = 0 if state.title_screen else state.clock.update((now - previous_time) * TIME_SPEEDS[state.time_speed_index])
         previous_time = now
-        advance_game(state, weeks)
+        advance_days(state, days)
         draw_screen(screen, state)
         screen.refresh()
         key = screen.getch()

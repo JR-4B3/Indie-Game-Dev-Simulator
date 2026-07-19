@@ -201,7 +201,7 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             if state.studio.current_project:
                 actions.append(("[P]" if compact else control_label("P", "Promotion"), "game_marketing"))
             return actions
-        return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
+        return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing"), ("[O]" if compact else control_label("O", "Spin-off"), "game_spinoff")]
     if state.modal == "update_planner":
         if state.queue_cancellation == "update":
             return [("[Bksp]" if compact else control_label("Backspace", "Return to planning"), "leave_queue_cancellation"), ("[Up/Dn]" if compact else control_label("Up/Down", "Queued update"), "queue_cancellation_selection"), ("[Enter]" if compact else control_label("Enter", "Cancel selected"), "cancel_selected_queue_item")]
@@ -223,8 +223,10 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             return [("[Bksp]" if compact else control_label("Backspace", "Return to planning"), "leave_queue_cancellation"), ("[Up/Dn]" if compact else control_label("Up/Down", "Queued promotion"), "queue_cancellation_selection"), ("[Enter]" if compact else control_label("Enter", "Cancel selected"), "cancel_selected_queue_item")]
         if state.marketing_tab == 0:
             actions = [("[Bksp]" if compact else control_label("Backspace", "Catalogue"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Game"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_marketing_target")]
+        elif state.marketing_tab == 2:
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Venture"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Fund"), "buy_promotion"), ("[M]" if compact else control_label("M", "Promotions"), "toggle_marketing_panel")]
         else:
-            actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Promotion"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Buy"), "buy_promotion")]
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Promotion"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Buy"), "buy_promotion"), ("[M]" if compact else control_label("M", "Merch & Media"), "toggle_marketing_panel")]
         actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
         return actions
     if state.modal == "upgrades":

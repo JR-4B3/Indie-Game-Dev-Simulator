@@ -13,6 +13,7 @@ from simulation import (
     EMPLOYEE_SKILLS,
     GAME_FORMATS,
     MARKETING,
+    MEDIA_VENTURES,
     PROMOTIONS,
     RELEASE_STRATEGIES,
     SCOPES,
@@ -20,6 +21,7 @@ from simulation import (
     UPGRADES,
     GameState,
     accept_contract_offer,
+    buy_media_venture,
     buy_promotion,
     buy_upgrade,
     cancel_queued_promotion,
@@ -27,9 +29,12 @@ from simulation import (
     cycle_game_update_focus,
     cycle_game_update_size,
     dismiss_employee,
+    franchise_for_game,
+    game_by_id,
     hire_candidate,
     load_game,
     prepare_sequel,
+    prepare_spinoff,
     queue_game_update,
     refresh_draft_title,
     resolve_project_decision,
@@ -194,6 +199,11 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         state.modal = "marketing"
         state.marketing_tab = 0
         state.queue_cancellation = ""
+    elif action == "game_spinoff":
+        games = live_games(state)
+        if games:
+            game = games[min(state.selected_game, len(games) - 1)]
+            prepare_spinoff(state, game)
     elif action == "production_option":
         state.selected_project_decision = (state.selected_project_decision + 1) % 2
     elif action == "resolve_decision":
@@ -210,15 +220,25 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         cancel_selected_queue_item(state)
     elif action == "buy_promotion":
         targets = promotion_targets(state)
-        if targets:
+        if state.marketing_tab == 2 and targets:
+            target_id = targets[state.selected_promotion_target][0]
+            target_game = game_by_id(state.studio, target_id) if target_id else None
+            franchise = franchise_for_game(state.studio, target_game) if target_game else None
+            if franchise is not None:
+                buy_media_venture(state, franchise.franchise_id, state.selected_venture)
+        elif targets:
             buy_promotion(state, targets[state.selected_promotion_target][0], state.selected_promotion)
     elif action == "marketing_selection":
         if state.marketing_tab == 0:
             targets = promotion_targets(state)
             if targets:
                 state.selected_promotion_target = (state.selected_promotion_target + 1) % len(targets)
+        elif state.marketing_tab == 2:
+            state.selected_venture = (state.selected_venture + 1) % len(MEDIA_VENTURES)
         else:
             state.selected_promotion = (state.selected_promotion + 1) % len(PROMOTIONS)
+    elif action == "toggle_marketing_panel":
+        state.marketing_tab = 2 if state.marketing_tab == 1 else 1
     elif action == "select_marketing_target":
         state.marketing_tab = 1
     elif action in ("previous_target", "next_target"):
@@ -240,7 +260,7 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         if state.modal == "new_game":
             handle_new_game_key(state, curses.KEY_BACKSPACE)
         elif state.modal == "marketing":
-            if state.marketing_tab == 1:
+            if state.marketing_tab in (1, 2):
                 state.marketing_tab = 0
             else:
                 state.modal = "games"
@@ -686,7 +706,15 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             bottom_y = 2 + catalog_height
             summary_width = summary_panel_width(width)
             option_row = y - (bottom_y + 2)
-            if x > summary_width and 0 <= option_row < len(PROMOTIONS):
+            if x > summary_width and state.marketing_tab == 2 and 0 <= option_row < len(MEDIA_VENTURES):
+                state.selected_venture = option_row
+                if double_click and targets:
+                    target_id = targets[state.selected_promotion_target][0]
+                    target_game = game_by_id(state.studio, target_id) if target_id else None
+                    franchise = franchise_for_game(state.studio, target_game) if target_game else None
+                    if franchise is not None:
+                        buy_media_venture(state, franchise.franchise_id, option_row)
+            elif x > summary_width and 0 <= option_row < len(PROMOTIONS):
                 state.marketing_tab = 1
                 state.selected_promotion = option_row
                 if double_click and targets:
@@ -999,6 +1027,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.selected_game = (state.selected_game + 1) % len(games)
         elif key in (ord("p"), ord("P")):
             perform_footer_action(state, "game_marketing")
+        elif key in (ord("o"), ord("O")) and games:
+            perform_footer_action(state, "game_spinoff")
     elif state.modal == "update_planner":
         games = live_games(state)
         if state.queue_cancellation == "update":
@@ -1047,8 +1077,10 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
                 cancel_selected_queue_item(state)
         elif key in (ord("c"), ord("C")):
             enter_queue_cancellation(state)
+        elif key in (ord("m"), ord("M")):
+            state.marketing_tab = 2 if state.marketing_tab == 1 else 1
         elif key in (8, 127, curses.KEY_BACKSPACE):
-            if state.marketing_tab == 1:
+            if state.marketing_tab in (1, 2):
                 state.marketing_tab = 0
             else:
                 state.modal = "games"
@@ -1058,8 +1090,18 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
                 state.selected_promotion_target = (state.selected_promotion_target + delta) % len(targets)
             elif state.marketing_tab == 1:
                 state.selected_promotion = (state.selected_promotion + delta) % len(PROMOTIONS)
+            elif state.marketing_tab == 2:
+                state.selected_venture = (state.selected_venture + delta) % len(MEDIA_VENTURES)
         elif key in (10, 13, curses.KEY_ENTER) and state.marketing_tab == 0:
             state.marketing_tab = 1
+        elif key in (10, 13, curses.KEY_ENTER) and state.marketing_tab == 2 and targets:
+            target_id = targets[state.selected_promotion_target][0]
+            target_game = game_by_id(state.studio, target_id) if target_id else None
+            franchise = franchise_for_game(state.studio, target_game) if target_game else None
+            if franchise is None:
+                state.log("Merch and media deals need a released game with an IP.")
+            else:
+                buy_media_venture(state, franchise.franchise_id, state.selected_venture)
         elif key in (10, 13, curses.KEY_ENTER) and targets:
             buy_promotion(state, targets[state.selected_promotion_target][0], state.selected_promotion)
     elif state.modal == "upgrades":
@@ -1074,8 +1116,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
     elif state.modal == "analysis":
         if key in (8, 127, curses.KEY_BACKSPACE):
             state.modal = "main"
-        elif key in (curses.KEY_UP, curses.KEY_DOWN) and state.analysis_view in (2, 3):
-            count = len(GENRES) if state.analysis_view == 2 else len(state.studio.catalog)
+        elif key in (curses.KEY_UP, curses.KEY_DOWN) and state.analysis_view in (2, 3, 4):
+            count = len(GENRES) if state.analysis_view == 2 else len(state.studio.catalog) if state.analysis_view == 3 else len(state.studio.competitors)
             if count:
                 state.selected_stat = (state.selected_stat + (-1 if key == curses.KEY_UP else 1)) % count
     elif state.modal == "main":

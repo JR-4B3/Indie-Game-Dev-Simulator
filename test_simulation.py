@@ -12,6 +12,7 @@ from ui_newgame import topic_order
 from simulation import (
     ActiveSale,
     GAME_FORMATS,
+    MEDIA_VENTURES,
     PRODUCTION_DECISIONS,
     QUIRKS,
     START_DATE,
@@ -20,13 +21,16 @@ from simulation import (
     GameState,
     accept_contract,
     accept_contract_offer,
+    advance_days,
     advance_game,
     bump_version,
+    buy_media_venture,
     buy_promotion,
     capacity_drains,
     contract_weekly_output,
     cycle_game_update_size,
     estimated_update_weeks,
+    franchise_by_id,
     game_profit,
     game_total_cost,
     hire_candidate,
@@ -34,6 +38,7 @@ from simulation import (
     market_report,
     market_truth,
     monthly_fixed_cost,
+    prepare_spinoff,
     queue_game_update,
     recommended_team_size,
     refresh_applicants,
@@ -979,7 +984,11 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(state.studio.update_queue[0].target_version, "1.01.01")
 
         active.work_done = active.required_work - 0.01
-        advance(state, 1)
+        for _ in range(3):
+            state.clock.current_date += timedelta(days=1)
+            advance_days(state, 1)
+            if state.studio.active_update.phase == "Bug fixing":
+                break
         self.assertEqual(game.version, "1.00.00")
         self.assertEqual(state.studio.active_update.phase, "Bug fixing")
         self.assertEqual(state.studio.active_update.bugs_fixed, 0)
@@ -1761,6 +1770,129 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(game.dlcs_released, 1)
         self.assertGreater(game.dlc_revenue, 0)
         self.assertGreater(game.net_revenue, revenue_before)
+
+    def release_first_game(self, state: GameState):
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        return state.studio.catalog[0]
+
+    def test_daily_ticks_move_money_continuously(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        sale = next(item for item in state.studio.active_sales if item.game_id == game.game_id)
+        seen = set()
+        for _ in range(7):
+            state.clock.current_date += timedelta(days=1)
+            advance_days(state, 1)
+            seen.add(round(sale.gross_revenue, 2))
+        self.assertGreater(len(seen), 3, "revenue should accrue day by day, not in weekly jumps")
+
+    def test_release_founds_a_franchise_and_sequel_grows_it(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        self.assertIsNotNone(franchise)
+        self.assertEqual(franchise.entries, 1)
+        awareness_after_first = franchise.awareness
+        from simulation import prepare_sequel
+        prepare_sequel(state, game)
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        self.assertEqual(franchise.entries, 2)
+        self.assertGreater(franchise.awareness, awareness_after_first)
+        self.assertGreater(franchise.fatigue, 0)
+
+    def test_media_ventures_are_gated_by_ip_rank(self) -> None:
+        state = GameState()
+        state.studio.cash = 5_000_000
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        franchise.awareness = 0
+        franchise.reputation = 0
+        self.assertFalse(buy_media_venture(state, franchise.franchise_id, 0))
+        franchise.awareness = 400
+        franchise.reputation = 80
+        self.assertGreaterEqual(franchise.rank, 1)
+        self.assertTrue(buy_media_venture(state, franchise.franchise_id, 0))
+        self.assertFalse(buy_media_venture(state, franchise.franchise_id, 0), "same venture twice for one IP")
+        film_index = next(i for i, item in enumerate(MEDIA_VENTURES) if item["key"] == "film")
+        self.assertFalse(buy_media_venture(state, franchise.franchise_id, film_index))
+        franchise.awareness = 2_500
+        franchise.reputation = 92
+        self.assertGreaterEqual(franchise.rank, MEDIA_VENTURES[film_index]["rank"])
+        self.assertTrue(buy_media_venture(state, franchise.franchise_id, film_index))
+
+    def test_film_adaptation_pays_out_on_completion(self) -> None:
+        state = GameState()
+        state.studio.cash = 5_000_000
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        franchise.awareness = 2_500
+        franchise.reputation = 92
+        film_index = next(i for i, item in enumerate(MEDIA_VENTURES) if item["key"] == "film")
+        self.assertTrue(buy_media_venture(state, franchise.franchise_id, film_index))
+        cash_before = state.studio.cash
+        advance(state, MEDIA_VENTURES[film_index]["weeks"] + 1)
+        self.assertFalse(state.studio.media_ventures)
+        self.assertGreater(state.studio.cash, cash_before)
+        self.assertTrue(any("film adaptation" in message for message in state.logs))
+
+    def test_spinoff_shares_the_franchise_but_resets_generation(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        self.assertTrue(prepare_spinoff(state, game))
+        self.assertEqual(state.spinoff_franchise_id, franchise.franchise_id)
+        self.assertIsNone(state.sequel_game_id)
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        self.assertEqual(project.franchise_id, franchise.franchise_id)
+        self.assertIsNone(project.sequel_of)
+        self.assertEqual(project.generation, 1)
+
+    def test_market_competitors_release_games_over_time(self) -> None:
+        state = GameState()
+        self.assertGreaterEqual(len(state.studio.competitors), 10)
+        self.assertTrue(all(competitor.name not in ("Nintendo", "Sony", "Microsoft", "Xbox", "PlayStation") for competitor in state.studio.competitors))
+        advance(state, 26)
+        releases = sum(len(competitor.recent_releases) for competitor in state.studio.competitors)
+        self.assertGreater(releases, 0)
+        ips = sum(len(competitor.franchises) for competitor in state.studio.competitors)
+        self.assertGreaterEqual(ips, 10)
+
+    def test_market_and_ventures_survive_save_load(self) -> None:
+        state = GameState()
+        state.studio.cash = 5_000_000
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        franchise.awareness = 400
+        franchise.reputation = 80
+        self.assertTrue(buy_media_venture(state, franchise.franchise_id, 0))
+        advance(state, 3)
+        with tempfile.TemporaryDirectory() as directory:
+            save_path = Path(directory) / "market.json"
+            state.save_path = str(save_path)
+            save_game(state)
+            loaded = load_game(str(save_path))
+        self.assertEqual(len(loaded.studio.competitors), len(state.studio.competitors))
+        self.assertEqual(loaded.studio.franchises[0].name, franchise.name)
+        self.assertEqual(len(loaded.studio.media_ventures), 1)
+        self.assertEqual(loaded.studio.media_ventures[0].kind, "merch")
+        first = loaded.studio.competitors[0]
+        self.assertTrue(first.franchises)
+
+    def test_marketing_screen_has_merch_and_media_tab(self) -> None:
+        state = GameState()
+        self.release_first_game(state)
+        state.modal = "marketing"
+        state.marketing_tab = 2
+        text = rendered_marketing_text(state, 190, 50)
+        self.assertTrue(any("Merch & Media" in line for line in text))
+        self.assertTrue(any("Merchandise line" in line for line in text))
+        self.assertTrue(any("Film adaptation" in line for line in text))
+        self.assertTrue(any("IP" in line and "rank" in line for line in text))
 
 if __name__ == "__main__":
     unittest.main()

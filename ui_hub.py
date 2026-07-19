@@ -22,7 +22,7 @@ def draw_live_operations(panel: curses.window, state: GameState, panel_width: in
     active = 1 if studio.active_update else 0
     promotion_active = 1 if studio.active_promotions else 0
     add_text(panel, start_row, 2, f"Update queue {active + len(studio.update_queue)} ({active} active) | Promotion queue {len(studio.active_promotions)} ({promotion_active} active)", panel_width - 4)
-    add_text(panel, start_row + 1, 2, f"Monthly players {sum(game.monthly_players for game in studio.catalog):,} | Weekly game sales {sum(sale.weekly_units for sale in studio.active_sales):,}", panel_width - 4)
+    add_text(panel, start_row + 1, 2, f"Monthly players {sum(game.monthly_players for game in studio.catalog):,} | Weekly game sales {sum(sale.week_to_date for sale in studio.active_sales):,}", panel_width - 4)
 
 
 def draw_contract_status(panel: curses.window, state: GameState, panel_width: int, start_row: int) -> None:
@@ -162,11 +162,11 @@ def draw_main_content(screen: curses.window, state: GameState, width: int, heigh
                 if catalogue_expanded:
                     profit = money(game_profit(game)) if game.cost_history_complete else "n/a"
                     title = game_title(game, portfolio_title_width)
-                    text = f"{title:<{portfolio_title_width}} {rating_text(game):>6} {game.hype:>6.0f} {game.known_bug_count:>6} {(sale.weekly_units if sale else 0):>7,} {money(game.net_revenue):>11} {profit:>11}"
+                    text = f"{title:<{portfolio_title_width}} {rating_text(game):>6} {game.hype:>6.0f} {game.known_bug_count:>6} {(sale.week_to_date if sale else 0):>7,} {money(game.net_revenue):>11} {profit:>11}"
                 else:
                     profit = money(game_profit(game)) if game.cost_history_complete else "n/a"
                     title = game_title(game, portfolio_title_width)
-                    text = f"{title:<{portfolio_title_width}} {rating_text(game):>4} {game.hype:>4.0f} {game.known_bug_count:>4} {(sale.weekly_units if sale else 0):>5,} {money(game.net_revenue):>8} {profit:>8}"
+                    text = f"{title:<{portfolio_title_width}} {rating_text(game):>4} {game.hype:>4.0f} {game.known_bug_count:>4} {(sale.week_to_date if sale else 0):>5,} {money(game.net_revenue):>8} {profit:>8}"
                 add_text(portfolio, row, 2, text, portfolio_inner_width, curses.color_pair(4) if game.score >= 70 else 0)
 
     else:
@@ -184,7 +184,7 @@ def draw_main_content(screen: curses.window, state: GameState, width: int, heigh
                 add_text(team, row, 2, f"{employee.name[:14]:<14} {employee.morale:>3.0f} {employee.fatigue:>3.0f} {money(employee.monthly_salary):>8}", left_width - 4)
             for row, game in enumerate(live_games(state)[: middle_height - 2], 1):
                 sale = sale_for_game(studio, game.game_id)
-                add_text(portfolio, row, 2, f"{game_title(game)}: R{rating_text(game)} {(sale.weekly_units if sale else 0):,}/w {game.monthly_players:,} monthly", right_width - 4)
+                add_text(portfolio, row, 2, f"{game_title(game)}: R{rating_text(game)} {(sale.week_to_date if sale else 0):,}/w {game.monthly_players:,} monthly", right_width - 4)
         if lower_height >= 4:
             trend = screen.derwin(lower_height, left_width, lower_y, 0)
             operations = screen.derwin(lower_height, right_width, lower_y, left_width + 1)

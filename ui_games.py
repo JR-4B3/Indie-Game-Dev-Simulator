@@ -6,14 +6,19 @@ import curses
 
 from game_data import GENRES
 from simulation import (
+    FRANCHISE_RANKS,
+    MEDIA_VENTURES,
     PROMOTIONS,
     UPDATE_FOCUSES,
     UPDATE_SIZES,
     GameState,
     capacity_drains,
     estimated_update_delivery_weeks,
+    franchise_for_game,
+    game_by_id,
     game_profit,
     game_total_cost,
+    media_venture_available,
     monthly_fixed_cost,
     planned_update_version,
     projected_weekly_output,
@@ -50,11 +55,11 @@ def catalogue_table_height(count: int, panel_height: int) -> int:
     """Height of the catalogue table strip: sized to content, capped by space.
 
     The table scrolls around the selection, so extra games never need extra
-    rows: the cap also reserves room for the detail panels and the economics
-    & activity strip below (which only renders with 25+ rows), keeping them
+    rows: the cap reserves room for the detail panels (20 rows) and the
+    economics & activity strip below (at least 12 rows), keeping them fully
     on screen when the catalogue is large or a production banner is up.
     """
-    minimum_bottom = 25
+    minimum_bottom = 32
     return min(15, max(7, count + 4), max(7, panel_height // 2), max(7, panel_height - minimum_bottom))
 
 
@@ -200,7 +205,7 @@ def draw_game_catalogue_table(
             rating = rating_text(entry)
             hype = entry.hype
             bugs = entry.known_bug_count
-            weekly = sale.weekly_units if sale else 0
+            weekly = sale.week_to_date if sale else 0
             monthly = entry.monthly_players
             units = entry.units_sold
             revenue = money(entry.net_revenue)
@@ -265,7 +270,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
                 text = game_title(game)
             else:
                 title = game_title(game, 20)
-                text = f"{title:<20} R{rating_text(game):>3} {(sale.weekly_units if sale else 0):>5,}/w {game.monthly_players:>6,} monthly"
+                text = f"{title:<20} R{rating_text(game):>3} {(sale.week_to_date if sale else 0):>5,}/w {game.monthly_players:>6,} monthly"
             rows.append((text, 0))
         draw_selectable_list(games_panel, rows, state.selected_game, not planner_open or state.games_tab == 0, width=list_width - 4, visible=visible)
         game = games[state.selected_game]
@@ -279,7 +284,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         add_text(detail, 3, 2, f"{game.target_audience} | {game.game_format}", detail_width - 4)
         add_text(detail, 4, 2, f"Market fit {game.market_score}/100 | {game.competitors} launch rivals", detail_width - 4)
         add_text(detail, 6, 2, f"Rating {rating_text(game)}/100 | Hype {game.hype:.0f}/200", detail_width - 4)
-        add_text(detail, 7, 2, f"Monthly players {game.monthly_players:,} | Sales {(sale.weekly_units if sale else 0):,}/week", detail_width - 4)
+        add_text(detail, 7, 2, f"Monthly players {game.monthly_players:,} | Sales {(sale.week_to_date if sale else 0):,}/week", detail_width - 4)
         add_text(detail, 8, 2, f"Known bugs {game.known_bug_count} | DLC {game.dlcs_released}", detail_width - 4, curses.color_pair(5) if game.known_bug_count else 0)
         add_text(detail, 10, 2, f"{game.update_size} / {game.update_focus} | U opens planner", detail_width - 4)
         return
@@ -331,7 +336,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         add_text(summary, 1, 2, game_title(game), summary_width - 4, curses.A_BOLD)
         add_text(summary, 2, 2, f"{game.genre} / {game.topic} | Rating {rating_text(game)}/100", summary_width - 4)
         add_text(summary, 3, 2, f"Hype {game.hype:.0f} | Monthly players {game.monthly_players:,}", summary_width - 4)
-        add_text(summary, 4, 2, f"Sales {(sale.weekly_units if sale else 0):,}/week | Updates shipped {game.updates_released}", summary_width - 4)
+        add_text(summary, 4, 2, f"Sales {(sale.week_to_date if sale else 0):,}/week | Updates shipped {game.updates_released}", summary_width - 4)
         add_text(summary, 5, 2, f"Known bugs {game.known_bug_count} | More may remain undiscovered", summary_width - 4, curses.color_pair(5) if game.known_bug_count else 0)
         add_text(summary, 6, 2, "VERSION HISTORY", summary_width - 4, curses.A_BOLD)
         add_text(summary, 7, 2, f"Current public build  v{game.version}", summary_width - 4, curses.color_pair(4))
@@ -358,7 +363,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     focus = next((item for item in UPDATE_FOCUSES if item["name"] == game.update_focus), UPDATE_FOCUSES[0])
     if detail_height < 20:
         add_text(commercial, 1, 2, f"Rating {rating_text(game)}/100 | Hype {game.hype:.0f} | Bugs {game.known_bug_count}", first_width - 4, rating_attr)
-        add_text(commercial, 2, 2, f"Sales {(sale.weekly_units if sale else 0):,}/w | Monthly {game.monthly_players:,}", first_width - 4)
+        add_text(commercial, 2, 2, f"Sales {(sale.week_to_date if sale else 0):,}/w | Monthly {game.monthly_players:,}", first_width - 4)
         add_text(commercial, 3, 2, f"Revenue {money(game.net_revenue)} | Profit {money(game_profit(game)) if game.cost_history_complete else 'n/a'}", first_width - 4)
         jobs = update_jobs_for_game(state, game.game_id)
         add_text(live_ops, 1, 2, f"Version v{game.version} | {len(jobs)} active/queued", second_width - 4)
@@ -376,7 +381,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     add_text(commercial, 4, 2, f"Rating [{meter(game.score, 100, 18)}] {rating_text(game)}/100", first_width - 4, rating_attr)
     add_text(commercial, 5, 2, f"Hype   [{meter(game.hype, 200, 18)}] {game.hype:.0f}/200 | Known bugs {game.known_bug_count}", first_width - 4)
     add_text(commercial, 6, 2, f"AUDIENCE & SALES | market {game.market_score}/100 | {game.competitors} rivals", first_width - 4, curses.A_BOLD)
-    add_text(commercial, 7, 2, f"Weekly sales             {(sale.weekly_units if sale else 0):,}", first_width - 4)
+    add_text(commercial, 7, 2, f"Weekly sales             {(sale.week_to_date if sale else 0):,}", first_width - 4)
     add_text(commercial, 8, 2, f"Monthly active players   {game.monthly_players:,}", first_width - 4, curses.color_pair(5) if not game.monthly_players else 0)
     add_text(commercial, 9, 2, f"Peak monthly players     {game.peak_monthly_players:,}", first_width - 4)
     add_text(commercial, 10, 2, f"Lifetime units           {game.units_sold:,}", first_width - 4)
@@ -434,7 +439,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     active_promotion = promotion_queue[0] if promotion_queue else None
     game_active = 1 if active_promotion and active_promotion.game_id == game.game_id else 0
     game_waiting = len(promotions) - game_active
-    weekly_sales = sale.weekly_units if sale else 0
+    weekly_sales = sale.week_to_date if sale else 0
     evergreen = sale.evergreen_units if sale else 0
     demand_multiple = weekly_sales / max(1, evergreen)
     retention = game.monthly_players / max(1, game.peak_monthly_players)
@@ -493,9 +498,8 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         economics_lines = [
             ("CATALOGUE SCALE", curses.A_BOLD),
             (f"Games in catalogue        {len(catalog)}", 0),
-            (f"Cost coverage             {len(tracked_games)}/{len(catalog)} fully tracked", curses.color_pair(4) if len(tracked_games) == len(catalog) else curses.color_pair(5)),
             (f"Average release rating    {average_rating:.1f}/100" if average_rating is not None else "Average release rating    n/a", average_rating_attr),
-            (f"Current weekly sales      {sum(item.weekly_units for item in state.studio.active_sales):,}", 0),
+            (f"Current weekly sales      {sum(item.week_to_date for item in state.studio.active_sales):,}", 0),
             (f"Monthly active players    {sum(item.monthly_players for item in catalog):,}", 0),
             (f"Lifetime units sold       {sum(item.units_sold for item in catalog):,}", 0),
             ("CATALOGUE RETURNS", curses.A_BOLD),
@@ -516,7 +520,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
 
         related_logs = [message for message in state.logs if game.title in message]
         add_text(panel, 1, right_x, "RECENT EVENTS", right_width, curses.A_BOLD)
-        journal_slots = min(len(related_logs), max(1, summary_height - 3))
+        journal_slots = min(len(related_logs), max(1, summary_height - 4))
         if not related_logs:
             add_text(panel, 2, right_x, "[INFO] No journal entries recorded for this game yet.", right_width, curses.color_pair(2))
         for row, message in enumerate(related_logs[:journal_slots], 2):
@@ -538,7 +542,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
 
 def draw_marketing_screen(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel_height = height - 4
-    state.marketing_tab = 0 if state.marketing_tab <= 0 else 1
+    state.marketing_tab = max(0, min(2, state.marketing_tab))
     targets = promotion_targets(state)
     catalog_height = catalogue_table_height(len(targets), panel_height)
     targets_panel = screen.derwin(catalog_height, width, 2, 0)
@@ -565,18 +569,61 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
     summary_panel = screen.derwin(bottom_height, summary_width, bottom_y, 0)
     options_panel = screen.derwin(bottom_height, option_width, bottom_y, summary_width + 1)
     draw_box(summary_panel, "Selected Game")
-    draw_box(options_panel, f"Promotion Planning & Queue | Reputation {state.studio.reputation:.1f}")
     selected_id, selected_title, selected_hype, selected_status = targets[state.selected_promotion_target]
+    selected_game = game_by_id(state.studio, selected_id) if selected_id else None
+    franchise = franchise_for_game(state.studio, selected_game) if selected_game else None
+    if state.marketing_tab == 2:
+        draw_box(options_panel, f"Merch & Media | {franchise.name + ' IP' if franchise else 'no IP selected'}")
+    else:
+        draw_box(options_panel, f"Promotion Planning & Queue | Reputation {state.studio.reputation:.1f}")
     add_text(summary_panel, 1, 2, selected_title, summary_width - 4, curses.A_BOLD)
     add_text(summary_panel, 2, 2, selected_status, summary_width - 4)
     add_text(summary_panel, 3, 2, f"Hype {selected_hype:.0f}/200", summary_width - 4)
+    if franchise:
+        add_text(summary_panel, 4, 2, f"IP {franchise.name} | {franchise.rank_name} rank", summary_width - 4, curses.color_pair(3) | curses.A_BOLD)
+    else:
+        add_text(summary_panel, 4, 2, "No IP yet; releasing founds one.", summary_width - 4)
     target_queue = [item for item in state.studio.active_promotions if item.game_id == selected_id]
     active = state.studio.active_promotions[0] if state.studio.active_promotions else None
     target_active = 1 if active in target_queue else 0
     add_text(summary_panel, 5, 2, f"Promotion queue  {target_active} active | {len(target_queue) - target_active} waiting", summary_width - 4, curses.A_BOLD)
-    for row, item in enumerate(target_queue[: max(0, bottom_height - 8)], 6):
+    for row, item in enumerate(target_queue[: max(0, bottom_height - 12)], 6):
         status = "ACTIVE" if item is active else "WAITING"
         add_text(summary_panel, row, 2, f"{status:<7} {item.name} | {item.weeks_left}w", summary_width - 4, curses.color_pair(4) if item is active else 0)
+    venture_row = 6 + max(0, min(len(target_queue), bottom_height - 12)) + 1
+    if franchise:
+        add_text(summary_panel, venture_row, 2, f"IP awareness {franchise.awareness:.0f} | fatigue {franchise.fatigue:.0f}", summary_width - 4)
+        add_text(summary_panel, venture_row + 1, 2, f"IP releases {franchise.entries} | units {franchise.total_units:,.0f}", summary_width - 4)
+        active_ventures = [item for item in state.studio.media_ventures if item.franchise_id == franchise.franchise_id]
+        if active_ventures and venture_row + 2 < bottom_height - 1:
+            add_text(summary_panel, venture_row + 2, 2, "Merch & Media", summary_width - 4, curses.A_BOLD)
+            for offset, item in enumerate(active_ventures[: max(0, bottom_height - venture_row - 4)], 1):
+                add_text(summary_panel, venture_row + 2 + offset, 2, f"{item.name} | {item.weeks_left}w left", summary_width - 4, curses.color_pair(4))
+
+    if state.marketing_tab == 2:
+        state.selected_venture = min(state.selected_venture, len(MEDIA_VENTURES) - 1)
+        option_inner = option_width - 4
+        add_text(options_panel, 1, 2, f"  {'VENTURE':<22} {'COST':>10} {'WEEKS':>6} {'REQ RANK':<12} EFFECT", option_inner, curses.A_BOLD)
+        venture_rows = []
+        for venture in MEDIA_VENTURES:
+            if franchise is None:
+                status = "release a game in this IP first"
+            else:
+                status = media_venture_available(state.studio, franchise, venture)
+            locked = bool(status)
+            required = FRANCHISE_RANKS[venture["rank"]]
+            text = f"{venture['name'][:22]:<22} {money(venture['cost']):>10} {venture['weeks']:>6} {required:<12} {status or venture['effect']}"
+            venture_rows.append((text[:option_inner], curses.color_pair(5) if locked else 0))
+        draw_selectable_list(options_panel, venture_rows, state.selected_venture, True, y=2, width=option_width - 4, scroll=False, highlight_wins=False)
+        rank_line = "Merch at Niche rank, conventions at Popular, films and series at Famous."
+        add_text(options_panel, len(MEDIA_VENTURES) + 3, 2, rank_line, option_inner, curses.color_pair(2))
+        active_ventures = state.studio.media_ventures
+        if active_ventures:
+            heading_row = len(MEDIA_VENTURES) + 5
+            add_text(options_panel, heading_row, 2, "ACTIVE VENTURES", option_inner, curses.A_BOLD)
+            for row, item in enumerate(active_ventures[: max(0, bottom_height - heading_row - 2)], heading_row + 1):
+                add_text(options_panel, row, 2, f"{item.name} | {item.franchise_name} | {item.weeks_left}w left | earned {money(item.revenue)}", option_inner, curses.color_pair(4))
+        return
 
     state.selected_promotion = min(state.selected_promotion, len(PROMOTIONS) - 1)
     option_inner = option_width - 4
