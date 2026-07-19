@@ -8,13 +8,21 @@ from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
-from game_data import GENRES, GOOD_MATCHES, TOPICS
+from game_data import GENRES, TOPICS
 from simulation import (
+    AUDIENCES,
     CHANNELS,
+    CREATIVE_DIRECTIONS,
+    EMPLOYEE_SKILLS,
+    GAME_FORMATS,
     MARKETING,
     PROMOTIONS,
+    PRODUCTION_DECISIONS,
+    QUIRKS,
+    RELEASE_STRATEGIES,
     SCOPES,
     SKILLS,
+    TRAITS,
     TIME_LABELS,
     TIME_SPEEDS,
     UPDATE_FOCUSES,
@@ -22,13 +30,15 @@ from simulation import (
     UPGRADES,
     GameState,
     accept_contract_offer,
-    adjust_focus,
     advance_game,
     applicant_pool_size,
     buy_upgrade,
     buy_promotion,
+    cancel_queued_promotion,
+    cancel_queued_update,
     cycle_game_update_focus,
     cycle_game_update_size,
+    concept_focus,
     dismiss_employee,
     expense_breakdown,
     game_by_id,
@@ -39,6 +49,8 @@ from simulation import (
     hire_candidate,
     load_game,
     monthly_fixed_cost,
+    market_report,
+    plan_requirements,
     prepare_sequel,
     planned_update_version,
     projected_weekly_output,
@@ -46,10 +58,14 @@ from simulation import (
     recommended_team_size,
     refresh_draft_title,
     revenue_breakdown,
+    resolve_project_decision,
     runway_months,
     save_game,
     sale_for_game,
+    selected_roster_employee,
+    start_employee_training,
     start_project,
+    training_cost,
     toggle_auto_contracts,
 )
 
@@ -86,6 +102,7 @@ def active_top_tab(state: GameState) -> int:
 
 def activate_top_tab(state: GameState, index: int) -> None:
     state.naming_game = False
+    state.queue_cancellation = ""
     state.modal = TOP_TABS[index % len(TOP_TABS)][2]
     if state.modal == "games":
         state.games_tab = 0
@@ -471,37 +488,82 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     genre = screen.derwin(top_height, genre_width, 2, 0)
     topic = screen.derwin(top_height, theme_width, 2, genre_width + 1)
     plan = screen.derwin(top_height + storefront_height, plan_width, 2, genre_width + theme_width + 2)
-    draw_box(genre, "1 Genre")
-    draw_box(topic, "2 Theme")
-    draw_box(plan, "3 Production Plan")
-    draw_list(genre, list(GENRES), state.selected_genre, state.new_game_step == 0)
-    draw_list(topic, list(TOPICS), state.selected_topic, state.new_game_step == 1)
+    draw_box(genre, "1 Genre Mix")
+    draw_box(topic, "2 Theme Mix")
+    draw_box(plan, "3 Creative Brief & Market")
+    add_text(genre, 1, 2, "PRIMARY", genre_width - 4, curses.A_BOLD)
+    genre_visible = max(1, top_height - 5)
+    genre_start = list_start(state.selected_genre, len(GENRES), genre_visible)
+    for row, name in enumerate(GENRES[genre_start : genre_start + genre_visible], 2):
+        index = genre_start + row - 2
+        selected = index == state.selected_genre
+        add_text(genre, row, 2, f"{'> ' if selected else '  '}{name}", genre_width - 4, curses.color_pair(3) | curses.A_BOLD if selected and state.new_game_step == 0 else 0)
+    genre_blend = GENRES[state.selected_secondary_genre]
+    add_text(genre, top_height - 2, 2, f"Blend < {genre_blend} >", genre_width - 4, curses.color_pair(4) if state.new_game_step == 0 else 0)
+
+    add_text(topic, 1, 2, "PRIMARY", theme_width - 4, curses.A_BOLD)
+    topic_visible = max(1, top_height - 5)
+    topic_start = list_start(state.selected_topic, len(TOPICS), topic_visible)
+    for row, name in enumerate(TOPICS[topic_start : topic_start + topic_visible], 2):
+        index = topic_start + row - 2
+        selected = index == state.selected_topic
+        add_text(topic, row, 2, f"{'> ' if selected else '  '}{name}", theme_width - 4, curses.color_pair(3) | curses.A_BOLD if selected and state.new_game_step == 1 else 0)
+    theme_blend = TOPICS[state.selected_secondary_topic]
+    add_text(topic, top_height - 2, 2, f"Blend < {theme_blend} >", theme_width - 4, curses.color_pair(4) if state.new_game_step == 1 else 0)
 
     scope = SCOPES[state.selected_scope]
     marketing = MARKETING[state.selected_marketing]
     channel_data = CHANNELS[state.selected_channel]
+    audience = AUDIENCES[state.selected_audience]
+    game_format = GAME_FORMATS[state.selected_format]
+    primary_direction = CREATIVE_DIRECTIONS[state.selected_creative_primary]
+    secondary_direction = CREATIVE_DIRECTIONS[state.selected_creative_secondary]
+    release_strategy = RELEASE_STRATEGIES[state.selected_release_strategy]
+    report = market_report(state)
     title_mode = "TYPE NAME, ENTER TO ACCEPT" if state.naming_game else "E edit / R randomize"
     add_text(plan, 1, 2, f"Title      {state.draft_title}_  [{title_mode}]" if state.naming_game else f"Title      {state.draft_title}  [{title_mode}]", plan_width - 4, curses.color_pair(3) | curses.A_BOLD)
     fields = [
-        f"Scope      {scope['name']} | {scope['work']:,} work | {money(scope['setup'])} setup | {money(scope['price'])} price",
-        f"Marketing  {marketing['name']} | {money(marketing['cost'])} | starting hype {5 + marketing['boost'] / 25:.0f}",
-    ] + [f"Focus      {SKILLS[index]} {state.focus[index]}%" for index in range(4)]
+        f"Scope       {scope['name']} | base {scope['work']:,} work | {money(scope['setup'])}",
+        f"Game format {game_format['name']} | +{game_format['work'] - 1:.0%} work | {money(game_format['setup'])} tech",
+        f"Audience    {audience['name']}",
+        f"Lead bet    {primary_direction['name']}",
+        f"Support bet {secondary_direction['name']}",
+        f"Launch life {release_strategy['name']} | {release_strategy['tradeoff']}",
+        f"Marketing   {marketing['name']} | {money(marketing['cost'])} | hype {5 + marketing['boost'] / 25:.0f}",
+    ]
     for row, text in enumerate(fields, 2):
         selected = state.new_game_step == 2 and state.selected_focus == row - 2
         add_text(plan, row, 2, ("> " if selected else "  ") + text, plan_width - 4, curses.color_pair(3) | curses.A_BOLD if selected else 0)
-    cost = scope["setup"] + marketing["cost"] + channel_data["fee"]
-    weeks = round(scope["work"] / projected_weekly_output(state.studio, state.focus))
-    combo = "marketable" if TOPICS[state.selected_topic] in GOOD_MATCHES[GENRES[state.selected_genre]] else "hard to market"
-    summary = f"Cash due now {money(cost)} | team estimate {max(4, weeks)} weeks | {combo} genre/theme combination"
+    cost = scope["setup"] + game_format["setup"] + release_strategy["setup"] + marketing["cost"] + channel_data["fee"]
+    output = projected_weekly_output(state.studio, concept_focus(state))
+    week_low = max(4, round(report["work_low"] / output))
+    week_high = max(week_low, round(report["work_high"] / output))
+    add_text(plan, 10, 2, "MARKET INTELLIGENCE", plan_width - 4, curses.A_BOLD)
+    add_text(plan, 11, 2, f"{report['outlook']} | Research confidence {report['confidence']}% (team Research {report['research']})", plan_width - 4, curses.color_pair(4) if report["score_low"] >= 52 else curses.color_pair(5) if report["score_high"] < 38 else 0)
+    add_text(plan, 12, 2, f"Fit likely {report['score_low']}-{report['score_high']}/100 | Interested players {report['audience_low']:,}-{report['audience_high']:,}", plan_width - 4)
+    add_text(plan, 13, 2, f"Competing releases {report['competitors_low']}-{report['competitors_high']} | Risk exposure {report['risk']} | rivals share audience overlap", plan_width - 4)
+    add_text(plan, 14, 2, f"Workload forecast {report['work_low']:,}-{report['work_high']:,} work | roughly {week_low}-{week_high} weeks", plan_width - 4)
+    add_text(plan, 15, 2, f"TRADE-OFF  {primary_direction['tradeoff']} + {secondary_direction['tradeoff']}", plan_width - 4)
+    requirements = plan_requirements(state)
+    runway_weeks = max(0, state.studio.cash - cost) / max(1, monthly_fixed_cost(state.studio)) * 4.33
+    runway_danger = runway_weeks < week_high
+    if requirements:
+        readiness = f"LOCKED: needs {', '.join(requirements)}"
+    elif runway_danger:
+        readiness = f"HIGH FAILURE RISK: {runway_weeks:.0f}w runway vs forecast up to {week_high}w"
+    else:
+        readiness = "PRODUCTION READY - forecast still carries uncertainty"
+    add_text(plan, 17, 2, readiness, plan_width - 4, curses.color_pair(5) if requirements or runway_danger else curses.color_pair(4) | curses.A_BOLD)
+    summary = f"Cash due {money(cost)} | runway after setup {(state.studio.cash - cost) / max(1, monthly_fixed_cost(state.studio)):.1f} months | estimates can be wrong"
     sequel = next((game for game in state.studio.catalog if game.game_id == state.sequel_game_id), None)
     if sequel:
         score = "score n/a" if sequel.release_date == "Historical" else f"{sequel.score}/100"
         summary += f" | sequel to {sequel.title} ({score})"
-    add_text(plan, 8, 2, summary, plan_width - 4, curses.color_pair(4) if combo == "marketable" else curses.color_pair(5))
+    add_text(plan, 18, 2, summary, plan_width - 4, curses.color_pair(4) if not requirements and not runway_danger else curses.color_pair(5))
 
     storefront_width = genre_width + theme_width + 1
     storefront = screen.derwin(storefront_height, storefront_width, 2 + top_height, 0)
-    draw_box(storefront, "4 Storefront")
+    draw_box(storefront, "4 Market & Store")
     store_width = max(8, storefront_width - 24)
     add_text(storefront, 1, 2, f"  {'STORE':<{store_width}} | {'CUT':>4} | {'COST':>8}", storefront_width - 4, curses.A_BOLD)
     visible = storefront_height - 3
@@ -539,26 +601,31 @@ def draw_team_screen(screen: curses.window, state: GameState, width: int, height
     applicant_expanded = applicant_width >= 100
     if roster_expanded:
         roster_inner = roster_width - 4
-        flexible_width = roster_inner - 58
+        flexible_width = roster_inner - 62
         name_width = min(20, max(16, flexible_width // 3))
         trait_width = min(18, max(14, flexible_width - name_width - 20))
         role_width = flexible_width - name_width - trait_width
-        roster_header = f"  {'NAME':<{name_width}} {'ROLE':<{role_width}} {'DES':>3} {'ART':>3} {'AUD':>3} {'CODE':>4} {'MORALE':>6} {'FATIGUE':>7} {'SALARY/YR':>11} {'COST/MO':>9} {'PERSONALITY':<{trait_width}}"
+        roster_header = f"  {'NAME':<{name_width}} {'ROLE':<{role_width}} {'DES':>3} {'ART':>3} {'AUD':>3} {'CODE':>4} {'RES':>3} {'MORALE':>6} {'FATIGUE':>7} {'SALARY/YR':>11} {'COST/MO':>9} {'STYLE / QUIRK':<{trait_width}}"
     else:
         roster_header = f"  {'NAME':<14} {'DES':>3} {'ART':>3} {'AUD':>3} {'CODE':>4} {'MOR':>3} {'FAT':>3} {'PERSONALITY':<12}"
     add_text(roster, 1, 2, roster_header, roster_width - 4, curses.A_BOLD)
 
     removable_index = 0
     for row, employee in enumerate(state.studio.team[: panel_height - 3], 2):
-        is_selected = state.team_tab == 1 and not employee.founder and removable_index == state.selected_roster
+        is_selected = state.team_tab == 1 and (
+            (employee.founder and (state.selected_roster < 0 or len(state.studio.team) == 1))
+            or (not employee.founder and removable_index == state.selected_roster)
+        )
         if not employee.founder:
             removable_index += 1
         marker = ">" if is_selected else " "
         salary = "owner draw" if employee.founder else f"${employee.annual_salary:,}"
+        personality = f"{employee.trait} / {employee.quirk}"
+        display_name = f"{employee.name} [TRAIN {employee.training_weeks_left}w]" if employee.training_weeks_left else employee.name
         if roster_expanded:
-            line = f"{marker} {employee.name[:name_width]:<{name_width}} {employee.role[:role_width]:<{role_width}} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {employee.morale:>6.0f} {employee.fatigue:>7.0f} {salary:>11} {money(employee.monthly_salary):>9} {employee.trait[:trait_width]:<{trait_width}}"
+            line = f"{marker} {display_name[:name_width]:<{name_width}} {employee.role[:role_width]:<{role_width}} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {employee.research:>3} {employee.morale:>6.0f} {employee.fatigue:>7.0f} {salary:>11} {money(employee.monthly_salary):>9} {personality[:trait_width]:<{trait_width}}"
         else:
-            line = f"{marker} {employee.name[:14]:<14} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {employee.morale:>3.0f} {employee.fatigue:>3.0f} {employee.trait[:12]:<12}"
+            line = f"{marker} {display_name[:14]:<14} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {employee.morale:>3.0f} {employee.fatigue:>3.0f} {personality[:12]:<12}"
         add_text(roster, row, 2, line, roster_width - 4, curses.color_pair(3) | curses.A_BOLD if is_selected else 0)
 
     summary_row = len(state.studio.team[: panel_height - 3]) + 3
@@ -574,37 +641,39 @@ def draw_team_screen(screen: curses.window, state: GameState, width: int, height
             (f"Average morale {average_morale:.0f}/100 | Fatigue {average_fatigue:.0f}/100 | Tenure {average_tenure:.1f} weeks", 0),
             ("TEAM CAPABILITY", curses.A_BOLD),
         ]
-        for skill_index, skill_name in enumerate(SKILLS):
-            average_skill = sum(employee.skills[skill_index] for employee in team) / len(team)
-            lead = max(team, key=lambda employee: employee.skills[skill_index])
-            overview.append((f"{skill_name:<8} [{meter(average_skill, 100, 18)}] avg {average_skill:>4.0f} | Lead {lead.name} {lead.skills[skill_index]}", 0))
+        for skill_index, skill_name in enumerate(EMPLOYEE_SKILLS):
+            average_skill = sum(employee.all_skills[skill_index] for employee in team) / len(team)
+            lead = max(team, key=lambda employee: employee.all_skills[skill_index])
+            overview.append((f"{skill_name:<8} [{meter(average_skill, 100, 18)}] avg {average_skill:>4.0f} | Lead {lead.name} {lead.all_skills[skill_index]}", 0))
 
-        removable = [employee for employee in team if not employee.founder]
-        selected_member = removable[min(state.selected_roster, len(removable) - 1)] if removable else team[0]
+        selected_member = selected_roster_employee(state) or team[0]
         overview.extend(
             [
                 ("SELECTED TEAM MEMBER", curses.A_BOLD),
-                (f"{selected_member.name} | {selected_member.role} | {selected_member.trait}", 0),
-                (f"Skills  Design {selected_member.design} | Art {selected_member.art} | Audio {selected_member.audio} | Code {selected_member.code}", 0),
+                (f"{selected_member.name} | {selected_member.role} | {selected_member.trait} / {selected_member.quirk}", 0),
+                (f"Skills  Design {selected_member.design} | Art {selected_member.art} | Audio {selected_member.audio} | Code {selected_member.code} | Research {selected_member.research}", 0),
                 (f"Wellbeing  Morale {selected_member.morale:.0f}/100 | Fatigue {selected_member.fatigue:.0f}/100 | Employed {selected_member.weeks_employed}w", 0),
                 (f"Compensation  {money(selected_member.annual_salary)}/year | {money(selected_member.monthly_salary)}/month", 0),
+                (f"Development  XP {selected_member.experience}/100 | {'TRAINING ' + selected_member.training_skill + ' ' + str(selected_member.training_weeks_left) + 'w' if selected_member.training_weeks_left else 'Available for training'}", 0),
+                (f"Style: {TRAITS.get(selected_member.trait, 'unclassified')} | Quirk: {QUIRKS.get(selected_member.quirk, 'unclassified')}", 0),
             ]
         )
         for row, (text, attr) in enumerate(overview[: panel_height - summary_row - 1], summary_row):
             add_text(roster, row, 2, text, roster_width - 4, attr)
 
     if applicant_expanded:
-        applicant_header = f"  {'NAME':<16} {'ROLE':<22} {'DES':>3} {'ART':>3} {'AUD':>3} {'CODE':>4} {'SALARY/YR':>11} {'PERSONALITY':<14}"
+        applicant_header = f"  {'NAME':<16} {'ROLE':<22} {'DES':>3} {'ART':>3} {'AUD':>3} {'CODE':>4} {'RES':>3} {'SALARY/YR':>11} {'STYLE / QUIRK':<14}"
     else:
         applicant_header = f"  {'NAME':<14} {'ROLE':<17} {'DES':>3} {'ART':>3} {'AUD':>3} {'CODE':>4} {'SALARY':>9} {'TRAIT':<10}"
     add_text(applicants, 1, 2, applicant_header, applicant_width - 4, curses.A_BOLD)
     for row, employee in enumerate(state.studio.applicants[: panel_height - 3], 2):
         selected = state.team_tab == 0 and row - 2 == state.selected_employee
         marker = ">" if selected else " "
+        personality = f"{employee.trait}/{employee.quirk}"
         if applicant_expanded:
-            text = f"{marker} {employee.name[:16]:<16} {employee.role[:22]:<22} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {money(employee.annual_salary):>11} {employee.trait[:14]:<14}"
+            text = f"{marker} {employee.name[:16]:<16} {employee.role[:22]:<22} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {employee.research:>3} {money(employee.annual_salary):>11} {personality[:14]:<14}"
         else:
-            text = f"{marker} {employee.name[:14]:<14} {employee.role[:17]:<17} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {money(employee.annual_salary):>9} {employee.trait[:10]:<10}"
+            text = f"{marker} {employee.name[:14]:<14} {employee.role[:17]:<17} {employee.design:>3} {employee.art:>3} {employee.audio:>3} {employee.code:>4} {money(employee.annual_salary):>9} {personality[:10]:<10}"
         add_text(applicants, row, 2, text, applicant_width - 4, curses.color_pair(3) | curses.A_BOLD if selected else 0)
 
 
@@ -686,7 +755,8 @@ def draw_update_planner(panel: curses.window, state: GameState, game, panel_widt
     plan_width = split - 4 if not compact else panel_width - 4
 
     add_text(panel, 1, 2, f"PLAN FOR  {game_title(game)}", panel_width - 4, curses.A_BOLD)
-    add_text(panel, 2, 2, f"Target v{target_version} | {game.update_size} | {money(size['cost'])} | delivery ETA {estimated_update_delivery_weeks(studio, game)}w", panel_width - 4, curses.color_pair(4))
+    dlc_price = f" | {money(size['price'])} retail" if "price" in size else ""
+    add_text(panel, 2, 2, f"Target v{target_version} | {game.update_size} | {money(size['cost'])}{dlc_price} | delivery ETA {estimated_update_delivery_weeks(studio, game)}w", panel_width - 4, curses.color_pair(4))
     add_text(panel, 4, 2, "SCOPE / VERSION STEP", plan_width, curses.A_BOLD)
     if compact:
         step = size["version"]
@@ -699,7 +769,8 @@ def draw_update_planner(panel: curses.window, state: GameState, game, panel_widt
             step = item["version"]
             selected = item["name"] == game.update_size
             scope_active = selected and state.games_tab == 1
-            add_text(panel, row, 2, f"{'> ' if selected else '  '}{item['name']:<10} +{step[0]}.{step[1]:02d}.{step[2]:02d} | {item['work']:>3} work | {item['bugs']:>2} QA bugs", plan_width, curses.color_pair(3) | curses.A_BOLD if scope_active else 0)
+            price = f" | {money(item['price'])}" if "price" in item else ""
+            add_text(panel, row, 2, f"{'> ' if selected else '  '}{item['name']:<10} +{step[0]}.{step[1]:02d}.{step[2]:02d} | {item['work']:>3} work | {item['bugs']:>2} QA bugs{price}", plan_width, curses.color_pair(3) | curses.A_BOLD if scope_active else 0)
         add_text(panel, 10, 2, "UPDATE AREA", plan_width, curses.A_BOLD)
         for row, item in enumerate(UPDATE_FOCUSES, 11):
             selected = item["name"] == game.update_focus
@@ -728,10 +799,16 @@ def draw_update_planner(panel: curses.window, state: GameState, game, panel_widt
     if queue_row < panel_height - 1:
         queue = ([active] if active else []) + studio.update_queue
         active_count = 1 if active else 0
-        add_text(panel, queue_row, status_x, f"UPDATE QUEUE ({len(queue)}) | {active_count} active | {len(studio.update_queue)} waiting", status_width, curses.A_BOLD)
+        cancellation = state.queue_cancellation == "update"
+        heading = "CANCEL QUEUED UPDATE" if cancellation else "UPDATE QUEUE"
+        add_text(panel, queue_row, status_x, f"{heading} ({len(queue)}) | {active_count} active | {len(studio.update_queue)} waiting", status_width, (curses.color_pair(5) if cancellation else 0) | curses.A_BOLD)
         for row, job in enumerate(queue[: max(0, panel_height - queue_row - 2)], queue_row + 1):
             status = "ACTIVE" if active and job is active else "WAITING"
-            add_text(panel, row, status_x, f"{row - queue_row}. {status:<7} {job.game_title} -> v{job.target_version} | {job.size} {job.focus}", status_width, curses.color_pair(4) if status == "ACTIVE" else 0)
+            waiting_index = row - queue_row - 1 - active_count
+            selected = cancellation and status == "WAITING" and waiting_index == state.selected_queue_cancellation
+            marker = ">" if selected else str(row - queue_row)
+            attr = curses.color_pair(5) | curses.A_BOLD if selected else curses.color_pair(4) if status == "ACTIVE" else 0
+            add_text(panel, row, status_x, f"{marker}. {status:<7} {job.game_title} -> v{job.target_version} | {job.size} {job.focus}", status_width, attr)
 
 
 def draw_game_catalogue_table(
@@ -799,6 +876,36 @@ def draw_update_planner_screen(screen: curses.window, state: GameState, width: i
     draw_games_screen(screen, state, width, height)
 
 
+def production_review_geometry(width: int, height: int) -> tuple[int, int, int, int]:
+    popup_width = min(100, max(66, width - 12))
+    popup_height = 20
+    return popup_height, popup_width, max(2, (height - popup_height) // 2), max(1, (width - popup_width) // 2)
+
+
+def draw_production_review(screen: curses.window, state: GameState, width: int, height: int) -> None:
+    project = state.studio.current_project
+    if project is None or project.pending_decision is None:
+        return
+    decision = PRODUCTION_DECISIONS[project.pending_decision]
+    popup_height, popup_width, popup_y, popup_x = production_review_geometry(width, height)
+    panel = screen.derwin(popup_height, popup_width, popup_y, popup_x)
+    panel.erase()
+    draw_box(panel, f"Production Event | {decision['title']}")
+    genre_mix = project.genre if project.secondary_genre == project.genre else f"{project.genre} / {project.secondary_genre}"
+    add_text(panel, 1, 3, project.title, popup_width - 6, curses.A_BOLD)
+    add_text(panel, 2, 3, f"{genre_mix} | {project.target_audience} | {project.game_format}", popup_width - 6)
+    add_text(panel, 3, 3, f"Progress {project.progress:.0%} | week {project.weeks}/{project.planned_weeks} forecast | known bugs {int(project.known_defects)}", popup_width - 6)
+    add_text(panel, 5, 3, decision["question"], popup_width - 6, curses.color_pair(5) | curses.A_BOLD)
+    for index, option in enumerate(decision["options"]):
+        selected = index == state.selected_project_decision
+        row = 8 + index * 4
+        add_text(panel, row, 5, f"{'> ' if selected else '  '}{option['name']}", popup_width - 10, curses.color_pair(3) | curses.A_BOLD if selected else 0)
+        add_text(panel, row + 1, 9, option["effect"], popup_width - 14, curses.color_pair(4) if selected else 0)
+    if project.decisions_made:
+        add_text(panel, 16, 3, f"Earlier: {project.decisions_made[-1]}", popup_width - 6)
+    add_text(panel, popup_height - 2, 3, "Up/Down chooses. Enter commits. Other controls are locked.", popup_width - 6, curses.color_pair(4))
+
+
 def draw_games_screen(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel_height = height - 4
     games = live_games(state)
@@ -809,20 +916,28 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         detail_width = width - list_width - 1
         games_panel = screen.derwin(panel_height, list_width, 2, 0)
         detail = screen.derwin(panel_height, detail_width, 2, list_width + 1)
-        draw_box(games_panel, f"Game Catalogue | {game_count}")
+        development = f" | IN DEV {state.studio.current_project.title}" if state.studio.current_project else ""
+        draw_box(games_panel, f"Game Catalogue | {game_count}{development}")
         draw_box(detail, "Update Planner" if planner_open else "Commercial Performance")
         if not games:
             project = state.studio.current_project
-            add_text(games_panel, 1, 2, "No released games yet.", list_width - 4)
+            add_text(games_panel, 1, 2, "No released games yet.", list_width - 4, curses.A_BOLD)
             if project:
                 add_text(games_panel, 2, 2, f"In production: {project.title}", list_width - 4, curses.A_BOLD)
                 add_text(games_panel, 3, 2, f"{project.phase} | {project.progress:.0%} complete", list_width - 4, curses.color_pair(4))
                 add_text(detail, 1, 2, project.title, detail_width - 4, curses.A_BOLD)
-                add_text(detail, 2, 2, f"{project.scope} / {project.channel}", detail_width - 4)
-                add_text(detail, 3, 2, f"Production {project.progress:.0%} | Known bugs {int(project.known_defects)}", detail_width - 4)
-                add_text(detail, 5, 2, "P opens Promotion Planning", detail_width - 4, curses.color_pair(4))
+                genre_mix = project.genre if project.secondary_genre == project.genre else f"{project.genre} / {project.secondary_genre}"
+                add_text(detail, 2, 2, genre_mix, detail_width - 4)
+                add_text(detail, 3, 2, f"{project.target_audience} | {project.game_format}", detail_width - 4)
+                add_text(detail, 4, 2, f"Forecast {project.forecast_score_low}-{project.forecast_score_high}/100 | confidence {project.forecast_confidence}%", detail_width - 4)
+                add_text(detail, 6, 2, f"Production {project.progress:.0%} | Known bugs {int(project.known_defects)}", detail_width - 4)
+                add_text(detail, 8, 2, "P opens Promotion Planning", detail_width - 4, curses.color_pair(4))
             else:
-                add_text(detail, 1, 2, "Press N to plan an original game or sequel.", detail_width - 4)
+                add_text(detail, 1, 2, "BUILD A MARKET POSITION", detail_width - 4, curses.A_BOLD)
+                add_text(detail, 3, 2, "Mix modern genres and themes.", detail_width - 4)
+                add_text(detail, 4, 2, "Choose an audience and creative bets.", detail_width - 4)
+                add_text(detail, 5, 2, "Test demand, rivals, risk, and runway.", detail_width - 4)
+                add_text(detail, 7, 2, "Press N to open the concept room.", detail_width - 4, curses.color_pair(4))
             return
         state.selected_game = min(state.selected_game, len(games) - 1)
         visible = panel_height - 2
@@ -844,29 +959,43 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
             return
         sale = sale_for_game(state.studio, game.game_id)
         add_text(detail, 1, 2, game_title(game), detail_width - 4, curses.A_BOLD)
-        add_text(detail, 2, 2, f"Rating {rating_text(game)}/100", detail_width - 4)
-        add_text(detail, 3, 2, f"Hype {game.hype:.0f}/200", detail_width - 4)
-        add_text(detail, 4, 2, f"Monthly players {game.monthly_players:,}", detail_width - 4)
-        add_text(detail, 5, 2, f"Sales {(sale.weekly_units if sale else 0):,}/week", detail_width - 4)
-        add_text(detail, 6, 2, f"Known bugs {game.known_bug_count}", detail_width - 4, curses.color_pair(5) if game.known_bug_count else 0)
-        add_text(detail, 7, 2, update_status(game), detail_width - 4)
-        add_text(detail, 8, 2, f"{game.update_size} / {game.update_focus}", detail_width - 4)
-        add_text(detail, 9, 2, f"Queued for this game {len(update_jobs_for_game(state, game.game_id))} | U opens planner", detail_width - 4)
+        genre_mix = game.genre if not game.secondary_genre or game.secondary_genre == game.genre else f"{game.genre} / {game.secondary_genre}"
+        add_text(detail, 2, 2, genre_mix, detail_width - 4)
+        add_text(detail, 3, 2, f"{game.target_audience} | {game.game_format}", detail_width - 4)
+        add_text(detail, 4, 2, f"Market fit {game.market_score}/100 | {game.competitors} launch rivals", detail_width - 4)
+        add_text(detail, 6, 2, f"Rating {rating_text(game)}/100 | Hype {game.hype:.0f}/200", detail_width - 4)
+        add_text(detail, 7, 2, f"Monthly players {game.monthly_players:,} | Sales {(sale.weekly_units if sale else 0):,}/week", detail_width - 4)
+        add_text(detail, 8, 2, f"Known bugs {game.known_bug_count} | DLC {game.dlcs_released}", detail_width - 4, curses.color_pair(5) if game.known_bug_count else 0)
+        add_text(detail, 10, 2, f"{game.update_size} / {game.update_focus} | U opens planner", detail_width - 4)
         return
 
-    catalog_height = min(15, max(9, min(len(games) + 4, panel_height // 3 + 2)))
+    catalog_height = panel_height if not games else min(15, max(9, min(len(games) + 4, panel_height // 3 + 2)))
     games_panel = screen.derwin(catalog_height, width, 2, 0)
     if not games:
         draw_box(games_panel, f"Game Catalogue | {game_count}")
         project = state.studio.current_project
-        add_text(games_panel, 1, 2, "No released games yet.", width - 4)
+        add_text(games_panel, 1, 2, "THE GAME PORTFOLIO", width - 4, curses.A_BOLD)
         if project:
-            add_text(games_panel, 2, 2, f"IN PRODUCTION  {project.title} | {project.phase} | {project.progress:.0%} complete | Known bugs {int(project.known_defects)} | P opens Promotion Planning", width - 4, curses.color_pair(4))
+            genre_mix = project.genre if project.secondary_genre == project.genre else f"{project.genre} / {project.secondary_genre}"
+            add_text(games_panel, 3, 2, f"IN PRODUCTION  {project.title}", width - 4, curses.color_pair(4) | curses.A_BOLD)
+            add_text(games_panel, 4, 2, f"Concept    {genre_mix} | {project.topic} + {project.secondary_topic}", width - 4)
+            add_text(games_panel, 5, 2, f"Position   {project.target_audience} | {project.game_format} | {project.release_strategy}", width - 4)
+            add_text(games_panel, 6, 2, f"Forecast   fit {project.forecast_score_low}-{project.forecast_score_high}/100 | {project.forecast_audience_low:,}-{project.forecast_audience_high:,} interested | {project.forecast_competitors_low}-{project.forecast_competitors_high} rivals", width - 4)
+            add_text(games_panel, 8, 2, f"Production {project.phase} | {project.progress:.0%} | week {project.weeks}/{project.planned_weeks} planned | {int(project.known_defects)} known bugs", width - 4)
+            add_text(games_panel, 10, 2, f"Creative bets: {project.creative_primary} + {project.creative_secondary}", width - 4)
+            add_text(games_panel, 12, 2, "P opens Promotion Planning. The catalogue unlocks when this project ships.", width - 4, curses.color_pair(4))
         else:
-            add_text(games_panel, 2, 2, "Press N to plan an original game or sequel.", width - 4, curses.color_pair(4))
+            add_text(games_panel, 3, 2, "Your first release should be a deliberate market position, not a genre/theme dice roll.", width - 4)
+            add_text(games_panel, 5, 2, "1  MIX        Combine a primary genre and theme with a second influence.", width - 4)
+            add_text(games_panel, 6, 2, "2  POSITION   Pick the people you serve and the way they will play together.", width - 4)
+            add_text(games_panel, 7, 2, "3  COMMIT     Make creative bets with visible benefits and production costs.", width - 4)
+            add_text(games_panel, 8, 2, "4  VALIDATE   Read demand, competing releases, project risk, runway, and capability gates.", width - 4)
+            add_text(games_panel, 10, 2, "Small games teach cheaply. Large and online games multiply both the audience and the failure cost.", width - 4, curses.color_pair(5))
+            add_text(games_panel, 12, 2, "Press N to enter the concept room.", width - 4, curses.color_pair(4) | curses.A_BOLD)
         return
     state.selected_game = min(state.selected_game, len(games) - 1)
-    draw_game_catalogue_table(games_panel, state, width, catalog_height, state.selected_game, not planner_open or state.games_tab == 0)
+    development = f" | IN DEVELOPMENT: {state.studio.current_project.title}" if state.studio.current_project else ""
+    draw_game_catalogue_table(games_panel, state, width, catalog_height, state.selected_game, not planner_open or state.games_tab == 0, title=f"Game Catalogue | {game_count}{development}")
 
     game = games[state.selected_game]
     sale = sale_for_game(state.studio, game.game_id)
@@ -926,11 +1055,12 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         add_text(strategy, 2, 2, recommendation, third_width - 4, compact_recommendation_attr)
         return
     add_text(commercial, 1, 2, game_title(game), first_width - 4, curses.A_BOLD)
-    add_text(commercial, 2, 2, f"{game.genre} / {game.topic} | {game.channel}", first_width - 4)
+    genre_mix = game.genre if not game.secondary_genre or game.secondary_genre == game.genre else f"{game.genre} / {game.secondary_genre}"
+    add_text(commercial, 2, 2, f"{genre_mix} | {game.game_format} | {game.channel}", first_width - 4)
     add_text(commercial, 3, 2, "MARKET SIGNALS", first_width - 4, curses.A_BOLD)
     add_text(commercial, 4, 2, f"Rating [{meter(game.score, 100, 18)}] {rating_text(game)}/100", first_width - 4, rating_attr)
     add_text(commercial, 5, 2, f"Hype   [{meter(game.hype, 200, 18)}] {game.hype:.0f}/200 | Known bugs {game.known_bug_count}", first_width - 4)
-    add_text(commercial, 6, 2, "AUDIENCE & SALES", first_width - 4, curses.A_BOLD)
+    add_text(commercial, 6, 2, f"AUDIENCE & SALES | market {game.market_score}/100 | {game.competitors} rivals", first_width - 4, curses.A_BOLD)
     add_text(commercial, 7, 2, f"Weekly sales             {(sale.weekly_units if sale else 0):,}", first_width - 4)
     add_text(commercial, 8, 2, f"Monthly active players   {game.monthly_players:,}", first_width - 4, curses.color_pair(5) if not game.monthly_players else 0)
     add_text(commercial, 9, 2, f"Peak monthly players     {game.peak_monthly_players:,}", first_width - 4)
@@ -973,7 +1103,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     add_text(live_ops, 7, 2, f"Forecast    +{expected_hype:.1f} hype | ~{expected_players:,} returning players", second_width - 4)
     phase = active_job.phase if active_job else "Waiting for queue"
     add_text(live_ops, 9, 2, f"[{meter(progress, 100, 24)}] {progress:.0f}% | {phase}", second_width - 4, curses.color_pair(4) if active_job else 0)
-    add_text(live_ops, 10, 2, f"Release history  {game.updates_released} shipped | {len(jobs)} active/queued", second_width - 4)
+    add_text(live_ops, 10, 2, f"Release history  {game.updates_released} updates | {game.dlcs_released} DLC | {len(jobs)} active/queued", second_width - 4)
     update_queue = ([state.studio.active_update] if state.studio.active_update else []) + state.studio.update_queue
     active_count = 1 if state.studio.active_update else 0
     add_text(live_ops, 12, 2, f"UPDATE QUEUE ({len(update_queue)}) | {active_count} active | {len(state.studio.update_queue)} waiting", second_width - 4, curses.A_BOLD)
@@ -1174,10 +1304,16 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
     queue_row = len(PROMOTIONS) + 3
     team_load = queue[0].team_share if queue else 0.0
     if queue_row < bottom_height - 1:
-        add_text(options_panel, queue_row, 2, f"PROMOTION QUEUE ({len(queue)}) | {1 if queue else 0} active | {max(0, len(queue) - 1)} waiting | Team load {team_load:.0%}", option_width - 4, curses.A_BOLD)
+        cancellation = state.queue_cancellation == "promotion"
+        heading = "CANCEL QUEUED PROMOTION" if cancellation else "PROMOTION QUEUE"
+        add_text(options_panel, queue_row, 2, f"{heading} ({len(queue)}) | {1 if queue else 0} active | {max(0, len(queue) - 1)} waiting | Team load {team_load:.0%}", option_width - 4, (curses.color_pair(5) if cancellation else 0) | curses.A_BOLD)
         for row, item in enumerate(queue[: max(0, bottom_height - queue_row - 2)], queue_row + 1):
             status = "ACTIVE" if row == queue_row + 1 else "WAITING"
-            add_text(options_panel, row, 2, f"{row - queue_row}. {status:<7} {item.name} | {item.target_title} | {item.weeks_left}w", option_width - 4, curses.color_pair(4) if status == "ACTIVE" else 0)
+            waiting_index = row - queue_row - 2
+            selected = cancellation and status == "WAITING" and waiting_index == state.selected_queue_cancellation
+            marker = ">" if selected else str(row - queue_row)
+            attr = curses.color_pair(5) | curses.A_BOLD if selected else curses.color_pair(4) if status == "ACTIVE" else 0
+            add_text(options_panel, row, 2, f"{marker}. {status:<7} {item.name} | {item.target_title} | {item.weeks_left}w", option_width - 4, attr)
 
 
 def draw_upgrades(screen: curses.window, state: GameState, width: int, height: int) -> None:
@@ -1425,6 +1561,38 @@ def draw_settings_popup(screen: curses.window, state: GameState, width: int, hei
         add_text(panel, row, x, label, len(label), curses.A_BOLD if selected else 0)
 
 
+def training_popup_geometry(width: int, height: int) -> tuple[int, int, int, int]:
+    popup_width = min(76, max(58, width - 16))
+    popup_height = 17
+    return popup_height, popup_width, max(2, (height - popup_height) // 2), max(1, (width - popup_width) // 2)
+
+
+def draw_training_popup(screen: curses.window, state: GameState, width: int, height: int) -> None:
+    employee = selected_roster_employee(state)
+    popup_height, popup_width, popup_y, popup_x = training_popup_geometry(width, height)
+    panel = screen.derwin(popup_height, popup_width, popup_y, popup_x)
+    panel.erase()
+    draw_box(panel, "Professional Training")
+    if employee is None:
+        add_text(panel, 2, 3, "Hire and select an employee before booking education.", popup_width - 6)
+        return
+    add_text(panel, 1, 3, f"{employee.name} | {employee.role}", popup_width - 6, curses.A_BOLD)
+    add_text(panel, 2, 3, f"Current salary {money(employee.annual_salary)}/year | XP {employee.experience}/100", popup_width - 6)
+    if employee.training_weeks_left:
+        add_text(panel, 4, 3, f"Already studying {employee.training_skill}: {employee.training_weeks_left} weeks remaining.", popup_width - 6, curses.color_pair(5))
+    add_text(panel, 4 if not employee.training_weeks_left else 6, 3, "COURSE                         SKILL   COST       RESULT", popup_width - 6, curses.A_BOLD)
+    start_row = 5 if not employee.training_weeks_left else 7
+    for index, skill_name in enumerate(EMPLOYEE_SKILLS):
+        value = employee.all_skills[index]
+        selected = index == state.selected_training_skill
+        cost = training_cost(employee, skill_name)
+        result = "mastered" if value >= 99 else "+4 skill, salary review"
+        text = f"{'> ' if selected else '  '}{skill_name:<25} {value:>3}/99  {money(cost):>9}  {result}"
+        add_text(panel, start_row + index, 3, text, popup_width - 6, curses.color_pair(3) | curses.A_BOLD if selected else 0)
+    add_text(panel, popup_height - 3, 3, "Course length: 4 weeks away from projects, updates, and contracts.", popup_width - 6, curses.color_pair(5))
+    add_text(panel, popup_height - 2, 3, "Up/Down chooses | Enter enrolls | Backspace closes", popup_width - 6, curses.color_pair(4))
+
+
 def draw_insolvency_popup(screen: curses.window, state: GameState, width: int, height: int) -> None:
     popup_width = min(62, max(46, width - 24))
     popup_height = 11
@@ -1466,11 +1634,19 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             actions = [("[E]", "applicants"), ("[T]", "roster"), ("[Enter]", "hire"), ("[D]", "dismiss")]
         else:
             actions = [(control_label("E", "Employ"), "applicants"), (control_label("T", "Team"), "roster"), (control_label("Enter", "Hire"), "hire"), (control_label("D", "Dismiss"), "dismiss")]
+        if state.team_tab == 1 and selected_roster_employee(state):
+            actions.append(("[L]" if compact else control_label("L", "Learn"), "train"))
         return actions
     if state.modal == "contracts":
         auto = "ON" if state.studio.auto_contracts else "OFF"
         return [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Enter]" if compact else control_label("Enter", "Accept"), "accept_contract"), (control_label("C", "Auto") if compact else control_label("C", f"Auto {auto}"), "toggle_contracts")]
     if state.modal == "games":
+        project = state.studio.current_project
+        if project and project.pending_decision is not None:
+            return [
+                ("[Up/Dn]" if compact else control_label("Up/Down", "Option"), "production_option"),
+                ("[Enter]" if compact else control_label("Enter", "Commit Decision"), "resolve_decision"),
+            ]
         games = live_games(state)
         if not games:
             actions = []
@@ -1481,19 +1657,29 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             return actions
         return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
     if state.modal == "update_planner":
+        if state.queue_cancellation == "update":
+            return [("[Bksp]" if compact else control_label("Backspace", "Return to planning"), "leave_queue_cancellation"), ("[Up/Dn]" if compact else control_label("Up/Down", "Queued update"), "queue_cancellation_selection"), ("[Enter]" if compact else control_label("Enter", "Cancel selected"), "cancel_selected_queue_item")]
         games = live_games(state)
         if not games:
             return [("[Bksp]" if compact else control_label("Backspace", "Game"), "back")]
         if state.games_tab == 0:
-            return [("[Bksp]" if compact else control_label("Backspace", "Game"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Game"), "update_game_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_update_game")]
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Game"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Game"), "update_game_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_update_game")]
+            actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
+            return actions
         if state.games_tab == 1:
-            return [("[Bksp]" if compact else control_label("Backspace", "Game"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Scope"), "update_scope_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_update_scope")]
-        return [("[Bksp]" if compact else control_label("Backspace", "Scope"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Area"), "update_area_selection"), ("[Enter]" if compact else control_label("Enter", "Queue Update"), "enter_only")]
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Game"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Scope"), "update_scope_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_update_scope")]
+        else:
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Scope"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Area"), "update_area_selection"), ("[Enter]" if compact else control_label("Enter", "Queue Update"), "enter_only")]
+        actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
+        return actions
     if state.modal == "marketing":
+        if state.queue_cancellation == "promotion":
+            return [("[Bksp]" if compact else control_label("Backspace", "Return to planning"), "leave_queue_cancellation"), ("[Up/Dn]" if compact else control_label("Up/Down", "Queued promotion"), "queue_cancellation_selection"), ("[Enter]" if compact else control_label("Enter", "Cancel selected"), "cancel_selected_queue_item")]
         if state.marketing_tab == 0:
             actions = [("[Bksp]" if compact else control_label("Backspace", "Catalogue"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Game"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_marketing_target")]
         else:
             actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Promotion"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Buy"), "buy_promotion")]
+        actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
         return actions
     if state.modal == "upgrades":
         return [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Enter]" if compact else control_label("Enter", "Buy"), "buy")]
@@ -1526,7 +1712,7 @@ def bottom_date_text(state: GameState, width: int) -> str:
 
 
 def horizontal_actions(state: GameState) -> tuple[str, str]:
-    if state.modal == "new_game" and state.new_game_step == 2:
+    if state.modal == "new_game" and state.new_game_step in (0, 1, 2):
         return "new_game_adjust_left", "new_game_adjust_right"
     if state.modal == "analysis":
         return "previous_view", "next_view"
@@ -1627,9 +1813,14 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
     else:
         y = draw_dashboard(screen, state, width)
         draw_main_content(screen, state, width, height, y)
+    draw_footer(screen, state, height, width)
+    project = state.studio.current_project
+    if project and project.pending_decision is not None:
+        draw_production_review(screen, state, width, height)
+    if state.training_open:
+        draw_training_popup(screen, state, width, height)
     if state.settings_open:
         draw_settings_popup(screen, state, width, height)
-    draw_footer(screen, state, height, width)
     if state.studio.closed:
         draw_insolvency_popup(screen, state, width, height)
 
@@ -1698,6 +1889,35 @@ def close_settings(state: GameState) -> None:
     state.settings_resume_on_close = False
 
 
+def open_training(state: GameState) -> None:
+    if state.training_open or selected_roster_employee(state) is None:
+        if selected_roster_employee(state) is None:
+            state.log("Hire and select an employee before booking training.")
+        return
+    state.training_resume_on_close = state.time_speed_index != 0
+    if state.training_resume_on_close:
+        state.resume_speed_index = state.time_speed_index
+        state.time_speed_index = 0
+    state.selected_training_skill = 0
+    state.training_open = True
+
+
+def close_training(state: GameState) -> None:
+    if not state.training_open:
+        return
+    state.training_open = False
+    if state.training_resume_on_close and not state.studio.closed:
+        state.time_speed_index = max(1, state.resume_speed_index)
+    state.training_resume_on_close = False
+
+
+def confirm_training(state: GameState) -> bool:
+    if not start_employee_training(state):
+        return False
+    close_training(state)
+    return True
+
+
 def activate_settings_action(state: GameState) -> bool:
     if state.selected_setting_action == 0:
         close_settings(state)
@@ -1705,6 +1925,39 @@ def activate_settings_action(state: GameState) -> bool:
     if state.selected_setting_action == 1:
         save_state(state)
         return True
+    return False
+
+
+def enter_queue_cancellation(state: GameState) -> bool:
+    if state.modal == "update_planner":
+        if not state.studio.update_queue:
+            state.log("There are no waiting updates to cancel; the active update cannot be cancelled.")
+            return False
+        state.queue_cancellation = "update"
+    elif state.modal == "marketing":
+        if len(state.studio.active_promotions) <= 1:
+            state.log("There are no waiting promotions to cancel; the active promotion cannot be cancelled.")
+            return False
+        state.queue_cancellation = "promotion"
+    else:
+        return False
+    state.selected_queue_cancellation = 0
+    return True
+
+
+def queue_cancellation_count(state: GameState) -> int:
+    if state.queue_cancellation == "update":
+        return len(state.studio.update_queue)
+    if state.queue_cancellation == "promotion":
+        return max(0, len(state.studio.active_promotions) - 1)
+    return 0
+
+
+def cancel_selected_queue_item(state: GameState) -> bool:
+    if state.queue_cancellation == "update":
+        return cancel_queued_update(state)
+    if state.queue_cancellation == "promotion":
+        return cancel_queued_promotion(state)
     return False
 
 
@@ -1718,6 +1971,7 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "marketing":
         state.modal = "marketing"
         state.marketing_tab = 0
+        state.queue_cancellation = ""
     elif action == "toggle_contracts":
         toggle_auto_contracts(state)
     elif action == "accept_contract":
@@ -1739,6 +1993,7 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "open_update_planner":
         state.modal = "update_planner"
         state.games_tab = 0
+        state.queue_cancellation = ""
     elif action == "update_game_selection":
         games = live_games(state)
         if games:
@@ -1773,6 +2028,21 @@ def perform_footer_action(state: GameState, action: str) -> bool:
             state.selected_promotion_target = next((index for index, target in enumerate(targets) if target[0] == selected_id), 0)
         state.modal = "marketing"
         state.marketing_tab = 0
+        state.queue_cancellation = ""
+    elif action == "production_option":
+        state.selected_project_decision = (state.selected_project_decision + 1) % 2
+    elif action == "resolve_decision":
+        resolve_project_decision(state, state.selected_project_decision)
+    elif action == "enter_queue_cancellation":
+        enter_queue_cancellation(state)
+    elif action == "leave_queue_cancellation":
+        state.queue_cancellation = ""
+    elif action == "queue_cancellation_selection":
+        count = queue_cancellation_count(state)
+        if count:
+            state.selected_queue_cancellation = (state.selected_queue_cancellation + 1) % count
+    elif action == "cancel_selected_queue_item":
+        cancel_selected_queue_item(state)
     elif action == "buy_promotion":
         targets = promotion_targets(state)
         if targets:
@@ -1850,6 +2120,9 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "dismiss":
         if state.team_tab == 1:
             dismiss_employee(state)
+    elif action == "train":
+        if state.team_tab == 1:
+            open_training(state)
     elif action == "buy":
         buy_upgrade(state)
     elif action == "previous_view":
@@ -1868,6 +2141,8 @@ def handle_new_game_key(state: GameState, key: int) -> None:
             choice = choices[state.selected_sequel_choice]
             if choice is None:
                 state.sequel_game_id = None
+                state.selected_secondary_genre = state.selected_genre
+                state.selected_secondary_topic = state.selected_topic
                 state.new_game_step = 0
                 state.title_roll += 1
                 refresh_draft_title(state)
@@ -1880,7 +2155,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         elif key == curses.KEY_DOWN:
             state.selected_sequel_choice = (state.selected_sequel_choice + 1) % len(choices)
         return
-    previous_concept = (state.selected_genre, state.selected_topic)
+    previous_concept = (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
     if key in (10, 13, curses.KEY_ENTER):
         if state.new_game_step < 3:
             state.new_game_step += 1
@@ -1900,7 +2175,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         elif state.new_game_step == 1:
             state.selected_topic = (state.selected_topic - 1) % len(TOPICS)
         elif state.new_game_step == 2:
-            state.selected_focus = (state.selected_focus - 1) % 6
+            state.selected_focus = (state.selected_focus - 1) % 7
         else:
             state.selected_channel = (state.selected_channel - 1) % len(CHANNELS)
     elif key == curses.KEY_DOWN:
@@ -1909,22 +2184,28 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         elif state.new_game_step == 1:
             state.selected_topic = (state.selected_topic + 1) % len(TOPICS)
         elif state.new_game_step == 2:
-            state.selected_focus = (state.selected_focus + 1) % 6
+            state.selected_focus = (state.selected_focus + 1) % 7
         else:
             state.selected_channel = (state.selected_channel + 1) % len(CHANNELS)
-    elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step == 2:
+    elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step in (0, 1, 2):
         delta = -1 if key == curses.KEY_LEFT else 1
-        if state.selected_focus == 0:
-            state.selected_scope = (state.selected_scope + delta) % len(SCOPES)
-        elif state.selected_focus == 1:
-            state.selected_marketing = (state.selected_marketing + delta) % len(MARKETING)
+        if state.new_game_step == 0:
+            state.selected_secondary_genre = (state.selected_secondary_genre + delta) % len(GENRES)
+        elif state.new_game_step == 1:
+            state.selected_secondary_topic = (state.selected_secondary_topic + delta) % len(TOPICS)
         else:
-            focus_index = state.selected_focus - 2
-            original = state.selected_focus
-            state.selected_focus = focus_index
-            adjust_focus(state, delta * 5)
-            state.selected_focus = original
-    if previous_concept != (state.selected_genre, state.selected_topic):
+            fields = (
+                ("selected_scope", len(SCOPES)),
+                ("selected_format", len(GAME_FORMATS)),
+                ("selected_audience", len(AUDIENCES)),
+                ("selected_creative_primary", len(CREATIVE_DIRECTIONS)),
+                ("selected_creative_secondary", len(CREATIVE_DIRECTIONS)),
+                ("selected_release_strategy", len(RELEASE_STRATEGIES)),
+                ("selected_marketing", len(MARKETING)),
+            )
+            attribute, count = fields[state.selected_focus]
+            setattr(state, attribute, (getattr(state, attribute) + delta) % count)
+    if previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic):
         state.sequel_game_id = None
         state.title_roll += 1
         refresh_draft_title(state)
@@ -1939,18 +2220,20 @@ def handle_team_key(state: GameState, key: int) -> None:
         if state.team_tab == 0 and state.studio.applicants:
             state.selected_employee = (state.selected_employee - 1) % len(state.studio.applicants)
         else:
-            removable = max(1, len(state.studio.team) - 1)
-            state.selected_roster = (state.selected_roster - 1) % removable
+            choices = len(state.studio.team)
+            state.selected_roster = state.selected_roster % choices - 1
     elif key == curses.KEY_DOWN:
         if state.team_tab == 0 and state.studio.applicants:
             state.selected_employee = (state.selected_employee + 1) % len(state.studio.applicants)
         else:
-            removable = max(1, len(state.studio.team) - 1)
-            state.selected_roster = (state.selected_roster + 1) % removable
+            choices = len(state.studio.team)
+            state.selected_roster = (state.selected_roster + 2) % choices - 1
     elif key in (10, 13, curses.KEY_ENTER) and state.team_tab == 0:
         hire_candidate(state)
     elif key in (ord("d"), ord("D")) and state.team_tab == 1:
         dismiss_employee(state)
+    elif key in (ord("l"), ord("L")) and state.team_tab == 1:
+        open_training(state)
 
 
 def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
@@ -1963,6 +2246,20 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
     wheel_down = bool(buttons & getattr(curses, "BUTTON5_PRESSED", 0))
     if wheel_up or wheel_down:
         if state.settings_open:
+            return
+        if state.queue_cancellation:
+            count = queue_cancellation_count(state)
+            if count:
+                delta = -1 if wheel_up else 1
+                state.selected_queue_cancellation = (state.selected_queue_cancellation + delta) % count
+            return
+        if state.training_open:
+            delta = -1 if wheel_up else 1
+            state.selected_training_skill = (state.selected_training_skill + delta) % len(EMPLOYEE_SKILLS)
+            return
+        project = state.studio.current_project
+        if project and project.pending_decision is not None:
+            state.selected_project_decision = (state.selected_project_decision + 1) % 2
             return
         key = curses.KEY_UP if wheel_up else curses.KEY_DOWN
         if state.modal == "analysis":
@@ -1998,12 +2295,18 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         return
 
     right_click = bool(buttons & (getattr(curses, "BUTTON3_CLICKED", 0) | getattr(curses, "BUTTON3_RELEASED", 0)))
+    if state.queue_cancellation:
+        return
     if right_click and state.settings_open:
         close_settings(state)
+        return
+    project = state.studio.current_project
+    if right_click and (state.training_open or (project and project.pending_decision is not None)):
         return
     if right_click and state.modal != "main":
         owner_root = TOP_TABS[active_top_tab(state)][2]
         state.naming_game = False
+        state.queue_cancellation = ""
         state.modal = owner_root if state.modal != owner_root else "main"
         if state.modal == "games":
             state.games_tab = 0
@@ -2019,6 +2322,26 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
     if not left_click:
         return
     double_click = bool(buttons & getattr(curses, "BUTTON1_DOUBLE_CLICKED", 0))
+
+    if state.training_open:
+        employee = selected_roster_employee(state)
+        if employee:
+            _, popup_width, popup_y, popup_x = training_popup_geometry(width, height)
+            start_row = popup_y + (7 if employee.training_weeks_left else 5)
+            if popup_x <= x < popup_x + popup_width and start_row <= y < start_row + len(EMPLOYEE_SKILLS):
+                state.selected_training_skill = y - start_row
+                if double_click:
+                    confirm_training(state)
+        return
+    if project and project.pending_decision is not None and not state.settings_open:
+        _, popup_width, popup_y, popup_x = production_review_geometry(width, height)
+        for option_index, row in enumerate((popup_y + 8, popup_y + 12)):
+            if popup_x <= x < popup_x + popup_width and row <= y <= row + 1:
+                state.selected_project_decision = option_index
+                if double_click:
+                    resolve_project_decision(state, option_index)
+                break
+        return
 
     if y == 0:
         for label, action, start in top_control_layout(state, width):
@@ -2091,6 +2414,14 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         return
 
     if state.modal in ("games", "update_planner"):
+        project = state.studio.current_project
+        if state.modal == "games" and project and project.pending_decision is not None:
+            option_row = (y - 11) // 4
+            if option_row in (0, 1):
+                state.selected_project_decision = option_row
+                if double_click:
+                    resolve_project_decision(state, option_row)
+            return
         games = live_games(state)
         if width >= 120:
             row = y - 4
@@ -2146,10 +2477,13 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         if x <= roster_width:
             state.team_tab = 1
             visible_team = state.studio.team[: height - 7]
-            if row < len(visible_team) and not visible_team[row].founder:
+            if row < len(visible_team):
                 employee = visible_team[row]
-                removable = [item for item in state.studio.team if not item.founder]
-                state.selected_roster = removable.index(employee)
+                if employee.founder:
+                    state.selected_roster = -1
+                else:
+                    removable = [item for item in state.studio.team if not item.founder]
+                    state.selected_roster = removable.index(employee)
         else:
             state.team_tab = 0
             if row < len(state.studio.applicants):
@@ -2173,9 +2507,9 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             return
         top_height, genre_width, theme_width, _, storefront_height = new_game_panel_geometry(width, height)
         plan_x = genre_width + theme_width + 2
-        if 3 <= y < 2 + top_height - 1:
-            visible = top_height - 2
-            row = y - 3
+        if 4 <= y < 2 + top_height - 2:
+            visible = top_height - 5
+            row = y - 4
             if x < genre_width:
                 state.new_game_step = 0
                 index = list_start(state.selected_genre, len(GENRES), visible) + row
@@ -2191,7 +2525,7 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     state.draft_title = ""
                     return
                 field = y - 4
-                if 0 <= field < 6:
+                if 0 <= field < 7:
                     state.selected_focus = field
                     if double_click:
                         handle_new_game_key(state, 10)
@@ -2230,6 +2564,41 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.selected_setting_action = (state.selected_setting_action + 1) % 3
         elif key in (10, 13, curses.KEY_ENTER):
             return activate_settings_action(state)
+        elif key == curses.KEY_MOUSE and dimensions is not None:
+            return handle_mouse(state, dimensions) is not False
+        return True
+    if state.training_open:
+        if key in ESCAPE_KEYS or key in (8, 127, curses.KEY_BACKSPACE):
+            close_training(state)
+        elif key == curses.KEY_UP:
+            state.selected_training_skill = (state.selected_training_skill - 1) % len(EMPLOYEE_SKILLS)
+        elif key == curses.KEY_DOWN:
+            state.selected_training_skill = (state.selected_training_skill + 1) % len(EMPLOYEE_SKILLS)
+        elif key in (10, 13, curses.KEY_ENTER):
+            confirm_training(state)
+        elif key == curses.KEY_MOUSE and dimensions is not None:
+            return handle_mouse(state, dimensions) is not False
+        return True
+    project = state.studio.current_project
+    if project and project.pending_decision is not None:
+        if key in ESCAPE_KEYS:
+            open_settings(state)
+        elif key in (curses.KEY_UP, curses.KEY_DOWN):
+            state.selected_project_decision = (state.selected_project_decision + 1) % 2
+        elif key in (10, 13, curses.KEY_ENTER):
+            resolve_project_decision(state, state.selected_project_decision)
+        elif key == curses.KEY_MOUSE and dimensions is not None:
+            return handle_mouse(state, dimensions) is not False
+        return True
+    if state.queue_cancellation:
+        count = queue_cancellation_count(state)
+        if key in (8, 127, curses.KEY_BACKSPACE):
+            state.queue_cancellation = ""
+        elif key in (curses.KEY_UP, curses.KEY_DOWN) and count:
+            delta = -1 if key == curses.KEY_UP else 1
+            state.selected_queue_cancellation = (state.selected_queue_cancellation + delta) % count
+        elif key in (10, 13, curses.KEY_ENTER):
+            cancel_selected_queue_item(state)
         elif key == curses.KEY_MOUSE and dimensions is not None:
             return handle_mouse(state, dimensions) is not False
         return True
@@ -2287,7 +2656,12 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             accept_contract_offer(state)
     elif state.modal == "games":
         games = live_games(state)
-        if key in (8, 127, curses.KEY_BACKSPACE):
+        project = state.studio.current_project
+        if project and project.pending_decision is not None and key in (curses.KEY_UP, curses.KEY_DOWN):
+            state.selected_project_decision = (state.selected_project_decision + 1) % 2
+        elif project and project.pending_decision is not None and key in (10, 13, curses.KEY_ENTER):
+            resolve_project_decision(state, state.selected_project_decision)
+        elif key in (8, 127, curses.KEY_BACKSPACE):
             state.modal = "main"
         elif key in (ord("u"), ord("U")) and games:
             state.modal = "update_planner"
@@ -2302,7 +2676,18 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             perform_footer_action(state, "game_marketing")
     elif state.modal == "update_planner":
         games = live_games(state)
-        if key in (8, 127, curses.KEY_BACKSPACE):
+        if state.queue_cancellation == "update":
+            count = queue_cancellation_count(state)
+            if key in (8, 127, curses.KEY_BACKSPACE):
+                state.queue_cancellation = ""
+            elif key in (curses.KEY_UP, curses.KEY_DOWN) and count:
+                delta = -1 if key == curses.KEY_UP else 1
+                state.selected_queue_cancellation = (state.selected_queue_cancellation + delta) % count
+            elif key in (10, 13, curses.KEY_ENTER):
+                cancel_selected_queue_item(state)
+        elif key in (ord("c"), ord("C")):
+            enter_queue_cancellation(state)
+        elif key in (8, 127, curses.KEY_BACKSPACE):
             if state.games_tab > 0:
                 state.games_tab -= 1
             else:
@@ -2326,7 +2711,18 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
                 queue_game_update(state, games[state.selected_game].game_id)
     elif state.modal == "marketing":
         targets = promotion_targets(state)
-        if key in (8, 127, curses.KEY_BACKSPACE):
+        if state.queue_cancellation == "promotion":
+            count = queue_cancellation_count(state)
+            if key in (8, 127, curses.KEY_BACKSPACE):
+                state.queue_cancellation = ""
+            elif key in (curses.KEY_UP, curses.KEY_DOWN) and count:
+                delta = -1 if key == curses.KEY_UP else 1
+                state.selected_queue_cancellation = (state.selected_queue_cancellation + delta) % count
+            elif key in (10, 13, curses.KEY_ENTER):
+                cancel_selected_queue_item(state)
+        elif key in (ord("c"), ord("C")):
+            enter_queue_cancellation(state)
+        elif key in (8, 127, curses.KEY_BACKSPACE):
             if state.marketing_tab == 1:
                 state.marketing_tab = 0
             else:

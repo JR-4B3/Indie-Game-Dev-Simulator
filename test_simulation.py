@@ -5,8 +5,12 @@ from datetime import timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from main import CTRL_S, active_top_tab, bottom_time_layout, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_insolvency_popup, draw_main_content, draw_marketing_screen, draw_new_game, draw_settings_popup, draw_team_screen, footer_button_ranges, footer_layout, global_action_layout, handle_key, handle_mouse, handle_new_game_key, new_game_panel_geometry, open_new_game, parse_args, team_panel_widths, top_context_uses_second_row, top_control_layout, top_tab_actions, top_tab_layout
+from game_data import GENRES
+from main import CTRL_S, active_top_tab, bottom_time_layout, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_insolvency_popup, draw_main_content, draw_marketing_screen, draw_new_game, draw_screen, draw_settings_popup, draw_team_screen, footer_button_ranges, footer_layout, global_action_layout, handle_key, handle_mouse, handle_new_game_key, new_game_panel_geometry, open_new_game, parse_args, team_panel_widths, top_context_uses_second_row, top_control_layout, top_tab_actions, top_tab_layout
 from simulation import (
+    GAME_FORMATS,
+    PRODUCTION_DECISIONS,
+    QUIRKS,
     START_DATE,
     TIME_LABELS,
     TIME_SPEEDS,
@@ -23,12 +27,16 @@ from simulation import (
     game_total_cost,
     hire_candidate,
     load_game,
+    market_report,
+    market_truth,
     monthly_fixed_cost,
     queue_game_update,
     recommended_team_size,
     refresh_applicants,
     save_game,
     start_project,
+    state_from_data,
+    state_to_data,
     toggle_auto_contracts,
 )
 
@@ -102,6 +110,23 @@ def rendered_main_content_text(state: GameState, width: int, height: int) -> lis
     with patch("main.curses.color_pair", return_value=0):
         draw_dashboard(screen, state, width)
         draw_main_content(screen, state, width, height, 10)
+    return [call.args[2] for window in windows for call in window.addstr.call_args_list]
+
+
+def rendered_screen_text(state: GameState, width: int, height: int) -> list[str]:
+    screen = MagicMock()
+    screen.getmaxyx.return_value = (height, width)
+    windows = [screen]
+
+    def create_window(panel_height, panel_width, _y, _x):
+        window = MagicMock()
+        window.getmaxyx.return_value = (panel_height, panel_width)
+        windows.append(window)
+        return window
+
+    screen.derwin.side_effect = create_window
+    with patch("main.curses.color_pair", return_value=0):
+        draw_screen(screen, state)
     return [call.args[2] for window in windows for call in window.addstr.call_args_list]
 
 
@@ -833,6 +858,38 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded.studio.active_update.work_done, 12)
         self.assertEqual(loaded.studio.update_queue[0].target_version, "1.10.10")
 
+    def test_waiting_updates_can_be_cancelled_without_touching_active_work(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        game.update_size = "Patch"
+        self.assertTrue(queue_game_update(state, game.game_id))
+        active = state.studio.active_update
+        game.update_size = "Content"
+        self.assertTrue(queue_game_update(state, game.game_id))
+        game.update_size = "Expansion"
+        self.assertTrue(queue_game_update(state, game.game_id))
+        self.assertEqual(state.studio.update_queue[-1].target_version, "1.11.10")
+        cash_before = state.studio.cash
+        state.modal = "update_planner"
+
+        handle_key(state, ord("c"))
+        self.assertEqual(state.queue_cancellation, "update")
+        self.assertTrue(any("CANCEL QUEUED UPDATE" in line for line in rendered_games_text(state, 190, 50)))
+        handle_key(state, 10)
+
+        self.assertIs(state.studio.active_update, active)
+        self.assertEqual(len(state.studio.update_queue), 1)
+        self.assertEqual(state.studio.update_queue[0].size, "Expansion")
+        self.assertEqual(state.studio.update_queue[0].target_version, "1.10.10")
+        self.assertEqual(state.studio.cash, cash_before - 135)
+        self.assertEqual(state.queue_cancellation, "update")
+        handle_key(state, curses.KEY_BACKSPACE)
+        self.assertEqual(state.modal, "update_planner")
+        self.assertEqual(state.queue_cancellation, "")
+
     def test_expanded_update_planner_shows_scope_area_qa_and_queue(self) -> None:
         state = GameState()
         start_project(state)
@@ -907,6 +964,35 @@ class SimulationTests(unittest.TestCase):
         self.assertNotEqual(first.promotion_id, second.promotion_id)
         advance(state, 1)
         self.assertEqual(state.studio.active_promotions, [])
+
+    def test_waiting_promotions_can_be_cancelled_with_a_partial_refund(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        state.studio.reputation = 100
+        self.assertTrue(buy_promotion(state, game.game_id, 0))
+        self.assertTrue(buy_promotion(state, game.game_id, 1))
+        self.assertTrue(buy_promotion(state, game.game_id, 2))
+        active = state.studio.active_promotions[0]
+        marketing_before = game.marketing_cost
+        cash_before = state.studio.cash
+        state.modal = "marketing"
+
+        handle_key(state, ord("c"))
+        handle_key(state, curses.KEY_DOWN)
+        self.assertTrue(any("CANCEL QUEUED PROMOTION" in line for line in rendered_marketing_text(state, 190, 50)))
+        handle_key(state, 10)
+
+        self.assertIs(state.studio.active_promotions[0], active)
+        self.assertEqual(len(state.studio.active_promotions), 2)
+        self.assertEqual(state.studio.cash, cash_before + 6_000)
+        self.assertEqual(game.marketing_cost, marketing_before - 6_000)
+        self.assertEqual(state.queue_cancellation, "promotion")
+        handle_key(state, curses.KEY_BACKSPACE)
+        self.assertEqual(state.modal, "marketing")
+        self.assertEqual(state.queue_cancellation, "")
 
     def test_game_tab_opens_promotion_for_current_project_without_releases(self) -> None:
         state = GameState()
@@ -1118,6 +1204,15 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(loaded.studio.contract_offers), len(state.studio.contract_offers))
         self.assertEqual(loaded.marketing_tab, 1)
 
+    def test_version_two_scope_selection_migrates_by_meaning(self) -> None:
+        state = GameState(selected_scope=1)
+        data = state_to_data(state)
+        data["version"] = 2
+
+        loaded = state_from_data(data, "legacy-v2.json")
+
+        self.assertEqual(loaded.selected_scope, 2)
+
     def test_accounting_preserves_expense_categories(self) -> None:
         state = GameState()
         self.assertTrue(start_project(state))
@@ -1296,6 +1391,151 @@ class SimulationTests(unittest.TestCase):
         handle_new_game_key(loaded, curses.KEY_DOWN)
         handle_new_game_key(loaded, 10)
         self.assertEqual(loaded.draft_title, "My First Commercial Game III")
+
+    def test_modern_mixed_concept_has_market_position_and_capability_gates(self) -> None:
+        state = GameState()
+        state.selected_genre = GENRES.index("Extraction Shooter")
+        state.selected_secondary_genre = GENRES.index("Roguelite")
+        state.selected_audience = 2
+        state.selected_format = next(index for index, item in enumerate(GAME_FORMATS) if item["name"] == "MMO")
+
+        report = market_report(state)
+        self.assertGreater(report["audience"], 0)
+        self.assertGreater(report["competitors"], 0)
+        self.assertFalse(start_project(state))
+        self.assertTrue(any("team 30" in message and "reputation 60" in message for message in state.logs))
+
+        state.selected_format = 0
+        solo_report = market_report(state)
+        truth = market_truth(state)
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        self.assertEqual((project.genre, project.secondary_genre), ("Extraction Shooter", "Roguelite"))
+        self.assertEqual(project.target_audience, "Core players")
+        self.assertEqual(project.addressable_audience, truth["audience"])
+        self.assertEqual((project.forecast_audience_low, project.forecast_audience_high), (solo_report["audience_low"], solo_report["audience_high"]))
+        self.assertNotEqual(project.addressable_audience, solo_report["audience"])
+
+    def test_production_reviews_pause_and_apply_a_real_tradeoff(self) -> None:
+        state = GameState(selected_scope=2, modal="analysis")
+        self.assertTrue(start_project(state))
+        state.modal = "analysis"
+        self.assertEqual(len(state.studio.current_project.scheduled_decisions), 1)
+        while state.studio.current_project.pending_decision is None:
+            advance(state, 1)
+
+        project = state.studio.current_project
+        decision = project.pending_decision
+        selected_option = PRODUCTION_DECISIONS[decision]["options"][1]["name"]
+        original_work = project.total_work
+        self.assertEqual(state.time_speed_index, 0)
+        review_text = rendered_screen_text(state, 120, 36)
+        self.assertTrue(any("Production Event" in line for line in review_text))
+        handle_key(state, 9)
+        self.assertEqual(state.modal, "analysis")
+        handle_key(state, curses.KEY_DOWN)
+        handle_key(state, 10)
+        self.assertIsNone(project.pending_decision)
+        self.assertNotEqual(project.total_work, original_work)
+        self.assertIn(selected_option, project.decisions_made[-1])
+        self.assertGreater(state.time_speed_index, 0)
+
+    def test_research_narrows_forecasts_without_changing_market_truth(self) -> None:
+        state = GameState()
+        state.selected_genre = GENRES.index("Battle Royale")
+        state.selected_secondary_genre = state.selected_genre
+        state.selected_audience = 5
+        state.selected_format = 2
+        truth_before = market_truth(state)
+        state.studio.team[0].research = 20
+        weak_report = market_report(state)
+        state.studio.team[0].research = 90
+        strong_report = market_report(state)
+
+        self.assertEqual(market_truth(state), truth_before)
+        self.assertGreater(strong_report["confidence"], weak_report["confidence"])
+        self.assertLess(strong_report["score_high"] - strong_report["score_low"], weak_report["score_high"] - weak_report["score_low"])
+        self.assertLess(strong_report["work_high"] - strong_report["work_low"], weak_report["work_high"] - weak_report["work_low"])
+
+    def test_employee_training_grows_skill_and_salary_while_removing_capacity(self) -> None:
+        state = GameState()
+        state.selected_employee = max(range(len(state.studio.applicants)), key=lambda index: state.studio.applicants[index].research)
+        self.assertTrue(hire_candidate(state))
+        employee = state.studio.team[-1]
+        state.team_tab = 1
+        state.selected_roster = 0
+        state.selected_training_skill = 4
+        research_before = employee.research
+        salary_before = employee.annual_salary
+        cash_before = state.studio.cash
+        output_before = contract_weekly_output(state.studio, "Generalist")
+
+        state.modal = "team"
+        handle_key(state, ord("l"))
+        self.assertTrue(state.training_open)
+        self.assertTrue(any("Professional Training" in line for line in rendered_screen_text(state, 120, 36)))
+        state.selected_training_skill = 4
+        handle_key(state, 10)
+        self.assertFalse(state.training_open)
+        self.assertEqual(employee.training_weeks_left, 4)
+        self.assertLess(state.studio.cash, cash_before)
+        self.assertLess(contract_weekly_output(state.studio, "Generalist"), output_before)
+        advance(state, 4)
+
+        self.assertEqual(employee.training_weeks_left, 0)
+        self.assertEqual(employee.research, research_before + 4)
+        self.assertGreater(employee.annual_salary, salary_before)
+        self.assertIn(employee.quirk, QUIRKS)
+
+    def test_founder_can_train_but_never_receives_a_salary_raise(self) -> None:
+        state = GameState(modal="team", team_tab=1, selected_roster=-1)
+        founder = state.studio.team[0]
+        research_before = founder.research
+        salary_before = founder.annual_salary
+
+        handle_key(state, ord("l"))
+        self.assertTrue(state.training_open)
+        state.selected_training_skill = 4
+        handle_key(state, 10)
+        self.assertEqual(founder.training_weeks_left, 4)
+        advance(state, 4)
+
+        self.assertEqual(founder.research, research_before + 4)
+        self.assertEqual(founder.annual_salary, salary_before)
+        handle_key(state, ord("d"))
+        self.assertEqual(len(state.studio.team), 1)
+        self.assertTrue(any("founder cannot be dismissed" in message for message in state.logs))
+
+    def test_two_early_generalists_produce_a_low_confidence_forecast(self) -> None:
+        state = GameState()
+        state.studio.team[0].research = 55
+        candidate = state.studio.applicants[0]
+        candidate.research = 65
+        candidate.trait = "Pragmatic"
+        self.assertTrue(hire_candidate(state))
+
+        report = market_report(state)
+
+        self.assertGreaterEqual(report["confidence"], 20)
+        self.assertLessEqual(report["confidence"], 40)
+
+    def test_paid_dlc_generates_post_launch_revenue(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[0]
+        advance(state, 1)
+        game.update_size = "Paid DLC"
+        revenue_before = game.net_revenue
+        self.assertTrue(queue_game_update(state, game.game_id))
+        job = state.studio.active_update
+        job.work_done = job.required_work
+        job.bugs_fixed = job.bugs_found
+        advance(state, 1)
+        self.assertEqual(game.dlcs_released, 1)
+        self.assertGreater(game.dlc_revenue, 0)
+        self.assertGreater(game.net_revenue, revenue_before)
 
 if __name__ == "__main__":
     unittest.main()
