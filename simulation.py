@@ -355,13 +355,25 @@ class Project:
     marketing_cost: float = 0.0
     cost_history_complete: bool = False
     known_defects: float = 0.0
+    bug_work: float = 0.0
+    bug_work_done: float = 0.0
 
     @property
     def progress(self) -> float:
         return min(1.0, self.work_done / self.total_work)
 
     @property
+    def bug_progress(self) -> float:
+        return min(1.0, self.bug_work_done / self.bug_work) if self.bug_work else 0.0
+
+    @property
+    def remaining_work(self) -> float:
+        return max(0.0, self.total_work - self.work_done) + max(0.0, self.bug_work - self.bug_work_done)
+
+    @property
     def phase(self) -> str:
+        if self.bug_work > 0:
+            return "Bug fixing"
         progress = self.progress
         if progress < 0.12:
             return "Prototype"
@@ -445,6 +457,11 @@ class ReleasedGame:
     dlcs_released: int = 0
     dlc_revenue: float = 0.0
     production_decisions: list[str] = field(default_factory=list)
+    user_rating: float = 0.0
+    press_rating: float = 0.0
+    user_trend: float = 0.0
+    sales_history: list[int] = field(default_factory=list)
+    chart_peak: int = 0
 
     @property
     def known_bug_count(self) -> int:
@@ -566,6 +583,18 @@ class CompetitorGame:
     weeks_left: int
     size: float
     released_week: int = 0
+    weekly_units: float = 0.0
+    units_sold: int = 0
+
+
+@dataclass
+class ChartEntry:
+    title: str
+    studio_name: str
+    genre: str
+    weekly_units: int
+    score: int
+    game_id: int = 0
 
 
 @dataclass
@@ -1347,6 +1376,13 @@ def update_team_load(studio: Studio) -> float:
     return update_size_by_name(studio.active_update.size)["team"]
 
 
+def live_title_count(studio: Studio) -> int:
+    """Live games that consume live-ops capacity; the pre-studio
+    back-catalogue titles are maintenance-free and don't count."""
+    historical = {game.game_id for game in studio.catalog if game.release_date == "Historical"}
+    return sum(1 for sale in studio.active_sales if sale.game_id not in historical)
+
+
 def capacity_drains(studio: Studio) -> list[str]:
     """Human-readable list of everything currently slowing original work.
 
@@ -1366,7 +1402,7 @@ def capacity_drains(studio: Studio) -> list[str]:
     training = sum(1 for employee in studio.team if employee.training_weeks_left)
     if training:
         drains.append(f"{training} in training")
-    live_titles = len(studio.active_sales)
+    live_titles = live_title_count(studio)
     if live_titles:
         support_load = min(0.30, 0.04 * live_titles)
         noun = "title" if live_titles == 1 else "titles"
@@ -1486,7 +1522,7 @@ def projected_weekly_output(studio: Studio, focus: list[int] | tuple[int, ...]) 
         output *= 1.10
     if studio.contract:
         output *= 0.55
-    output *= max(0.70, 1 - 0.04 * len(studio.active_sales))
+    output *= max(0.70, 1 - 0.04 * live_title_count(studio))
     output *= max(0.25, 1 - marketing_team_load(studio) - update_team_load(studio))
     return max(1.0, output)
 
@@ -1846,6 +1882,9 @@ def finish_project(state: GameState) -> None:
     game_id = studio.next_game_id
     studio.next_game_id += 1
     known_bugs = min(project.known_defects, max(0, project.defects - 0.01))
+    rating_rng = random.Random(studio.seed + game_id * 37 + state.clock.week)
+    press_rating = max(20.0, min(98.0, score + rating_rng.uniform(-5, 4)))
+    user_rating = max(15.0, min(99.0, score + rating_rng.uniform(-4, 6) - math.floor(known_bugs) * 0.8))
     game = ReleasedGame(
         game_id,
         project.title,
@@ -1881,6 +1920,8 @@ def finish_project(state: GameState) -> None:
         market_score=project.market_score,
         hosting_rate=project.hosting_rate,
         production_decisions=list(project.decisions_made),
+        user_rating=round(user_rating, 1),
+        press_rating=round(press_rating, 1),
     )
     studio.catalog.append(game)
     ensure_franchise_for_release(state, project, game, units, score)
@@ -1904,7 +1945,7 @@ def finish_project(state: GameState) -> None:
     studio.current_project = None
     studio.released_games += 1
     studio.reputation = max(0, studio.reputation + (score - 50) / 12)
-    launch_followers = max(5, round(units * (0.05 + score / 2_000)))
+    launch_followers = max(5, round(units * (0.05 + (score / 100) ** 2 * 0.4)))
     studio.followers += launch_followers
     studio.genre_fans[project.genre] = studio.genre_fans.get(project.genre, 0) + launch_followers
     studio.topic_fans[project.topic] = studio.topic_fans.get(project.topic, 0) + launch_followers
@@ -2014,31 +2055,44 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
     if studio.contract:
         total_output *= 0.55
         quality *= 0.55
-    support_factor = max(0.70, 1 - 0.04 * len(studio.active_sales))
+    support_factor = max(0.70, 1 - 0.04 * live_title_count(studio))
     total_output *= support_factor
     quality *= support_factor
     operations_factor = max(0.25, 1 - marketing_team_load(studio) - update_team_load(studio))
     total_output *= operations_factor
     quality *= operations_factor
     uncapped_output = total_output
-    total_output = min(total_output, project.total_work - project.work_done)
-    if project.next_decision < len(project.scheduled_decisions):
-        gate = PRODUCTION_DECISIONS[project.scheduled_decisions[project.next_decision]]
-        gate_work = project.total_work * gate["threshold"]
-        total_output = min(total_output, max(0, gate_work - project.work_done))
+    bug_fixing = project.bug_work > 0
+    if bug_fixing:
+        total_output = min(total_output, project.bug_work - project.bug_work_done)
+        quality = 0.0
+    else:
+        total_output = min(total_output, project.total_work - project.work_done)
+        if project.next_decision < len(project.scheduled_decisions):
+            gate = PRODUCTION_DECISIONS[project.scheduled_decisions[project.next_decision]]
+            gate_work = project.total_work * gate["threshold"]
+            total_output = min(total_output, max(0, gate_work - project.work_done))
     quality *= total_output / max(1, uncapped_output)
-    project.work_done += total_output
-    project.quality_points += quality
     code_skill = sum(employee.code for employee in studio.team) / len(studio.team)
     if contributors:
         defect_factor = defect_factor ** (1 / contributors)
     defect_factor *= 0.75 if "qa" in studio.upgrades else 1.0
-    defect_factor *= 1 + 0.04 * max(0, contributors - 1)
-    project.defects += total_output * max(0.015, (0.13 - code_skill / 900)) * defect_factor
+    defect_factor *= 1 + 0.07 * max(0, contributors - 1)
+    if bug_fixing:
+        project.bug_work_done += total_output
+        fixed = min(project.known_defects, total_output / BUG_FIX_WORK_PER_DEFECT)
+        project.defects = max(0.0, project.defects - fixed)
+        project.known_defects = max(0.0, project.known_defects - fixed)
+    else:
+        project.work_done += total_output
+        project.quality_points += quality
+        project.defects += total_output * max(0.015, (0.13 - code_skill / 900)) * defect_factor
     daily_fix = min(project.known_defects, project.known_defects * 0.012 * code_skill / 55)
     project.defects = max(0.0, project.defects - daily_fix)
     project.known_defects = max(0.0, project.known_defects - daily_fix)
-    if project.progress < 0.30:
+    if bug_fixing:
+        discovery_rate = 0.50
+    elif project.progress < 0.30:
         discovery_rate = 0.04
     elif project.progress < 0.72:
         discovery_rate = 0.09
@@ -2065,8 +2119,15 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
                 state.time_speed_index = 0
             state.log(f"Production paused for {project.title}: {gate['title']} requires a decision.")
             return
-    if project.work_done >= project.total_work - 0.01:
-        finish_project(state)
+    if project.bug_work > 0:
+        if project.bug_work_done >= project.bug_work - 0.01:
+            finish_project(state)
+    elif project.work_done >= project.total_work - 0.01:
+        if project.defects > 0.5:
+            project.bug_work = project.defects * BUG_FIX_WORK_PER_DEFECT
+            state.log(f"{project.title} entered bug fixing: {project.defects:.0f} defects from development must be cleared before release.")
+        else:
+            finish_project(state)
 
 
 def buy_promotion(state: GameState, game_id: int, promotion_index: int) -> bool:
@@ -2350,7 +2411,7 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
         sale.units_sold += round(units)
         sale.gross_revenue += gross
         sale.net_revenue += net
-        gained = round(units * max(0.01, sale.score / 1_500))
+        gained = round(units * max(0.01, (sale.score / 100) ** 2 * 0.2))
         studio.followers += gained
         if sale.genre:
             studio.genre_fans[sale.genre] = studio.genre_fans.get(sale.genre, 0) + gained
@@ -2389,6 +2450,15 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
             franchise = franchise_by_id(studio, game.franchise_id)
             if franchise:
                 franchise.reputation += (game.score - franchise.reputation) * 0.05
+            service = min(8.0, game.updates_released * 1.5)
+            bug_drag = min(28.0, game.known_bugs * 1.6)
+            user_target = max(5.0, min(99.0, game.score + service - bug_drag))
+            previous_user = game.user_rating
+            game.user_rating += (user_target - game.user_rating) * 0.12
+            game.user_trend = game.user_rating - previous_user
+            game.press_rating += (game.score - game.press_rating) * 0.03
+            game.sales_history.append(round(week_units))
+            del game.sales_history[:-16]
         else:
             hype_lift = 0
         tail = min(0.91, 0.55 + sale.score * 0.0035 + (0.02 if "analytics" in studio.upgrades else 0))
@@ -2712,6 +2782,9 @@ def process_media_ventures_week(state: GameState) -> None:
             state.log(f"{franchise.name}: the {label} adaptation released to {verdict} reception: ${payout:,} in licensing and royalties.")
 
 
+BUG_FIX_WORK_PER_DEFECT = 1.6
+
+
 def seed_market(state: GameState) -> None:
     studio = state.studio
     rng = random.Random(studio.seed * 3 + 77)
@@ -2746,6 +2819,17 @@ def seed_market(state: GameState) -> None:
                 )
             )
         competitor.cooldown = rng.randint(1, 6)
+        for seed_index, weeks_ago in enumerate((rng.randint(2, 6), rng.randint(8, 14))):
+            franchise = competitor.franchises[0] if competitor.franchises and rng.random() < 0.6 else None
+            genre = franchise.genre if franchise else rng.choice(competitor.genres)
+            quality = max(25, min(96, round(competitor.reputation + rng.uniform(-12, 10))))
+            hype = min(200, (25 + competitor.size * 10 + (franchise.value / 14 if franchise else 0)) * rng.uniform(0.7, 1.3))
+            title = f"{franchise.name} {roman_number(max(1, franchise.entries - seed_index))}" if franchise else generate_game_title(genre, rng.choice(TOPICS), studio.seed + competitor.competitor_id * 7 + weeks_ago)
+            launch = hype * 11 * (0.4 + competitor.size / 5) * (0.5 + competitor.fanbase / 600_000) * (0.55 + quality / 150)
+            weekly = max(40.0, launch * min(0.90, 0.50 + quality * 0.004) ** weeks_ago)
+            competitor.recent_releases.append(
+                CompetitorGame(title, franchise.name if franchise else "", genre, quality, round(hype, 1), 0, competitor.size, released_week=1, weekly_units=weekly, units_sold=round(launch * weeks_ago * 0.6))
+            )
         studio.competitors.append(competitor)
 
 
@@ -2763,7 +2847,9 @@ def process_market_week(state: GameState) -> None:
             del competitor.recent_releases[6:]
         competitor.cooldown -= 1
         if competitor.cooldown <= 0 and len(competitor.in_development) < (2 if competitor.size >= 5 else 1):
-            franchise = rng.choice(competitor.franchises) if competitor.franchises and rng.random() < 0.5 else None
+            busy = {game.franchise_name for game in competitor.in_development}
+            available_ips = [item for item in competitor.franchises if item.name not in busy]
+            franchise = rng.choice(available_ips) if available_ips and rng.random() < 0.5 else None
             genre = franchise.genre if franchise else rng.choice(competitor.genres)
             dev_weeks = max(4, round(rng.uniform(10, 30) / (0.5 + competitor.size / 6)))
             quality = max(25, min(96, round(competitor.reputation + rng.uniform(-12, 10))))
@@ -2775,6 +2861,16 @@ def process_market_week(state: GameState) -> None:
             release = game
             franchise = next((item for item in competitor.franchises if item.name == release.franchise_name), None)
             competitor.fanbase += round(1_000 * competitor.size * release.quality / 80)
+            launch_units = round(
+                release.hype
+                * 11
+                * (0.4 + competitor.size / 5)
+                * (0.5 + competitor.fanbase / 600_000)
+                * (0.55 + release.quality / 150)
+                * rng.uniform(0.85, 1.15)
+            )
+            release.weekly_units = float(max(40, launch_units))
+            release.units_sold += max(40, launch_units)
             if franchise:
                 franchise.entries += 1
                 franchise.awareness = min(6_000, franchise.awareness + 20 + release.hype / 4)
@@ -2791,6 +2887,38 @@ def process_market_week(state: GameState) -> None:
                     sale.weekly_units = max(sale.evergreen_units, round(sale.weekly_units * (1 - impact)))
             if player_genre_games and impact > 0.08:
                 state.log(f"Your {release.genre} sales dipped as {release.title} pulled players away ({impact:.0%} demand shift).")
+        for game in competitor.recent_releases:
+            if game.released_week and game.released_week < state.clock.week and game.weekly_units > 0:
+                tail = min(0.90, 0.50 + game.quality * 0.004)
+                game.weekly_units *= tail
+                game.units_sold += round(game.weekly_units)
+    positions = chart_positions(state)
+    for game in studio.catalog:
+        position = positions.get(game.game_id)
+        if position is None:
+            continue
+        if position == 1 and game.chart_peak != 1:
+            state.log(f"{game.title} topped the charts this week - your studio now leads the market.")
+        if not game.chart_peak or position < game.chart_peak:
+            game.chart_peak = position
+
+
+def market_chart(state: GameState, limit: int = 10) -> list[ChartEntry]:
+    entries = []
+    for competitor in state.studio.competitors:
+        for game in competitor.recent_releases:
+            if game.weekly_units >= 100 and state.clock.week - game.released_week <= 30:
+                entries.append(ChartEntry(game.title, competitor.name, game.genre, round(game.weekly_units), game.quality))
+    for sale in state.studio.active_sales:
+        game = game_by_id(state.studio, sale.game_id)
+        if game is not None:
+            entries.append(ChartEntry(game.title, "Your studio", game.genre, sale.weekly_units, game.score, game.game_id))
+    entries.sort(key=lambda item: item.weekly_units, reverse=True)
+    return entries[:limit]
+
+
+def chart_positions(state: GameState, limit: int = 10) -> dict[int, int]:
+    return {entry.game_id: rank for rank, entry in enumerate(market_chart(state, limit), 1) if entry.game_id}
 
 
 def genre_release_pressure(studio: Studio, genre: str) -> float:
@@ -2874,6 +3002,9 @@ def studio_from_data(data: dict) -> Studio:
     for item in values.get("catalog", []):
         game = ReleasedGame(**item)
         game.units_sold = round(game.units_sold)
+        if "user_rating" not in item:
+            game.user_rating = float(game.score)
+            game.press_rating = float(game.score)
         if "actual_bugs" not in item:
             infer_legacy_game_bugs(game)
         if "version" not in item:

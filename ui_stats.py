@@ -11,6 +11,7 @@ from simulation import (
     expense_breakdown,
     game_profit,
     game_total_cost,
+    market_chart,
     monthly_fixed_cost,
     recommended_team_size,
     revenue_breakdown,
@@ -181,11 +182,18 @@ def draw_market_view(panel: curses.window, state: GameState) -> None:
     studio = state.studio
     own_width = max(30, width // 3)
     add_text(panel, 3, 2, "YOUR IPs", own_width - 2, curses.A_BOLD)
+    ip_slots = max(1, (height - 10) // 2)
     if studio.franchises:
-        for row, franchise in enumerate(studio.franchises[: max(0, height - 6)], 4):
+        for row, franchise in enumerate(studio.franchises[:ip_slots], 4):
             add_text(panel, row, 2, f"{franchise.name[:18]:<18} {franchise.rank_name:<10} r{franchise.entries}", own_width - 2, curses.color_pair(3) if franchise.rank >= 3 else 0)
     else:
         add_text(panel, 4, 2, "Release a game to found an IP.", own_width - 2)
+    chart_top = 5 + ip_slots
+    add_text(panel, chart_top, 2, "TOP CHART THIS WEEK", own_width - 2, curses.A_BOLD)
+    chart_title_width = max(10, own_width - 14)
+    for index, entry in enumerate(market_chart(state)[: max(0, height - chart_top - 2)], 1):
+        entry_attr = curses.color_pair(3) | curses.A_BOLD if entry.game_id else 0
+        add_text(panel, chart_top + index, 2, f"{index:>2} {entry.title[:chart_title_width]:<{chart_title_width}} {entry.weekly_units:>7,}", own_width - 2, entry_attr)
     competitors = studio.competitors
     state.selected_stat = min(state.selected_stat, max(0, len(competitors) - 1))
     x = own_width + 4
@@ -202,7 +210,7 @@ def draw_market_view(panel: curses.window, state: GameState) -> None:
             activity.append(f"out: {competitor.recent_releases[0].title} {competitor.recent_releases[0].quality}/100")
         text = f"{competitor.name[:22]:<22} {competitor.tier:<9} {competitor.fanbase:>10,} {competitor.reputation:>4.0f}  {ips}"
         rows.append((text[:available], curses.color_pair(2)))
-    draw_selectable_list(panel, rows, state.selected_stat, True, y=4, width=available, visible=max(1, height - 9))
+    draw_selectable_list(panel, rows, state.selected_stat, True, y=4, x=x, width=available, visible=max(1, height - 9))
     if competitors:
         selected = competitors[state.selected_stat]
         detail_y = height - 3

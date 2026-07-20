@@ -193,14 +193,6 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
                 ("[Up/Dn]" if compact else control_label("Up/Down", "Option"), "production_option"),
                 ("[Enter]" if compact else control_label("Enter", "Commit Decision"), "resolve_decision"),
             ]
-        games = live_games(state)
-        if not games:
-            actions = []
-            if state.studio.current_project is None:
-                actions.append(("[N]" if compact else control_label("N", "New Game"), "new"))
-            if state.studio.current_project:
-                actions.append(("[P]" if compact else control_label("P", "Promotion"), "game_marketing"))
-            return actions
         return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing"), ("[O]" if compact else control_label("O", "Spin-off"), "game_spinoff")]
     if state.modal == "update_planner":
         if state.queue_cancellation == "update":

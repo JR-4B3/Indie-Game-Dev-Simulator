@@ -1,4 +1,4 @@
-"""Hub page: studio dashboard (finance + production command) and the\nteam/catalogue/trend/activity overview panels below it."""
+"""Hub page: studio dashboard (finance + production command) and the\nteam/market/activity overview panels below it."""
 
 from __future__ import annotations
 
@@ -7,14 +7,16 @@ import curses
 from simulation import (
     SKILLS,
     GameState,
+    chart_positions,
     game_profit,
+    market_chart,
     monthly_fixed_cost,
     projected_weekly_output,
     recommended_team_size,
     runway_months,
     sale_for_game,
 )
-from ui_common import add_text, draw_box, game_title, live_games, meter, money, rating_text
+from ui_common import add_text, draw_box, draw_chart_rows, game_title, live_games, meter, money, rating_text
 
 
 def draw_live_operations(panel: curses.window, state: GameState, panel_width: int, start_row: int) -> None:
@@ -78,17 +80,19 @@ def draw_dashboard(screen: curses.window, state: GameState, width: int) -> int:
             "Pre-production": "Pre-prod",
             "Alpha / content lock": "Alpha",
             "Beta / release prep": "Beta",
+            "Bug fixing": "Bugfix",
         }
         phase = phase_labels.get(project.phase, project.phase)
         phase_width = min(10, max(8, right_width - 20))
         bar_width = max(8, right_width - 12 - phase_width)
-        filled = round(bar_width * project.progress)
+        bar_value = project.bug_progress if project.bug_work else project.progress
+        filled = round(bar_width * bar_value)
         bar = "█" * filled + "░" * (bar_width - filled)
         weekly_output = projected_weekly_output(studio, project.focus)
-        remaining = max(1, round((project.total_work - project.work_done) / weekly_output))
+        remaining = max(1, round(project.remaining_work / weekly_output))
         add_text(project_panel, 1, 2, "GAME", 4, curses.A_BOLD)
         add_text(project_panel, 1, 8, project.title, right_width - 10)
-        add_text(project_panel, 2, 2, f"{phase[:phase_width]} [{bar}] {project.progress:>4.0%}", right_width - 4, curses.color_pair(4))
+        add_text(project_panel, 2, 2, f"{phase[:phase_width]} [{bar}] {bar_value:>4.0%}", right_width - 4, curses.color_pair(4))
         add_text(project_panel, 3, 2, "PLAN", 4)
         plan_text = f"Week {project.weeks} | about {remaining}w left / {project.planned_weeks}w planned"
         add_text(project_panel, 3, 8, plan_text, right_width - 10)
@@ -146,28 +150,22 @@ def draw_main_content(screen: curses.window, state: GameState, width: int, heigh
                 add_text(team, row, 2, text, team_inner_width, attr)
 
         if catalogue_height >= 3:
-            portfolio = screen.derwin(catalogue_height, right_width, catalogue_y, left_width + 1)
-            draw_box(portfolio, f"Game Catalogue | {len(studio.catalog)} {'game' if len(studio.catalog) == 1 else 'games'}")
-            portfolio_inner_width = right_width - 4
-            catalogue_expanded = width >= 170
-            if catalogue_expanded:
-                portfolio_title_width = max(18, portfolio_inner_width - 53)
-                portfolio_header = f"{'GAME':<{portfolio_title_width}} {'RATING':>6} {'HYPE':>6} {'BUGS':>6} {'SALES':>7} {'REVENUE':>11} {'PROFIT':>11}"
+            pulse = screen.derwin(catalogue_height, right_width, catalogue_y, left_width + 1)
+            draw_box(pulse, "Market Pulse")
+            pulse_inner = right_width - 4
+            latest = live_games(state)[0] if live_games(state) else None
+            add_text(pulse, 1, 2, "CHART POSITION", pulse_inner, curses.A_BOLD)
+            positions = chart_positions(state)
+            position = positions.get(latest.game_id) if latest else None
+            if position:
+                add_text(pulse, 2, 2, f"#{position} {latest.title}", pulse_inner, curses.color_pair(3) | curses.A_BOLD)
+            elif latest:
+                add_text(pulse, 2, 2, "Grow fans and sales to crack the charts.", pulse_inner)
             else:
-                portfolio_title_width = max(12, portfolio_inner_width - 39)
-                portfolio_header = f"{'GAME':<{portfolio_title_width}} {'RATE':>4} {'HYPE':>4} {'BUGS':>4} {'SALES':>5} {'REVENUE':>8} {'PROFIT':>8}"
-            add_text(portfolio, 1, 2, portfolio_header, portfolio_inner_width, curses.A_BOLD)
-            for row, game in enumerate(live_games(state)[: catalogue_height - 3], 2):
-                sale = sale_for_game(studio, game.game_id)
-                if catalogue_expanded:
-                    profit = money(game_profit(game)) if game.cost_history_complete else "n/a"
-                    title = game_title(game, portfolio_title_width)
-                    text = f"{title:<{portfolio_title_width}} {rating_text(game):>6} {game.hype:>6.0f} {game.known_bug_count:>6} {(sale.week_to_date if sale else 0):>7,} {money(game.net_revenue):>11} {profit:>11}"
-                else:
-                    profit = money(game_profit(game)) if game.cost_history_complete else "n/a"
-                    title = game_title(game, portfolio_title_width)
-                    text = f"{title:<{portfolio_title_width}} {rating_text(game):>4} {game.hype:>4.0f} {game.known_bug_count:>4} {(sale.week_to_date if sale else 0):>5,} {money(game.net_revenue):>8} {profit:>8}"
-                add_text(portfolio, row, 2, text, portfolio_inner_width, curses.color_pair(4) if game.score >= 70 else 0)
+                add_text(pulse, 2, 2, "Release a game to enter the charts.", pulse_inner)
+            add_text(pulse, 3, 2, "TOP CHART THIS WEEK", pulse_inner, curses.A_BOLD)
+            chart = market_chart(state)
+            draw_chart_rows(pulse, chart, latest.game_id if latest else 0, 4, pulse_inner, max(3, catalogue_height - 5))
 
     else:
         available = max(0, journal_y - y)

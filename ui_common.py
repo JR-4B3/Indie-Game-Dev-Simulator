@@ -172,6 +172,26 @@ def draw_list(window: curses.window, items: list[str], selected: int, active: bo
     draw_selectable_list(window, rows, selected, active, width=width - 4, visible=max(1, height - 2))
 
 
+def draw_chart_rows(window: curses.window, chart: list, selected_game_id: int, y: int, inner: int, count: int) -> int:
+    """Top-chart rows with unit bars; the selected game is highlighted and any
+    studio title is dimmed. Returns the first free row below the block."""
+    bar_width = 7
+    peak_units = max((entry.weekly_units for entry in chart), default=1) or 1
+    studio_width = max(6, min(12, inner - 36))
+    title_width = max(10, inner - studio_width - bar_width - 14)
+    for index, entry in enumerate(chart[:count], 1):
+        filled = max(1, round(bar_width * entry.weekly_units / peak_units))
+        if selected_game_id and entry.game_id == selected_game_id:
+            entry_attr = curses.color_pair(COLOR_ACCENT) | curses.A_BOLD
+        elif entry.game_id:
+            entry_attr = curses.color_pair(COLOR_BORDER)
+        else:
+            entry_attr = 0
+        studio_name = "YOU" if entry.game_id else entry.studio_name
+        add_text(window, y + index - 1, 2, f"{index:>2} {entry.title[:title_width]:<{title_width}} {studio_name[:studio_width]:<{studio_width}} {'█' * filled:<{bar_width}} {entry.weekly_units:>7,}", inner, entry_attr)
+    return y + min(len(chart), count)
+
+
 def draw_lines(window: curses.window, lines: list[tuple[str, int]], y: int, x: int, width: int) -> None:
     """Render a stack of ``(text, attr)`` lines; the standard detail-block idiom."""
     for offset, (text, attr) in enumerate(lines):
@@ -225,6 +245,16 @@ def wrap_text(text: str, width: int) -> list[str]:
 def live_games(state) -> list:
     """Released games, newest first, as shown in every catalogue list."""
     return list(reversed(state.studio.catalog))
+
+
+def catalogue_entries(state) -> list:
+    """Catalogue rows for the Game page: the in-development project (id 0)
+    first, then released games newest first."""
+    entries = []
+    if state.studio.current_project:
+        entries.append((0, state.studio.current_project))
+    entries.extend((game.game_id, game) for game in live_games(state))
+    return entries
 
 
 def promotion_targets(state) -> list[tuple[int, str, float, str]]:

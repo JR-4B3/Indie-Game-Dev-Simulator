@@ -65,9 +65,9 @@ from ui_chrome import (
     top_control_layout,
     training_popup_geometry,
 )
-from ui_common import list_start, live_games, promotion_targets
+from ui_common import catalogue_entries, list_start, live_games, promotion_targets
 from ui_contracts import contract_board_width
-from ui_games import PRODUCTION_BANNER_HEIGHT, catalogue_table_height, games_list_width, summary_panel_width
+from ui_games import catalogue_table_height, catalogue_table_width, games_list_width, summary_panel_width
 from ui_newgame import PLAN_FIELDS, new_game_panel_geometry, select_topic_at, sequel_choices, topic_order, topic_position
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
@@ -131,6 +131,15 @@ def cancel_selected_queue_item(state: GameState) -> bool:
     return False
 
 
+def released_selection_index(state: GameState) -> int:
+    """On the Game page ``selected_game`` indexes the catalogue entries, where
+    the in-development project is row 0; convert to a released-games index for
+    planner, marketing, and spin-off actions."""
+    games = live_games(state)
+    offset = 1 if state.modal == "games" and state.studio.current_project else 0
+    return max(0, min(state.selected_game - offset, len(games) - 1))
+
+
 def perform_footer_action(state: GameState, action: str) -> bool:
     if action == "quit":
         return False
@@ -161,9 +170,13 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         state.modal = "games"
         state.games_tab = 0
     elif action == "open_update_planner":
-        state.modal = "update_planner"
-        state.games_tab = 0
-        state.queue_cancellation = ""
+        if live_games(state):
+            state.selected_game = released_selection_index(state)
+            state.modal = "update_planner"
+            state.games_tab = 0
+            state.queue_cancellation = ""
+        else:
+            state.log("Release a game before planning updates.")
     elif action == "update_game_selection":
         games = live_games(state)
         if games:
@@ -194,15 +207,17 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         targets = promotion_targets(state)
         if targets:
             games = live_games(state)
-            selected_id = games[min(state.selected_game, len(games) - 1)].game_id if games else 0
+            project_selected = state.modal == "games" and state.studio.current_project and state.selected_game == 0
+            selected_id = 0 if project_selected else (games[released_selection_index(state)].game_id if games else 0)
             state.selected_promotion_target = next((index for index, target in enumerate(targets) if target[0] == selected_id), 0)
         state.modal = "marketing"
         state.marketing_tab = 0
         state.queue_cancellation = ""
     elif action == "game_spinoff":
         games = live_games(state)
-        if games:
-            game = games[min(state.selected_game, len(games) - 1)]
+        project_selected = state.modal == "games" and state.studio.current_project and state.selected_game == 0
+        if games and not project_selected:
+            game = games[released_selection_index(state)]
             prepare_spinoff(state, game)
     elif action == "production_option":
         state.selected_project_decision = (state.selected_project_decision + 1) % 2
@@ -518,8 +533,9 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             handle_team_key(state, key)
         elif state.modal == "contracts" and state.studio.contract_offers:
             state.selected_contract = (state.selected_contract + (-1 if wheel_up else 1)) % len(state.studio.contract_offers)
-        elif state.modal == "games" and state.studio.catalog:
-            state.selected_game = (state.selected_game + (-1 if wheel_up else 1)) % len(state.studio.catalog)
+        elif state.modal == "games" and (state.studio.catalog or state.studio.current_project):
+            entry_count = len(state.studio.catalog) + (1 if state.studio.current_project else 0)
+            state.selected_game = (state.selected_game + (-1 if wheel_up else 1)) % entry_count
         elif state.modal == "update_planner" and state.games_tab == 0 and state.studio.catalog:
             state.selected_game = (state.selected_game + (-1 if wheel_up else 1)) % len(state.studio.catalog)
         elif state.modal == "marketing":
@@ -666,23 +682,24 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     resolve_project_decision(state, option_row)
             return
         games = live_games(state)
-        top = 2 + (PRODUCTION_BANNER_HEIGHT if state.studio.current_project else 0)
+        rows = catalogue_entries(state) if state.modal == "games" else [(game.game_id, game) for game in games]
+        top = 2
         if width >= 120:
             row = y - top - 2
-            panel_height = height - 4 - (top - 2)
-            catalog_height = catalogue_table_height(len(games), panel_height)
-            in_catalog = top + 2 <= y < top + catalog_height - 1
+            panel_height = height - 4
+            catalog_height = catalogue_table_height(len(rows), panel_height)
+            in_catalog = top + 2 <= y < top + catalog_height - 1 and x <= catalogue_table_width(width)
             visible = catalog_height - 3
         else:
             row = y - top - 1
             list_width = games_list_width(width, state.modal == "update_planner")
             in_catalog = x <= list_width and row >= 0
-            visible = height - 6 - (top - 2)
+            visible = height - 6
         catalog_active = state.modal == "games" or state.games_tab == 0
-        if catalog_active and in_catalog and row >= 0 and games:
-            start = list_start(state.selected_game, len(games), visible)
+        if catalog_active and in_catalog and row >= 0 and rows:
+            start = list_start(state.selected_game, len(rows), visible)
             index = start + row
-            if 0 <= index < len(games):
+            if 0 <= index < len(rows):
                 state.selected_game = index
                 if double_click and state.modal == "update_planner":
                     state.games_tab = 1
@@ -1010,6 +1027,7 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
     elif state.modal == "games":
         games = live_games(state)
         project = state.studio.current_project
+        entry_count = len(games) + (1 if project else 0)
         if project and project.pending_decision is not None and key in (curses.KEY_UP, curses.KEY_DOWN):
             state.selected_project_decision = (state.selected_project_decision + 1) % 2
         elif project and project.pending_decision is not None and key in (10, 13, curses.KEY_ENTER):
@@ -1017,14 +1035,15 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
         elif key in (8, 127, curses.KEY_BACKSPACE):
             state.modal = "main"
         elif key in (ord("u"), ord("U")) and games:
+            state.selected_game = released_selection_index(state)
             state.modal = "update_planner"
             state.games_tab = 0
         elif key in (ord("n"), ord("N")):
             open_new_game(state)
-        elif key == curses.KEY_UP and games:
-            state.selected_game = (state.selected_game - 1) % len(games)
-        elif key == curses.KEY_DOWN and games:
-            state.selected_game = (state.selected_game + 1) % len(games)
+        elif key == curses.KEY_UP and entry_count:
+            state.selected_game = (state.selected_game - 1) % entry_count
+        elif key == curses.KEY_DOWN and entry_count:
+            state.selected_game = (state.selected_game + 1) % entry_count
         elif key in (ord("p"), ord("P")):
             perform_footer_action(state, "game_marketing")
         elif key in (ord("o"), ord("O")) and games:
@@ -1046,6 +1065,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             if state.games_tab > 0:
                 state.games_tab -= 1
             else:
+                if state.studio.current_project:
+                    state.selected_game += 1
                 state.modal = "games"
         elif state.games_tab == 0:
             if key == curses.KEY_UP and games:

@@ -27,6 +27,7 @@ from simulation import (
     buy_media_venture,
     buy_promotion,
     capacity_drains,
+    chart_positions,
     contract_weekly_output,
     cycle_game_update_size,
     estimated_update_weeks,
@@ -35,6 +36,7 @@ from simulation import (
     game_total_cost,
     hire_candidate,
     load_game,
+    market_chart,
     market_report,
     market_truth,
     monthly_fixed_cost,
@@ -263,10 +265,10 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(any(line.strip() == "CONTRACTS" for line in wide_text))
         self.assertTrue(any("[C] Auto contracts" in line for line in wide_text))
         self.assertTrue(any("TOP SKILL" in line and "PERSONALITY" in line for line in wide_text))
-        catalogue_header = next(line for line in wide_text if "REVENUE" in line and "PROFIT" in line and "BUGS" in line)
-        self.assertLess(catalogue_header.index("RATING"), catalogue_header.index("HYPE"))
-        self.assertLess(catalogue_header.index("HYPE"), catalogue_header.index("BUGS"))
-        self.assertLess(catalogue_header.index("BUGS"), catalogue_header.index("SALES"))
+        self.assertTrue(any(" Market Pulse " in line for line in wide_text))
+        self.assertTrue(any("CHART POSITION" in line for line in wide_text))
+        self.assertTrue(any("TOP CHART THIS WEEK" in line for line in wide_text))
+        self.assertFalse(any("-- outside the top 10" in line for line in wide_text))
         self.assertFalse(any("Recent Financial Trend" in line for line in wide_text))
         self.assertTrue(any("Recent Financial Trend" in line for line in compact_text))
         self.assertTrue(any(" Contracts " in line for line in compact_text))
@@ -448,14 +450,17 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(labels["buy_promotion"], "[Enter] Buy")
         marketing_text = rendered_marketing_text(state, 190, 50)
         self.assertTrue(any("Game Catalogue" in line for line in marketing_text))
-        marketing_header = next(line for line in marketing_text if "MONTHLY PLAYERS" in line and "NET REVENUE" in line)
-        game_header = next(line for line in rendered_games_text(state, 190, 50) if "MONTHLY PLAYERS" in line and "NET REVENUE" in line)
-        self.assertEqual(marketing_header, game_header)
-        self.assertLess(marketing_header.index("TITLE"), marketing_header.index("GENRE"))
+        marketing_header = next(line for line in marketing_text if "PLAYERS/M" in line and "CHART" in line)
+        game_header = next(line for line in rendered_games_text(state, 190, 50) if "PLAYERS/M" in line and "CHART" in line)
+        self.assertEqual(marketing_header.split(), game_header.split())
+        self.assertLess(marketing_header.index("TITLE"), marketing_header.index("HYPE"))
         self.assertLess(marketing_header.index("HYPE"), marketing_header.index("BUGS"))
-        self.assertLess(marketing_header.index("BUGS"), marketing_header.index("SALES/W"))
-        self.assertLess(marketing_header.index("SALES/W"), marketing_header.index("UNITS"))
-        self.assertLess(marketing_header.index("UNITS"), marketing_header.index("MONTHLY PLAYERS"))
+        self.assertLess(marketing_header.index("BUGS"), marketing_header.index("USER"))
+        self.assertLess(marketing_header.index("USER"), marketing_header.index("PRESS"))
+        self.assertLess(marketing_header.index("PRESS"), marketing_header.index("CHART"))
+        self.assertLess(marketing_header.index("CHART"), marketing_header.index("SALES/W"))
+        self.assertLess(marketing_header.index("SALES/W"), marketing_header.index("PLAYERS/M"))
+        self.assertLess(marketing_header.index("PLAYERS/M"), marketing_header.index("UNITS"))
         self.assertTrue(any("Selected Game" in line for line in marketing_text))
         self.assertTrue(any("Promotion Planning & Queue" in line for line in marketing_text))
         self.assertFalse(any("Promotion Targets" in line for line in marketing_text))
@@ -532,8 +537,9 @@ class SimulationTests(unittest.TestCase):
         handle_new_game_key(state, 10)
         self.assertIsNotNone(state.studio.current_project)
         self.assertEqual(state.modal, "games")
-        text = rendered_games_text(state, 120, 36)
-        self.assertTrue(any("IN PRODUCTION" in line and state.studio.current_project.title in line for line in text))
+        text = rendered_games_text(state, 190, 36)
+        self.assertTrue(any(state.studio.current_project.title in line and "dev" in line for line in text))
+        self.assertTrue(any("CAPACITY" in line for line in text))
 
         chooser = GameState(modal="new_game", new_game_step=-1)
         handle_new_game_key(chooser, curses.KEY_BACKSPACE)
@@ -783,23 +789,27 @@ class SimulationTests(unittest.TestCase):
         text = rendered_games_text(state, 200, 60)
 
         self.assertTrue(any("Game Catalogue | 1 game" in line for line in text))
-        self.assertTrue(any("Live Operations" in line for line in text))
-        self.assertTrue(any(" Advisor " in line for line in text))
-        self.assertTrue(any("CURRENT PLAN" in line for line in text))
-        self.assertTrue(any("PROMOTION CAPACITY" in line for line in text))
+        self.assertTrue(any("CRITICS & PLAYERS" in line for line in text))
+        self.assertTrue(any("AUDIENCE HEALTH" in line for line in text))
+        self.assertTrue(any("FRANCHISE IP" in line for line in text))
+        self.assertTrue(any(" Updates " in line for line in text))
+        self.assertTrue(any(" Promotion " in line for line in text))
+        self.assertTrue(any("RECOMMENDED ACTION" in line for line in text))
+        self.assertTrue(any("SALES TREND" in line for line in text))
+        self.assertTrue(any("PROMOTION QUEUE" in line for line in text))
         self.assertTrue(any("CATALOGUE RETURNS" in line for line in text))
         self.assertTrue(any("RECENT EVENTS" in line for line in text))
         self.assertTrue(any("Catalogue Economics & Activity" in line for line in text))
         self.assertFalse(any("permanently on sale" in line for line in text))
 
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         queue_game_update(state, game.game_id)
         queue_game_update(state, game.game_id)
         text = rendered_games_text(state, 200, 60)
         self.assertTrue(any("UPDATE QUEUE (2) | 1 active | 1 waiting" in line for line in text))
-        self.assertTrue(any("ACTIVE" in line and game.title in line and "-> v" in line for line in text))
-        self.assertTrue(any("WAITING" in line and game.title in line and "-> v" in line for line in text))
-        self.assertTrue(any(game.title in line and "-> v" in line for line in text))
+        self.assertTrue(any(line.startswith("1. " + game.title[:10]) and "Patch" in line for line in text))
+        self.assertTrue(any(line.startswith("2. " + game.title[:10]) and "Patch" in line for line in text))
+        self.assertFalse(any("-> v" in line and "Patch / Bug fixes" in line for line in text), "queue lines no longer carry the version arrow")
         self.assertFalse(any(line == "CONTROLS" for line in text))
 
     def test_games_screen_still_renders_at_minimum_terminal_size(self) -> None:
@@ -812,6 +822,50 @@ class SimulationTests(unittest.TestCase):
 
         self.assertTrue(any("Game Catalogue | 1 game" in line for line in text))
         self.assertTrue(any("Monthly players" in line for line in text))
+
+    def test_in_development_game_appears_in_catalogue_with_project_detail(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        state.modal = "games"
+        state.selected_game = 0
+
+        text = rendered_games_text(state, 190, 50)
+
+        self.assertTrue(any("Game Catalogue | 2 games" in line for line in text))
+        self.assertTrue(any(project.title in line and "(dev)" in line for line in text))
+        self.assertTrue(any("CAPACITY" in line for line in text))
+        self.assertTrue(any("CAPACITY" in line for line in text))
+        self.assertTrue(any("LAUNCH FORECAST" in line for line in text))
+        self.assertTrue(any("pre-launch" in line for line in text))
+
+        handle_key(state, curses.KEY_DOWN)
+        self.assertEqual(state.selected_game, 1)
+        text = rendered_games_text(state, 190, 50)
+        self.assertTrue(any("CRITICS & PLAYERS" in line for line in text))
+        self.assertTrue(any(game.title in line for line in text))
+
+        handle_key(state, curses.KEY_UP)
+        self.assertEqual(state.selected_game, 0)
+        handle_key(state, ord("u"))
+        self.assertEqual(state.modal, "update_planner")
+        self.assertEqual(state.selected_game, 0, "planner selection must map onto released games, not the project row")
+        handle_key(state, curses.KEY_BACKSPACE)
+        self.assertEqual(state.modal, "games")
+        self.assertEqual(state.selected_game, 1, "returning from the planner keeps the released game selected")
+
+    def test_hub_market_pulse_shows_up_to_ten_chart_entries(self) -> None:
+        state = GameState()
+        self.release_first_game(state)
+        text = rendered_main_content_text(state, 190, 50)
+        self.assertTrue(any(" Market Pulse " in line for line in text))
+        ranked = set()
+        for line in text:
+            token = line.strip().split(" ", 1)[0]
+            if token.isdigit() and 1 <= int(token) <= 10 and "█" in line:
+                ranked.add(int(token))
+        self.assertGreaterEqual(len(ranked), 8, "the hub pulse panel should render close to the full top 10")
 
     def test_new_studio_starts_today_with_real_overhead(self) -> None:
         state = GameState()
@@ -845,12 +899,12 @@ class SimulationTests(unittest.TestCase):
 
         project.work_done = project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         self.assertLess(game.known_bugs, game.actual_bugs)
         game.actual_bugs = 20
         game.known_bugs = 1
         game.reported_bug_count = 1
-        state.studio.active_sales[0].weekly_units = 10_000
+        state.studio.active_sales[-1].weekly_units = 10_000
 
         advance(state, 1)
 
@@ -858,12 +912,49 @@ class SimulationTests(unittest.TestCase):
         self.assertLess(game.known_bugs, game.actual_bugs)
         self.assertTrue(any("complained online" in message for message in state.logs))
 
+    def test_bug_fixing_phase_precedes_release_and_scales_with_defects(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        project.work_done = project.total_work - 1
+        project.defects = 30
+        project.known_defects = 30
+        advance(state, 1)
+        project = state.studio.current_project
+        self.assertIsNotNone(project, "defects found during development trigger a bug-fixing phase before release")
+        self.assertEqual(project.phase, "Bug fixing")
+        self.assertGreater(project.bug_work, 0)
+        weeks_in_qa = 0
+        while state.studio.current_project is not None and weeks_in_qa < 40:
+            state.clock.current_date += timedelta(days=7)
+            state.clock.week += 1
+            advance_game(state, 1)
+            weeks_in_qa += 1
+        self.assertIsNone(state.studio.current_project)
+        game = state.studio.catalog[-1]
+        self.assertLess(game.actual_bugs, 30, "the bug-fixing phase clears most defects before shipping")
+        self.assertTrue(any("bug fixing" in message for message in state.logs))
+
+    def test_bigger_teams_create_more_defects(self) -> None:
+        solo = GameState()
+        self.assertTrue(start_project(solo))
+        team = GameState()
+        for index in range(3):
+            member = deepcopy(team.studio.team[0])
+            member.employee_id = 10 + index
+            member.founder = False
+            team.studio.team.append(member)
+        self.assertTrue(start_project(team))
+        advance(solo, 6)
+        advance(team, 6)
+        self.assertGreater(team.studio.current_project.defects, solo.studio.current_project.defects)
+
     def test_bug_fix_update_removes_existing_bugs_but_can_miss_hidden_ones(self) -> None:
         state = GameState()
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         game.actual_bugs = 20
         game.known_bugs = 10
         game.reported_bug_count = 10
@@ -893,7 +984,7 @@ class SimulationTests(unittest.TestCase):
         state.selected_marketing = 2
         self.assertTrue(start_project(state))
         advance(state, 40)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
 
         self.assertTrue(game.cost_history_complete)
         self.assertGreater(game.production_cost, 0)
@@ -910,7 +1001,7 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         self.assertTrue(start_project(state))
         advance(state, 40)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         sale = next(item for item in state.studio.active_sales if item.game_id == game.game_id)
 
         advance(state, 30)
@@ -927,7 +1018,7 @@ class SimulationTests(unittest.TestCase):
             state.save_path = str(Path(directory) / "players.json")
             save_game(state)
             loaded = load_game(state.save_path)
-        loaded_game = loaded.studio.catalog[0]
+        loaded_game = loaded.studio.catalog[-1]
         self.assertEqual(loaded_game.monthly_players, loaded_game.units_sold)
         self.assertEqual(loaded_game.peak_monthly_players, loaded_game.units_sold)
 
@@ -935,7 +1026,7 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         self.assertTrue(start_project(state))
         advance(state, 40)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         self.assertTrue(queue_game_update(state, game.game_id))
 
         advance(state, 30)
@@ -948,7 +1039,7 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         start_project(state)
         advance(state, 40)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         patch_weeks = estimated_update_weeks(state.studio, game)
 
         cycle_game_update_size(state, game.game_id)
@@ -970,7 +1061,7 @@ class SimulationTests(unittest.TestCase):
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         game.update_size = "Hotfix"
         game.update_focus = "Balance pass"
         self.assertTrue(queue_game_update(state, game.game_id))
@@ -1003,7 +1094,7 @@ class SimulationTests(unittest.TestCase):
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         game.update_size = "Patch"
         queue_game_update(state, game.game_id)
         game.update_size = "Expansion"
@@ -1015,7 +1106,7 @@ class SimulationTests(unittest.TestCase):
             save_game(state)
             loaded = load_game(state.save_path)
 
-        self.assertEqual(loaded.studio.catalog[0].version, "1.00.00")
+        self.assertEqual(loaded.studio.catalog[-1].version, "1.00.00")
         self.assertEqual(loaded.studio.active_update.target_version, "1.00.10")
         self.assertEqual(loaded.studio.active_update.work_done, 12)
         self.assertEqual(loaded.studio.update_queue[0].target_version, "1.10.10")
@@ -1025,7 +1116,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         game.update_size = "Patch"
         self.assertTrue(queue_game_update(state, game.game_id))
         active = state.studio.active_update
@@ -1059,8 +1150,8 @@ class SimulationTests(unittest.TestCase):
         advance(state, 1)
         state.modal = "update_planner"
         state.games_tab = 0
-        queue_game_update(state, state.studio.catalog[0].game_id)
-        queue_game_update(state, state.studio.catalog[0].game_id)
+        queue_game_update(state, state.studio.catalog[-1].game_id)
+        queue_game_update(state, state.studio.catalog[-1].game_id)
 
         wide_text = rendered_games_text(state, 200, 60)
         compact_text = rendered_games_text(state, 74, 24)
@@ -1083,18 +1174,18 @@ class SimulationTests(unittest.TestCase):
             start_project(state)
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
             advance(state, 1)
-            game = state.studio.catalog[0]
-            sale = state.studio.active_sales[0]
+            game = state.studio.catalog[-1]
+            sale = state.studio.active_sales[-1]
             game.hype = 120
             sale.weekly_units = 500
-        low.studio.catalog[0].score = low.studio.active_sales[0].score = 25
-        high.studio.catalog[0].score = high.studio.active_sales[0].score = 90
+        low.studio.catalog[-1].score = low.studio.active_sales[-1].score = 25
+        high.studio.catalog[-1].score = high.studio.active_sales[-1].score = 90
 
         advance(low, 8)
         advance(high, 8)
 
-        self.assertGreater(high.studio.active_sales[0].weekly_units, low.studio.active_sales[0].weekly_units * 3)
-        self.assertGreater(high.studio.catalog[0].monthly_players, low.studio.catalog[0].monthly_players * 2)
+        self.assertGreater(high.studio.active_sales[-1].weekly_units, low.studio.active_sales[-1].weekly_units * 3)
+        self.assertGreater(high.studio.catalog[-1].monthly_players, low.studio.catalog[-1].monthly_players * 2)
 
     def test_pre_release_hype_creates_a_larger_launch_spike(self) -> None:
         organic = GameState()
@@ -1105,7 +1196,7 @@ class SimulationTests(unittest.TestCase):
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
             advance(state, 1)
 
-        self.assertGreater(hyped.studio.active_sales[0].weekly_units, organic.studio.active_sales[0].weekly_units * 3)
+        self.assertGreater(hyped.studio.active_sales[-1].weekly_units, organic.studio.active_sales[-1].weekly_units * 3)
 
     def test_promotions_queue_and_execute_one_at_a_time(self) -> None:
         state = GameState()
@@ -1132,7 +1223,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         state.studio.reputation = 100
         self.assertTrue(buy_promotion(state, game.game_id, 0))
         self.assertTrue(buy_promotion(state, game.game_id, 1))
@@ -1201,7 +1292,7 @@ class SimulationTests(unittest.TestCase):
         handle_key(state, 10)
         self.assertEqual(state.games_tab, 1)
         self.assertIsNone(state.studio.active_update)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         scope_before = game.update_size
         handle_key(state, curses.KEY_DOWN)
         self.assertNotEqual(game.update_size, scope_before)
@@ -1343,7 +1434,7 @@ class SimulationTests(unittest.TestCase):
         self.assertIn("JOB", status_line)
         self.assertIn("█", status_line)
         self.assertNotIn("Games", status_line)
-        self.assertIn("Fans 40", status_line)
+        self.assertIn(f"Fans {state.studio.followers}", status_line)
         self.assertIn("[Space]", status_line)
         metric_call = next(call for call in screen.addstr.call_args_list if call.args[2].startswith("$"))
         self.assertEqual(metric_call.args[0], 34)
@@ -1372,7 +1463,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded.clock.current_date, state.clock.current_date)
         self.assertEqual(loaded.studio.cash, state.studio.cash)
         self.assertEqual(loaded.studio.current_project.work_done, state.studio.current_project.work_done)
-        self.assertEqual(len(loaded.studio.applicants), 6)
+        self.assertEqual(len(loaded.studio.applicants), len(state.studio.applicants))
         self.assertEqual(len(loaded.studio.contract_offers), len(state.studio.contract_offers))
         self.assertEqual(loaded.marketing_tab, 1)
 
@@ -1580,8 +1671,8 @@ class SimulationTests(unittest.TestCase):
         self.assertNotIn(order[-1][0], GOOD_MATCHES["Action"])
         self.assertEqual(topic_position(state, order), 0)
 
-        state.studio.topic_fans["Zombies"] = 500
-        state.studio.topic_fans["Ants"] = 120
+        state.studio.topic_fans["Zombies"] = 5_000
+        state.studio.topic_fans["Ants"] = 1_200
         order = topic_order(state)
         self.assertEqual([topic for topic, _ in order[:2]], ["Zombies", "Ants"])
         self.assertEqual(order[0][1], "strong")
@@ -1599,7 +1690,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(start_project(state))
         advance(state, 40)
 
-        original = state.studio.catalog[0]
+        original = state.studio.catalog[-1]
         self.assertEqual(original.title, "My First Commercial Game")
         self.assertGreater(state.studio.genre_fans[original.genre], 0)
 
@@ -1616,7 +1707,7 @@ class SimulationTests(unittest.TestCase):
             state.save_path = str(Path(directory) / "franchise.json")
             save_game(state)
             loaded = load_game(state.save_path)
-        self.assertEqual(loaded.studio.catalog[0].title, "My First Commercial Game")
+        self.assertEqual(loaded.studio.catalog[-1].title, "My First Commercial Game")
         self.assertEqual(loaded.studio.current_project.sequel_of, original.game_id)
         loaded.studio.current_project.work_done = loaded.studio.current_project.total_work - 1
         advance(loaded, 1)
@@ -1758,7 +1849,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        game = state.studio.catalog[0]
+        game = state.studio.catalog[-1]
         advance(state, 1)
         game.update_size = "Paid DLC"
         revenue_before = game.net_revenue
@@ -1775,7 +1866,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        return state.studio.catalog[0]
+        return state.studio.catalog[-1]
 
     def test_daily_ticks_move_money_continuously(self) -> None:
         state = GameState()
@@ -1862,6 +1953,51 @@ class SimulationTests(unittest.TestCase):
         ips = sum(len(competitor.franchises) for competitor in state.studio.competitors)
         self.assertGreaterEqual(ips, 10)
 
+    def test_charts_are_dominated_by_rival_releases_early(self) -> None:
+        state = GameState()
+        chart = market_chart(state)
+        self.assertGreaterEqual(len(chart), 5)
+        self.assertTrue(all(entry.game_id == 0 for entry in chart))
+        self.assertTrue(all(entry.weekly_units > 0 for entry in chart))
+        game = self.release_first_game(state)
+        position = chart_positions(state).get(game.game_id)
+        self.assertNotEqual(position, 1, "a first release from an unknown studio must not top the charts")
+        advance(state, 26)
+        self.assertTrue(any(entry.game_id == 0 for entry in market_chart(state)))
+
+    def test_player_can_top_the_charts_with_enough_demand(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        sale = next(item for item in state.studio.active_sales if item.game_id == game.game_id)
+        sale.weekly_units = 5_000_000
+        advance(state, 1)
+        self.assertEqual(chart_positions(state).get(game.game_id), 1)
+        self.assertEqual(game.chart_peak, 1)
+        self.assertTrue(any("topped the charts" in message for message in state.logs))
+        with tempfile.TemporaryDirectory() as directory:
+            save_path = Path(directory) / "chart.json"
+            state.save_path = str(save_path)
+            save_game(state)
+            loaded = load_game(str(save_path))
+        loaded_game = loaded.studio.catalog[-1]
+        self.assertEqual(loaded_game.chart_peak, 1)
+        self.assertEqual(loaded_game.user_rating, game.user_rating)
+        self.assertEqual(loaded_game.press_rating, game.press_rating)
+        self.assertEqual(loaded_game.sales_history, game.sales_history)
+        self.assertTrue(any(release.weekly_units > 0 for competitor in loaded.studio.competitors for release in competitor.recent_releases))
+
+    def test_user_rating_falls_with_bugs_while_press_stays_settled(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        self.assertGreater(game.user_rating, 0)
+        self.assertGreater(game.press_rating, 0)
+        game.known_bugs = 20
+        game.actual_bugs = 20
+        advance(state, 4)
+        self.assertLess(game.user_rating, game.press_rating)
+        self.assertLess(game.user_rating, game.score)
+        self.assertGreater(len(game.sales_history), 0)
+
     def test_market_and_ventures_survive_save_load(self) -> None:
         state = GameState()
         state.studio.cash = 5_000_000
@@ -1877,7 +2013,7 @@ class SimulationTests(unittest.TestCase):
             save_game(state)
             loaded = load_game(str(save_path))
         self.assertEqual(len(loaded.studio.competitors), len(state.studio.competitors))
-        self.assertEqual(loaded.studio.franchises[0].name, franchise.name)
+        self.assertEqual(franchise_by_id(loaded.studio, franchise.franchise_id).name, franchise.name)
         self.assertEqual(len(loaded.studio.media_ventures), 1)
         self.assertEqual(loaded.studio.media_ventures[0].kind, "merch")
         first = loaded.studio.competitors[0]
