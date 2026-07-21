@@ -19,8 +19,8 @@ Load the default save or choose another save file:
 
 ```bash
 python main.py --load
-python main.py gamedev_save.json
-python main.py --load gamedev_save.json
+python main.py saves/gamedev_save.json
+python main.py --load saves/gamedev_save.json
 python main.py --load --save-file my_studio.json
 ```
 

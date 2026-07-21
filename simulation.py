@@ -725,7 +725,7 @@ class GameState:
     new_game_kind: str = ""
     time_speed_index: int = 1
     resume_speed_index: int = 1
-    save_path: str = "gamedev_save.json"
+    save_path: str = "saves/gamedev_save.json"
     logs: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -3236,7 +3236,9 @@ def state_from_data(data: dict, save_path: str) -> GameState:
 
 
 def save_game(state: GameState) -> None:
-    Path(state.save_path).write_text(json.dumps(state_to_data(state), indent=2), encoding="utf-8")
+    path = Path(state.save_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(state_to_data(state), indent=2), encoding="utf-8")
 
 
 def load_game(save_path: str) -> GameState:

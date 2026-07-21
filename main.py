@@ -61,7 +61,7 @@ from ui_title import draw_title_screen
 from ui_upgrades import draw_upgrades
 
 
-DEFAULT_SAVE_FILE = "gamedev_save.json"
+DEFAULT_SAVE_FILE = "saves/gamedev_save.json"
 NAVIGATION_KEYS = {curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT}
 
 
@@ -199,7 +199,7 @@ def simulate(weeks: int, load_save: bool, save_path: str) -> None:
 
 def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the realistic indie studio simulation.")
-    parser.add_argument("save_path", nargs="?", help="save file to load (for example: gamedev_save.json)")
+    parser.add_argument("save_path", nargs="?", help="save file to load (for example: saves/gamedev_save.json)")
     parser.add_argument("--load", action="store_true", help="load a studio; optionally put its path after this flag")
     parser.add_argument("--save-file", dest="save_file_option", help=f"explicit save path (default: {DEFAULT_SAVE_FILE})")
     parser.add_argument("--simulate", type=int, metavar="WEEKS", help="advance without curses and print a summary")
@@ -215,7 +215,9 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
 def main() -> None:
     args = parse_args()
     if args.load and not Path(args.save_path).is_file():
-        available = ", ".join(path.name for path in sorted(Path.cwd().glob("*.json"))) or "none"
+        available = ", ".join(
+            str(path) for path in sorted(Path.cwd().glob("*.json")) + sorted(Path("saves").glob("*.json"))
+        ) or "none"
         raise SystemExit(f"Save file not found: {args.save_path}\nAvailable JSON saves: {available}")
     if args.simulate is not None:
         simulate(max(0, args.simulate), args.load, args.save_path)
