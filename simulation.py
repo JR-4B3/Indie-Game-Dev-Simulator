@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import math
 import random
-import re
 from dataclasses import asdict, dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
@@ -11,7 +10,7 @@ from pathlib import Path
 from game_data import GENRES, GENRE_PROFILES, GOOD_MATCHES, TOPICS
 
 
-SAVE_VERSION = 6
+SAVE_VERSION = 7
 START_DATE = date.today()
 SECONDS_PER_WEEK = 120.0
 SECONDS_PER_DAY = SECONDS_PER_WEEK / 7
@@ -148,10 +147,6 @@ UPDATE_SIZES = (
     {"name": "Expansion", "work": 240, "bugs": 45, "fixes": 55, "escaped": 6.0, "cost": 3_500, "hype": 42, "sales": 9, "version": (0, 10, 0), "team": 0.30},
     {"name": "Paid DLC", "work": 380, "bugs": 65, "fixes": 70, "escaped": 8.0, "cost": 8_000, "hype": 58, "sales": 12, "version": (1, 0, 0), "team": 0.38, "price": 9.99},
 )
-
-LEGACY_MARKETING_NAMES = {
-    "Campaign": "Launch campaign",
-}
 
 STARTER_RESEARCH = ("product_foundations", "garage_workflow", "basic_rest", "contract_basics", "basic_support")
 
@@ -431,7 +426,6 @@ class Project:
     production_cost: float = 0.0
     labor_cost: float = 0.0
     marketing_cost: float = 0.0
-    cost_history_complete: bool = False
     known_defects: float = 0.0
     bug_work: float = 0.0
     bug_work_done: float = 0.0
@@ -509,7 +503,6 @@ class ReleasedGame:
     units_sold: int = 0
     net_revenue: float = 0.0
     hype: float = 0.0
-    auto_updates: bool = False
     update_progress: float = 0.0
     updates_released: int = 0
     update_focus: str = "Bug fixes"
@@ -521,7 +514,6 @@ class ReleasedGame:
     labor_cost: float = 0.0
     marketing_cost: float = 0.0
     post_launch_cost: float = 0.0
-    cost_history_complete: bool = False
     version: str = "1.00.00"
     actual_bugs: float = 0.0
     known_bugs: float = 0.0
@@ -597,7 +589,7 @@ class Contract:
     weeks_left: int
     payout: int
     contract_id: int = 0
-    client: str = "Legacy client"
+    client: str = ""
     focus: str = "Generalist"
     difficulty: int = 1
     required_work: float = 0.0
@@ -733,7 +725,6 @@ class Studio:
     contractor_reputation: float = 0.0
     contracts_completed: int = 0
     contracts_failed: int = 0
-    legacy_auto_jobs_cancelled: int = 0
     active_update: UpdateJob | None = None
     update_queue: list[UpdateJob] = field(default_factory=list)
     active_promotions: list[Promotion] = field(default_factory=list)
@@ -841,9 +832,6 @@ class GameState:
             refresh_draft_title(self)
         if not self.studio.competitors:
             seed_market(self)
-        if self.studio.legacy_auto_jobs_cancelled:
-            self.log(f"Removed {self.studio.legacy_auto_jobs_cancelled} legacy auto-accepted queued contract(s) because Auto Contracts is OFF.")
-            self.studio.legacy_auto_jobs_cancelled = 0
         if not self.logs:
             self.logs = [
                 f"{self.clock.current_date:%d %b %Y}: you open a bootstrapped indie studio with $75,000.",
@@ -861,8 +849,7 @@ def channel_by_name(name: str) -> dict:
 
 
 def marketing_by_name(name: str) -> dict:
-    resolved_name = LEGACY_MARKETING_NAMES.get(name, name)
-    return next(marketing for marketing in MARKETING if marketing["name"] == resolved_name)
+    return next(marketing for marketing in MARKETING if marketing["name"] == name)
 
 
 def scope_by_name(name: str) -> dict:
@@ -1186,7 +1173,7 @@ def monthly_cost_breakdown(studio: Studio) -> dict[str, int]:
     portfolio_operations = 0
     for sale in studio.active_sales:
         game = game_by_sale.get(sale.game_id)
-        if game is None or game.release_date == "Historical" or game.support_level == "Sunset":
+        if game is None or game.support_level == "Sunset":
             continue
         portfolio_operations += 50 if game.support_level == "Maintenance" else 150
     costs = {
@@ -1562,13 +1549,6 @@ def cycle_game_support(state: GameState, game_id: int) -> str | None:
     return game.support_level
 
 
-def infer_legacy_game_bugs(game: ReleasedGame) -> None:
-    game.actual_bugs = max(1.0, (75 - game.score) * 0.22 + 1.5)
-    exposure = min(0.92, 0.25 + math.log10(max(1, game.units_sold) + 1) * 0.13)
-    game.known_bugs = game.actual_bugs * exposure
-    game.reported_bug_count = game.known_bug_count
-
-
 def sale_for_game(studio: Studio, game_id: int) -> ActiveSale | None:
     return next((sale for sale in studio.active_sales if sale.game_id == game_id), None)
 
@@ -1758,9 +1738,7 @@ def update_team_load(studio: Studio) -> float:
 
 
 def live_title_count(studio: Studio) -> int:
-    """Live games that consume live-ops capacity; the pre-studio
-    back-catalogue titles are maintenance-free and don't count."""
-    supported = {game.game_id for game in studio.catalog if game.release_date != "Historical" and game.support_level != "Sunset"}
+    supported = {game.game_id for game in studio.catalog if game.support_level != "Sunset"}
     known = {game.game_id for game in studio.catalog}
     return sum(1 for sale in studio.active_sales if sale.game_id in supported or sale.game_id not in known)
 
@@ -1770,8 +1748,6 @@ def live_support_load(studio: Studio) -> float:
     known = set()
     for game in studio.catalog:
         known.add(game.game_id)
-        if game.release_date == "Historical":
-            continue
         if game.support_level == "Active":
             load += 0.04
         elif game.support_level == "Maintenance":
@@ -1832,80 +1808,6 @@ def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
     state.modal = "new_game"
     state.new_game_step = 2
     state.selected_focus = 0
-
-
-def recover_catalog_from_logs(studio: Studio, logs: list[str]) -> None:
-    known_titles = {game.title for game in studio.catalog}
-    pattern = re.compile(r"^(.+) settled at ([\d,]+) units and \$([\d,]+) studio net\.$")
-    for message in reversed(logs):
-        match = pattern.match(message)
-        if not match:
-            continue
-        title, units_text, revenue_text = match.groups()
-        topic, separator, genre = title.partition(": ")
-        if not separator or genre not in GENRES or topic not in TOPICS or title in known_titles:
-            continue
-        game_id = studio.next_game_id
-        studio.next_game_id += 1
-        game = ReleasedGame(
-            game_id,
-            title,
-            genre,
-            topic,
-            "Historical store",
-            50,
-            "Historical",
-            units_sold=int(units_text.replace(",", "")),
-            net_revenue=float(revenue_text.replace(",", "")),
-        )
-        infer_legacy_game_bugs(game)
-        studio.catalog.append(game)
-        known_titles.add(title)
-    if studio.catalog and not studio.genre_fans:
-        legacy_fans = max(0, studio.followers - 40)
-        per_game = legacy_fans // len(studio.catalog)
-        for game in studio.catalog:
-            studio.genre_fans[game.genre] = studio.genre_fans.get(game.genre, 0) + per_game
-            studio.topic_fans[game.topic] = studio.topic_fans.get(game.topic, 0) + per_game
-
-
-def recover_contractor_history(studio: Studio, logs: list[str]) -> None:
-    if studio.contracts_completed or studio.contractor_reputation:
-        return
-    completed = sum(message.startswith("Delivered the ") and "client paid $" in message for message in logs)
-    if completed:
-        studio.contracts_completed = completed
-        studio.contractor_reputation = min(30.0, completed * 1.5)
-
-
-def ensure_catalog_sales(studio: Studio) -> None:
-    active_ids = {sale.game_id for sale in studio.active_sales}
-    for game in studio.catalog:
-        scope_market = next((item["market"] * 1.7 for item in SCOPES if item["name"] == game.scope), 1.0)
-        evergreen = max(1, round((max(20, game.score) / 100) ** 4 * scope_market * 240 + studio.genre_fans.get(game.genre, 0) / 800))
-        existing = sale_for_game(studio, game.game_id)
-        if existing:
-            existing.evergreen_units = max(existing.evergreen_units, evergreen)
-            existing.weeks_left = -1
-            continue
-        if game.game_id not in active_ids:
-            studio.active_sales.append(
-                ActiveSale(
-                    game.title,
-                    game.channel,
-                    game.score,
-                    9.99,
-                    0.30,
-                    0.10,
-                    evergreen,
-                    -1,
-                    units_sold=game.units_sold,
-                    net_revenue=game.net_revenue,
-                    game_id=game.game_id,
-                    genre=game.genre,
-                    evergreen_units=evergreen,
-                )
-            )
 
 
 def projected_weekly_output(studio: Studio, focus: list[int] | tuple[int, ...]) -> float:
@@ -2011,7 +1913,6 @@ def start_project(state: GameState) -> bool:
         hype=5 + marketing["boost"] / 25,
         production_cost=scope["setup"] + channel["fee"] + game_format["setup"] + strategy["setup"],
         marketing_cost=marketing["cost"],
-        cost_history_complete=True,
     )
     add_expense(studio, scope["setup"] + game_format["setup"] + strategy["setup"], "Development")
     add_expense(studio, channel["fee"], "Store fees")
@@ -2425,7 +2326,6 @@ def finish_project(state: GameState) -> None:
         production_cost=project.production_cost,
         labor_cost=project.labor_cost,
         marketing_cost=project.marketing_cost,
-        cost_history_complete=project.cost_history_complete,
         actual_bugs=project.defects,
         known_bugs=known_bugs,
         reported_bug_count=math.floor(known_bugs),
@@ -3515,24 +3415,10 @@ def state_to_data(state: GameState) -> dict:
 
 def studio_from_data(data: dict) -> Studio:
     values = dict(data)
-    legacy_research = "completed_research" not in values
     values["team"] = [employee_from_data(item) for item in values.get("team", [])]
     values["applicants"] = [employee_from_data(item) for item in values.get("applicants", [])]
     if values.get("current_project"):
-        project_data = dict(values["current_project"])
-        if "known_defects" not in project_data:
-            project_data["known_defects"] = project_data.get("defects", 0) * 0.4
-        if "scheduled_decisions" not in project_data:
-            if "next_decision" in project_data:
-                next_event = project_data.get("pending_decision")
-                start = project_data.get("next_decision", 0)
-                project_data["scheduled_decisions"] = list(range(start, len(PRODUCTION_DECISIONS)))
-                if next_event is not None and (not project_data["scheduled_decisions"] or project_data["scheduled_decisions"][0] != next_event):
-                    project_data["scheduled_decisions"].insert(0, next_event)
-                project_data["next_decision"] = 0
-            else:
-                project_data["scheduled_decisions"] = []
-        values["current_project"] = Project(**project_data)
+        values["current_project"] = Project(**values["current_project"])
     values["active_sales"] = [ActiveSale(**item) for item in values.get("active_sales", [])]
     for sale in values["active_sales"]:
         sale.units_sold = round(sale.units_sold)
@@ -3540,85 +3426,21 @@ def studio_from_data(data: dict) -> Studio:
     for item in values.get("catalog", []):
         game = ReleasedGame(**item)
         game.units_sold = round(game.units_sold)
-        if "user_rating" not in item:
-            game.user_rating = float(game.score)
-            game.press_rating = float(game.score)
-        if "actual_bugs" not in item:
-            infer_legacy_game_bugs(game)
-        if "version" not in item:
-            for _ in range(game.updates_released):
-                game.version = bump_version(game.version, game.update_size)
         clamp_player_counts(game)
         catalog.append(game)
-    if not catalog:
-        for sale in values["active_sales"]:
-            topic, separator, genre = sale.title.partition(": ")
-            if separator and genre in GENRES and topic in TOPICS:
-                game_id = len(catalog) + 1
-                sale.game_id = game_id
-                sale.genre = genre
-                game = ReleasedGame(
-                    game_id,
-                    sale.title,
-                    genre,
-                    topic,
-                    sale.channel,
-                    sale.score,
-                    "Historical",
-                    units_sold=sale.units_sold,
-                    net_revenue=sale.net_revenue,
-                )
-                infer_legacy_game_bugs(game)
-                catalog.append(game)
     values["catalog"] = catalog
-    values["next_game_id"] = max(values.get("next_game_id", 1), max((game.game_id for game in catalog), default=0) + 1)
-    if catalog and not values.get("genre_fans"):
-        legacy_fans = max(0, values.get("followers", 40) - 40)
-        per_game = legacy_fans // len(catalog)
-        values["genre_fans"] = {}
-        values["topic_fans"] = {}
-        for game in catalog:
-            values["genre_fans"][game.genre] = values["genre_fans"].get(game.genre, 0) + per_game
-            values["topic_fans"][game.topic] = values["topic_fans"].get(game.topic, 0) + per_game
     if values.get("contract"):
         values["contract"] = Contract(**values["contract"])
     values["contract_offers"] = [Contract(**item) for item in values.get("contract_offers", [])]
-    raw_queue = values.get("contract_queue", [])
-    legacy_queue_without_source = bool(raw_queue) and any("auto_accepted" not in item for item in raw_queue)
-    values["contract_queue"] = [Contract(**item) for item in raw_queue]
-    if not values.get("auto_contracts", False) and legacy_queue_without_source:
-        values["legacy_auto_jobs_cancelled"] = len(values["contract_queue"])
-        values["contract_queue"] = []
-        if values.get("contract") and "auto_accepted" not in data.get("contract", {}):
-            values["contract"].auto_accepted = True
-    contract_ids = [contract.contract_id for contract in values["contract_offers"] + values["contract_queue"]]
-    if values.get("contract"):
-        contract_ids.append(values["contract"].contract_id)
-    values["next_contract_id"] = max(values.get("next_contract_id", 1), max(contract_ids, default=0) + 1)
+    values["contract_queue"] = [Contract(**item) for item in values.get("contract_queue", [])]
     if values.get("active_update"):
         values["active_update"] = UpdateJob(**values["active_update"])
     values["update_queue"] = [UpdateJob(**item) for item in values.get("update_queue", [])]
-    update_ids = [job.update_id for job in values["update_queue"]]
-    if values.get("active_update"):
-        update_ids.append(values["active_update"].update_id)
-    values["next_update_id"] = max(values.get("next_update_id", 1), max(update_ids, default=0) + 1)
     values["active_promotions"] = [Promotion(**item) for item in values.get("active_promotions", [])]
-    values["next_promotion_id"] = max(
-        values.get("next_promotion_id", 1),
-        max((promotion.promotion_id for promotion in values["active_promotions"]), default=0) + 1,
-    )
     values["franchises"] = [Franchise(**item) for item in values.get("franchises", [])]
     for franchise in values["franchises"]:
         franchise.total_units = round(franchise.total_units)
-    values["next_franchise_id"] = max(
-        values.get("next_franchise_id", 1),
-        max((franchise.franchise_id for franchise in values["franchises"]), default=0) + 1,
-    )
     values["media_ventures"] = [MediaVenture(**item) for item in values.get("media_ventures", [])]
-    values["next_venture_id"] = max(
-        values.get("next_venture_id", 1),
-        max((venture.venture_id for venture in values["media_ventures"]), default=0) + 1,
-    )
     competitors = []
     for item in values.get("competitors", []):
         entry = dict(item)
@@ -3630,127 +3452,26 @@ def studio_from_data(data: dict) -> Studio:
     if values.get("active_research"):
         values["active_research"] = ResearchJob(**values["active_research"])
     values["research_queue"] = [ResearchJob(**item) for item in values.get("research_queue", [])]
-    if legacy_research:
-        completed = set(STARTER_RESEARCH) | set(values.get("upgrades", []))
-
-        def grant_with_prerequisites(node_key: str | None) -> None:
-            if not node_key or node_key in completed:
-                return
-            node = research_by_key(node_key)
-            if node is None:
-                return
-            for prerequisite in node.get("prereq", ()):
-                grant_with_prerequisites(prerequisite)
-            completed.add(node_key)
-
-        projects = list(catalog)
-        if values.get("current_project"):
-            projects.append(values["current_project"])
-        for project in projects:
-            scope_index = next((index for index, item in enumerate(SCOPES) if item["name"] == getattr(project, "scope", "")), 0)
-            format_index = next((index for index, item in enumerate(GAME_FORMATS) if item["name"] == getattr(project, "game_format", "")), 0)
-            channel_index = next((index for index, item in enumerate(CHANNELS) if item["name"] == getattr(project, "channel", "")), 0)
-            strategy_index = next((index for index, item in enumerate(RELEASE_STRATEGIES) if item["name"] == getattr(project, "release_strategy", "")), 0)
-            for requirement in (
-                research_requirement_for_scope(scope_index),
-                research_requirement_for_format(format_index),
-                research_requirement_for_genre(getattr(project, "genre", GENRES[0])),
-                research_requirement_for_topic(getattr(project, "topic", TOPICS[0])),
-                research_requirement_for_channel(channel_index),
-                research_requirement_for_strategy(strategy_index),
-            ):
-                grant_with_prerequisites(requirement)
-        values["completed_research"] = sorted(completed)
-    else:
-        values["completed_research"] = list(dict.fromkeys((*STARTER_RESEARCH, *values.get("completed_research", []))))
+    values["completed_research"] = list(dict.fromkeys(values["completed_research"]))
     ledger = [LedgerMonth(**item) for item in values.get("ledger", [])]
-    for entry in ledger:
-        if entry.expenses and not entry.categories:
-            entry.categories = {"Historical total": entry.expenses}
-        if entry.revenue and not entry.revenue_categories:
-            entry.revenue_categories = {"Historical revenue": entry.revenue}
     values["ledger"] = ledger
-    if values.get("period_expenses", 0) and not values.get("period_expense_categories"):
-        values["period_expense_categories"] = {"Historical current": values["period_expenses"]}
-    if values.get("period_revenue", 0) and not values.get("period_revenue_categories"):
-        values["period_revenue_categories"] = {"Historical revenue": values["period_revenue"]}
     return Studio(**values)
 
 
-def migrate_studio_franchises(studio: Studio) -> None:
-    if studio.franchises:
-        return
-    by_id = {game.game_id: game for game in studio.catalog}
-    for game in studio.catalog:
-        if game.franchise_id is not None:
-            continue
-        root = game
-        while root.sequel_of in by_id:
-            root = by_id[root.sequel_of]
-        franchise = franchise_by_id(studio, root.franchise_id)
-        if franchise is None:
-            franchise = Franchise(
-                studio.next_franchise_id,
-                base_title_for(root)[:40],
-                root.genre,
-                root.topic,
-                created=root.release_date,
-                awareness=min(6_000, root.units_sold / 40 + root.score),
-                reputation=float(root.score),
-                entries=0,
-            )
-            studio.next_franchise_id += 1
-            studio.franchises.append(franchise)
-            root.franchise_id = franchise.franchise_id
-            franchise.entries += 1
-            franchise.total_units += root.units_sold
-            franchise.total_revenue += root.net_revenue
-        if game is not root:
-            game.franchise_id = franchise.franchise_id
-            franchise.entries += 1
-            franchise.total_units += game.units_sold
-            franchise.total_revenue += game.net_revenue
-            franchise.reputation += (game.score - franchise.reputation) * 0.35
-
-
-def migrate_legacy(data: dict, save_path: str) -> GameState:
-    old = data.get("studio", {})
-    studio = Studio(
-        cash=max(25_000, float(old.get("cash", 10_000)) * 3),
-        followers=int(old.get("fans", 0)) + 40,
-        reputation=float(old.get("reputation", 0)),
-        released_games=int(old.get("released_games", 0)),
-    )
-    state = GameState(studio=studio, save_path=save_path)
-    state.logs = [
-        f"{state.clock.current_date:%d %b %Y}: legacy progress became a modern studio with ${studio.cash:,.0f}.",
-        "Cash is runway. Payroll, software, insurance, tax, refunds, and store cuts are real.",
-    ]
-    state.log("Migrated a legacy 1976 save into the modern indie simulation; incompatible projects and hires were retired.")
-    return state
-
-
 def state_from_data(data: dict, save_path: str) -> GameState:
-    if data.get("version") not in (2, 3, 4, 5, SAVE_VERSION):
-        return migrate_legacy(data, save_path)
+    if data.get("version") != SAVE_VERSION:
+        raise ValueError(f"Unsupported save version: {data.get('version')!r}")
     clock_data = data["clock"]
     clock = GameClock(date.fromisoformat(clock_data["current_date"]), clock_data["week"], clock_data.get("elapsed_seconds", 0.0), clock_data.get("day", clock_data["week"] * 7 - 6))
     ui = data.get("ui", {})
-    selected_scope = ui.get("selected_scope", 0)
-    if data.get("version") == 2:
-        selected_scope = {0: 0, 1: 2, 2: 4}.get(selected_scope, 0)
     studio = studio_from_data(data["studio"])
-    recover_catalog_from_logs(studio, data.get("logs", []))
-    recover_contractor_history(studio, data.get("logs", []))
-    migrate_studio_franchises(studio)
-    ensure_catalog_sales(studio)
     state = GameState(
         clock=clock,
         studio=studio,
         selected_genre=ui.get("selected_genre", 0),
         selected_topic=ui.get("selected_topic", 0),
         selected_channel=ui.get("selected_channel", 0),
-        selected_scope=selected_scope,
+        selected_scope=ui.get("selected_scope", 0),
         selected_marketing=ui.get("selected_marketing", 0),
         selected_secondary_genre=ui.get("selected_secondary_genre", ui.get("selected_genre", 0)),
         selected_secondary_topic=ui.get("selected_secondary_topic", ui.get("selected_topic", 0)),
@@ -3774,25 +3495,6 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         save_path=save_path,
         logs=data.get("logs", []),
     )
-    old_update_model = "active_update" not in data["studio"] and "update_queue" not in data["studio"]
-    if old_update_model:
-        raw_games = {item.get("game_id"): item for item in data["studio"].get("catalog", [])}
-        old_plans = []
-        for index, game in enumerate(studio.catalog):
-            previous_progress = game.update_progress
-            was_automatic = raw_games.get(game.game_id, {}).get("auto_updates", False)
-            game.auto_updates = False
-            if previous_progress > 0 or was_automatic:
-                old_plans.append((not was_automatic, index, game, previous_progress))
-        for _, _, game, previous_progress in sorted(old_plans):
-            queue_game_update(state, game.game_id)
-            job = next(
-                candidate
-                for candidate in ([studio.active_update] if studio.active_update else []) + studio.update_queue
-                if candidate.game_id == game.game_id
-            )
-            job.work_done = job.required_work * min(1, previous_progress / 100)
-            game.update_progress = job.progress * 100
     return state
 
 

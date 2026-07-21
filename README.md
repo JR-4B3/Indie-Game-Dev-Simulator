@@ -1,299 +1,78 @@
 # Indie Studio Game Dev Sim
 
-A terminal-based economic simulation about trying to keep a small independent
-game studio alive. The simulation begins on the current date. You start with one
-founder, personal runway, no guaranteed audience, and the same tradeoffs a small
-studio faces: scope, payroll, contract work, discoverability, refunds, taxes, and
-burnout.
+You start as a one-person indie developer on the current day. Keep the studio alive, take contracts, make games, grow a team, research new capabilities, and build an IP that can eventually become iconic.
 
-## Run
+## Requirements
 
-The game uses only the Python standard library and requires a terminal of at
-least 74 columns by 24 rows.
+- Python 3.10 or newer
+- A terminal at least 74 columns by 24 rows
+- No external Python packages are required
+
+## Start
 
 ```bash
 python main.py
 ```
 
-Load the default save or choose another save file:
+The title screen lets you start a new studio or load the default save.
+
+## Saves
+
+To load a save directly instead of using the title screen:
 
 ```bash
 python main.py --load
 python main.py saves/gamedev_save.json
 python main.py --load saves/gamedev_save.json
-python main.py --load --save-file my_studio.json
 ```
 
-A positional filename implies `--load`. Use `--save-file` without `--load` when
-you want a new studio that will save under a custom filename.
+Use a different save path for a new run:
 
-An old version-one save is migrated into a present-day studio, and version-two
-through version-five saves load into the current planning model. Legacy cash,
-followers, reputation, and release count are retained where possible; obsolete
-1970s projects and fixed employees are not.
+```bash
+python main.py --save-file saves/my_studio.json
+```
 
-## The Simulation
+Use `Ctrl+S` in-game to save. Saves are compatible with the current release only.
 
-- **Real calendar and accounting:** weeks use the current calendar. Salaries,
-  employer payroll burden, software seats, insurance, administration, upgrade
-  subscriptions, and estimated quarterly income tax affect cash.
-- **Runway, not points:** the key studio metric is how many months remain at the
-  currently committed burn. The game prevents a hire or purchase when it would
-  leave less than one month for bills.
-- **Progressive concept room:** a game can combine two genres and two themes, including
-  Battle Royale, Extraction Shooter, Survivors-like, Roguelike, Roguelite,
-  Deckbuilder, Automation, Cozy, Social Deduction, Immersive Sim, Soulslike, and
-  Metroidvania concepts. Instead of moving abstract focus percentages, choose a
-  target audience, game format, lead and supporting creative bets, launch-life
-  strategy, scope, marketing level, and store. Starter choices are available
-  immediately; larger scopes, specialist genre/theme libraries, formats,
-  storefronts, marketing and live-service plans require studio research.
-- **Uncertain market validation:** the brief estimates ranges for addressable
-  players, overlapping competing releases, market fit, workload, schedule, risk,
-  and post-setup runway before greenlight. Genre/theme mix, audience, format,
-  creative bets, trend, release plan, and store move the underlying market much
-  more strongly. The report is not simulation truth: employee Research determines
-  confidence and interval width, and even a strong signal can be wrong.
-- **Production by work:** Micro, Compact, Small, Mid-size, Ambitious, Large, and
-  Blockbuster projects require increasingly serious teams, reputation, capital,
-  and work. Completion time changes with team skill, morale, fatigue, hardware,
-  creative commitments, online infrastructure, and time diverted to client work.
-  With the minimum qualified healthy team, the scope curve runs from roughly
-  3–6 months for Micro games through 6–7 years for Blockbusters; intermediate
-  scopes scale through 6–9 months, 9–12 months, 1–1.5 years, 2–3 years, and
-  4–5 years.
-- **Multiplayer ambition:** Offline Solo, Online Co-op, Competitive Online,
-  Persistent World, and MMO formats stay visible, but connected-game research,
-  networking,
-  server setup, staffing, reputation gates, launch risk, retention, and recurring
-  hosting costs make the biggest formats something a new studio can inspect but
-  cannot responsibly greenlight.
-- **Occasional production events:** a project schedules zero to two events based
-  on its scale rather than interrupting every phase. An event appears as a blocking
-  popup over any page and offers two explicit schedule/quality/market/defect
-  tradeoffs. Time and other controls remain locked until the decision is made.
-- **Production phases and defects:** projects move through prototype,
-  pre-production, production, alpha, and beta. Team code skill and QA equipment
-  influence defect load and launch refunds. Testing reveals only part of the real
-  defect count, so the interface reports known bugs rather than perfect information.
-- **A developing small team:** six new applicants are generated each month with a
-  role, seniority, salary expectation, four production skills, Research, morale,
-  fatigue, career level, a work style, and a separate quirk. Every style and quirk combines an
-  advantage with a liability. Project, contract, and live-operations experience
-  improves staff over time; stronger employees demand raises. The Team page can
-  send a selected employee to paid Design, Art, Audio, Code, or Research education,
-  or schedule a one-week vacation. Sustained work creates meaningful fatigue;
-  exhausted staff lose output and can burn out, while vacations trade capacity for
-  recovery and morale. People research improves training, learning and automatic leave.
-- **Studio statistics:** four switchable views provide a studio overview,
-  solid-color revenue/expense breakdowns, vertical monthly cash-flow columns,
-  statistics for every genre, and a permanent release catalog. Accounting keeps
-  contract and game revenue separate and retains payroll, employer costs,
-  operations, development, marketing, taxes, equipment, hosting, recruiting,
-  and severance categories.
-- **Named games and franchises:** every project starts with a generated title
-  based on its primary genre and theme. Reroll it or type a custom name. Releases
-  retain the complete concept brief, market position, scope, score, units, net
-  revenue, genre/theme mix, production decisions, and sequel lineage. Genre and theme
-  audiences grow from actual buyers, and established audiences improve sequel
-  discoverability without guaranteeing success. IP rank follows combined lifetime
-  franchise sales: Niche at 10,000 units, Recognized at 100,000, then Established,
-  Popular, Famous and Legendary milestones before Iconic at 10,000,000 units.
-  Starting a new game first opens
-  an Original Game / Sequel chooser populated by prior releases.
-- **Game portfolio:** the empty Game tab explains the concept loop; active
-  production shows its market position and creative commitments; a mature
-  catalogue combines commercial performance, live operations, DLC history, and
-  the next game in development. Every released game remains on sale. Genre/theme
-  fit, audience, competition, quality, defects, platform, reputation, followers, scope, and storefront
-  reach drive launch sales, while review quality and franchise audience establish
-  a permanent weekly sales floor. Refunds, store cuts, hosting, and support costs
-  still apply, so a bad game may sell one copy per week without being profitable.
-  Buyers discover previously hidden bugs while playing and complain online; the
-  catalogue bug column increases as those reports arrive.
-  Portfolio Management later lets the studio move old releases from Active to
-  Maintenance or Sunset support, trading sales and service for lower capacity,
-  hosting, and monthly operations costs.
-- **Rating versus hype:** rating and hype are independent. Hype controls exposure
-  and can produce an enormous launch spike even for a bad game, but rating controls
-  conversion, week-to-week sales retention, evergreen demand, player retention,
-  and how many owners return for updates. A badly rated viral release therefore
-  falls quickly after launch; a well-rated release can survive after hype fades.
-- **Hype and promotion:** every project and release has hype that naturally
-  decays. Launch investment ranges from organic promotion to a showcase launch.
-  The separate Promotion Planning screen sells social pushes, press outreach,
-  creator-key promotions, streamer placements, festival demos, games-event booths,
-  and premium showcase slots. Community Marketing must be researched before the
-  first paid promotion; later opportunities require both capabilities and reputation. Promotions cost
-  cash, enter a FIFO queue, and consume team time only while active. Waiting
-  promotions can be cancelled for an 80% refund; the active campaign is committed.
-- **Live operations and DLC:** updates are planned and added to a studio-wide FIFO queue.
-  Choose Bug fixes, Balance, Visual, Audio, or New content and a Hotfix, Patch,
-  Content, Expansion, or Paid DLC scope. Relevant employee skill determines duration; every
-  update must then clear a bug-fixing phase before it can ship. Scopes advance the
-  public version by `0.00.01`, `0.00.10`, `0.01.00`, `0.10.00`, or `1.00.00`. Larger updates
-  cost more and consume more team capacity. Shipping restores hype, sales, and
-  monthly players in proportion to the game's rating. Bug-fix-focused updates also
-  remove existing defects, although a small number of new defects can escape QA.
-  Content, Expansion and Paid DLC sizes require progressively deeper Live Ops
-  research. Paid DLC has its own launch sales and net revenue; a DLC roadmap improves take-up
-  but does not remove its production cost or QA burden. Waiting updates can be
-  funded when queued, reserving the real commitment. Cancelling waiting work
-  recovers 75% of that budget; active development cannot be cancelled.
-- **Monthly active players:** this is the estimated number of distinct people who
-  played during the recent month, not copies sold. A game can continue selling
-  while having almost no active players, which is a warning that another update
-  may not justify its staff time unless the game is well rated enough to revive.
-- **Per-game profit accounting:** new releases retain setup/store fees, employee
-  labor accumulated during development, launch and later marketing, hosting, and
-  update costs. The Game Catalogue statistics view shows revenue, total cost, profit, and the full cost
-  breakdown. Older releases remain marked `n/a` where historical cost allocation
-  did not exist instead of showing misleading zero expenses.
-- **Conserved studio capacity:** games, contracts, updates, promotion, support and
-  R&D draw from one capacity budget. Staff no longer produce full output for several
-  activities simultaneously. Department Leads unlock player-controlled priorities,
-  and coordination research keeps large teams useful without eliminating overhead.
-- **Contract business:** the monthly Contract Board offers Design, Art, Audio, Code,
-  and Generalist work with different workloads, payouts, deadlines, difficulty,
-  and contractor-reputation requirements. Relevant team skill determines speed.
-  Successful delivery builds a separate contractor reputation; missed deadlines
-  lose reputation and pay nothing. Active client work diverts production capacity
-  and adds fatigue.
-- **Automatic contracting:** the late-game Client Relations Office can accept every currently
-  eligible board offer and queue them sequentially. New eligible contracts are
-  automatically queued when the board refreshes each month. Turning automation
-  off stops future acceptance and cancels every unstarted automatically accepted
-  contract. A contract already in progress finishes, and manually selected queued contracts are
-  preserved.
-- **Studio Development tree:** Product, Operations, People, Business and Live Ops
-  branches contain timed R&D programs with cash costs, prerequisite capabilities,
-  staffing/reputation requirements and specialization-adjusted work. Product research
-  unlocks scopes, formats, genre/theme packages and eventual engine technology;
-  Operations and People research unlock coordination, priorities, faster learning,
-  wellbeing and automation. Every branch remains reachable, but concentrating in one
-  branch makes related research faster.
-- **Failure:** a negative bank balance starts an eight-week insolvency clock. If
-  it is not recovered, the studio closes permanently. A blocking insolvency popup
-  requires deleting that run's save before a fresh studio can begin.
+## Quick Tutorial
+
+1. Start on the **Hub**. Watch cash and runway: monthly payroll and operations are real costs.
+2. Press `J` for **Jobs**. Contracts provide early survival income, but use team capacity and can cause fatigue.
+3. Press `N` to plan a game. Begin with a Micro or Compact project, choose a genre, theme, plan, and storefront, then greenlight it.
+4. Press `U` for **Studio Development**. Research unlocks larger scopes, more genres/themes, promotion, online formats, DLC, better staffing, and automation.
+5. Press `T` for **Team**. Hire carefully, train people with `L`, and give tired staff a one-week vacation with `V`.
+6. After release, use the **Game** page for updates, promotion, sequels, spin-offs, and support level.
+
+Micro games take roughly 3–6 months with a healthy minimum team. Blockbusters take roughly 6–7 years. Do not overcommit: games, contracts, updates, promotions, R&D, and live support share one studio capacity budget.
 
 ## Controls
 
-- `Tab`: cycle `Hub -> Game -> Team -> Statistics`
-- `H` / `G` / `T` / `S`: jump directly to a top-level page; `T` also selects the Team roster
-- `J`: open Jobs from the Hub
-- `N`: plan a new game, sequel, or spin-off from the Hub or Game page
-- `U`: open Studio Development from the Hub or Update Planner from the Game Catalogue
-- `P`: open Promotion Planning from the Game page
-- `C`: select waiting work to cancel in Promotion Planning or Update Planner
-- `Enter`: choose, advance New Game planning, greenlight, buy, hire, or queue the selected update
-- `E`: select Employ while on the Team page, or edit a game title while planning
-- `R`: regenerate a game title while planning
-- `Left` / `Right`: adjust the secondary genre/theme or selected creative-brief
-  field during concept planning; otherwise adjust simulation speed except in Statistics
-- `D`: dismiss the selected non-founder employee
-- `L`: open professional training for the selected Team-roster member, including the founder
-- `V`: schedule one week of vacation for the selected Team-roster member
-- `Up` / `Down`: select an item or planning field
-- `Backspace`: go back within the current page or workflow
-- `Esc`: open or close the centered Settings popup from anywhere
-- `<` / `>`: activate the bottom `</>` controls; these adjust speed normally, Production Plan values while planning, Statistics views, or Studio Development branches
-- `1`–`5`: after Department Leads research, cycle Game, Job, Update, Promotion and R&D priorities on Studio Development
-- `A`: after Sustainable Scheduling research, toggle automatic fatigue-based vacations on Studio Development
-- `Space`: pause or resume
+- `Tab`: cycle Hub, Game, Team, Statistics
+- `H` / `G` / `T` / `S`: jump to a top-level page
+- `N`: new game, sequel, or spin-off
+- `J`: Jobs / contract board
+- `U`: Studio Development
+- `P`: Promotion Planning from Game
+- `Enter`: confirm the current action
+- `Up` / `Down`: move selection
+- `Left` / `Right` or `<` / `>`: change the current context or game speed
+- `Space`: pause/resume
+- `L`: train selected team member
+- `V`: schedule selected team member's vacation
+- `D`: dismiss selected non-founder
+- `C`: cancel waiting update/promotion/R&D work where available
 - `Ctrl+S`: save
+- `Esc`: settings
 - `Q`: quit
 
-The original footer-style tabs and contextual controls now sit at the top and are
-clickable when the terminal exposes curses mouse events, except queueing an update,
-which deliberately requires the `Enter` key. Settings stays at the top-right, with
-Save and Quit inside its popup. The bottom status strip is visible on every page:
-week progress, cash, runway, and — whenever they exist — live progress meters for
-  the in-development game (`DEV`), active contract (`JOB`) and active research (`R&D`),
-plus fans and player/contractor trust (`PTrust`/`CTrust`) on wide terminals. Playback
-controls sit beside date/year/week and display `||`, `>`, `>>`, and so on. The Hub
-is a read-focused studio overview.
-The Team page shows a full-width roster with a Person Detail panel — stacked skill
-meters on the left, wellbeing (or an applicant's offer with its exact burn and
-runway impact) to their right. In the roster and applicant tables the best value
-in each skill column is crowned in green bold, and column headers align with the
-row content. Its action bar is side-aware: Hire appears only while
-employing, Dismiss/Learn only for a roster selection, and the active side is
-marked `>[E]mploy<` / `>[T]eam<`.
-The Game page opens with an In Production banner while a game is being made:
-phase bar, weeks vs plan, ETA, and every current capacity drain (contract,
-promotions, updates, training). The Advisor panel recommends the next move.
-While planning a game, the theme list is tiered by market signal — themes you
-have a proven audience for, then good genre fits (both green), then the rest —
-so 300+ themes never need blind scrubbing. Pressing `B` switches the Genre or
-Theme list into blend mode (the header swaps PRIMARY for BLEND, your primary
-stays marked yellow) so Up/Down picks the mix partner directly — Enter confirms
-the blend, `B` again cancels it back to a single genre/theme; a confirmed blend
-shows in the panel border (`1 Genre  + Building Game`). On the Production Plan
-step the highlighted field shows its value in `<…>` and an adaptive Options row
-lists every choice for it (clickable), while the plan list and brief keep your
-earlier decisions in view. The Creative
-Brief panel groups the concept into Plan, Market (fit range bar, confidence
-meter), and Workload (runway vs needed weeks bars) sections, ending with a
-plain-language recap of the concept.
-Opening Settings temporarily pauses a running game and restores its previous speed
-when closed; a game that was already paused stays paused. Use Up/Down to select
-Close, Save, or Quit and Enter to activate the highlighted action.
-During New Game planning, Enter advances from Genre Mix through Theme Mix and the
-Creative Brief to Market & Store, where Enter greenlights an eligible game.
-Up/Down chooses a primary genre/theme or planning field; Left/Right chooses the
-secondary influence or changes the highlighted concrete decision. Backspace returns
-to the previous step. Production-event popups use Up/Down and Enter while all
-other simulation controls are locked.
-Update Planner keeps the Game Catalogue and planner visible together. Up/Down first
-selects a game, then an update scope, then an update area. Enter locks each step and
-queues the update from the final step; Backspace moves through those steps in reverse
-and returns to the Game page from game selection. In either queue page, press `C`,
-use Up/Down to select waiting work, and press Enter to cancel it. Selection remains
-active for further cancellations until Backspace returns to ordinary planning.
-Rows select games, promotions, applicants,
-employees, upgrades, genres, or releases; double-clicking confirms choices where
-available; the wheel scrolls lists and changes selections. Game titles still
-require keyboard text input.
+## Progression
 
-## Code Layout
+Studio Development has Product, Operations, People, Business, and Live Ops branches. Research takes time and money; specializing makes related research faster, but every branch remains available.
 
-The UI follows one design system; every page is assembled from the same
-pieces instead of bespoke layouts:
+Locked genres and themes are hidden until their research is complete. IP rank uses combined lifetime sales: Niche at 10,000 units, Recognized at 100,000, and Iconic at 10,000,000 units.
 
-- `ui_common.py`: primitives — clipped text, titled panels, meters, money,
-  the shared scrolling selection list (`> ` marker, accent highlight),
-  table cells, key/value lines, and queue headers.
-- `ui_chrome.py`: the frame around every page — top tabs plus the current
-  page's context actions, the persistent bottom status strip (cash, runway,
-  `DEV`/`JOB` progress), date/playback bars, and all centered popups
-  (Settings, Training, Production Event, Insolvency).
-- One module per page: `ui_hub.py`, `ui_newgame.py`, `ui_team.py`,
-  `ui_contracts.py`, `ui_games.py` (catalogue, Update Planner, Promotion
-  Planning), `ui_upgrades.py`, `ui_stats.py`.
-- `ui_input.py`: keyboard and mouse. Overlays capture input first; then
-  global keys; then page keys. Mouse hit-testing calls the same layout
-  helpers the screens draw with, so clicks cannot drift from rendering.
-- `main.py`: entry point — screen dispatch table, curses run loop,
-  `--simulate`, CLI parsing.
-- `simulation.py` / `game_data.py`: game rules and static data; UI modules
-  read them but never the other way around.
-
-Navigation rules are global: `Up/Down` moves a selection, `Enter` is the
-primary action, `Backspace` goes one level up, `Left/Right` adjusts the
-context's horizontal axis (speed, planning values, statistics views),
-`Tab`/`H`/`G`/`T`/`S` switch pages, `Esc` opens Settings.
-
-## Verification
-
-Run the automated simulation tests:
+## Testing
 
 ```bash
-python -m unittest -v
-```
-
-Advance a studio without curses to inspect long-term accounting behavior:
-
-```bash
-python main.py --simulate 52
-python main.py --load --simulate 12
+python -m unittest test_simulation
 ```

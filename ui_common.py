@@ -103,7 +103,7 @@ def game_title(game, width: int | None = None) -> str:
 
 
 def rating_text(game) -> str:
-    return "n/a" if game.release_date == "Historical" else str(game.score)
+    return str(game.score)
 
 
 def game_recommendation(game) -> tuple[str, int]:

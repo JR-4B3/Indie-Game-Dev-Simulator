@@ -277,7 +277,7 @@ def draw_game_catalogue_table(
             monthly = entry.monthly_players
             units = entry.units_sold
             revenue = money(entry.net_revenue)
-            profit = money(game_profit(entry)) if entry.cost_history_complete else "n/a"
+            profit = money(game_profit(entry))
         if panel_width >= 112:
             text = f"{game_title_text[:title_width]:<{title_width}} {hype:>6.0f} {bugs:>6} {user:>6} {press:>6} {chart:>6} {weekly:>9,} {monthly:>9,} {units:>10,} {revenue:>12} {profit:>12}"
         else:
@@ -292,7 +292,7 @@ def draw_compact_detail(overview, updates, promotion, state: GameState, game, sa
     press_text = f"{game.press_rating:.0f}" if game.press_rating else "--"
     add_text(overview, 1, 2, f"Rating {rating_text(game)}/100 | User {user_text} | Press {press_text}", game_width - 4, rating_attr)
     add_text(overview, 2, 2, f"Hype {game.hype:.0f} | Bugs {game.known_bug_count} | Monthly {game.monthly_players:,}", game_width - 4)
-    add_text(overview, 3, 2, f"Revenue {money(game.net_revenue)} | Profit {money(game_profit(game)) if game.cost_history_complete else 'n/a'}", game_width - 4)
+    add_text(overview, 3, 2, f"Revenue {money(game.net_revenue)} | Profit {money(game_profit(game))}", game_width - 4)
     position = positions.get(game.game_id)
     add_text(overview, 4, 2, f"Chart {f'#{position}' if position else '--'} | Sales {(sale.week_to_date if sale else 0):,}/w | {sparkline(game.sales_history)}", game_width - 4)
     jobs = update_jobs_for_game(state, game.game_id)
@@ -366,18 +366,15 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     next_row = 25
     if detail_height >= 34:
         add_text(panel, next_row, 2, "UNIT ECONOMICS", inner, curses.A_BOLD)
-        if game.cost_history_complete:
-            total_cost = game_total_cost(game)
-            cash_peak = max(game.net_revenue, total_cost, 1)
-            bar_width = max(6, inner - 19)
-            add_text(panel, next_row + 1, 2, f"REVENUE [{meter(game.net_revenue, cash_peak, bar_width)}] {money(game.net_revenue)}", inner, curses.color_pair(4))
-            add_text(panel, next_row + 2, 2, f"COST    [{meter(total_cost, cash_peak, bar_width)}] {money(total_cost)}", inner, curses.color_pair(5))
-            profit = game_profit(game)
-            margin = profit / game.net_revenue * 100 if game.net_revenue else 0
-            add_text(panel, next_row + 3, 2, f"Profit   {money(profit)} ({margin:+.1f}%)", inner, (curses.color_pair(4) if profit >= 0 else curses.color_pair(5)) | curses.A_BOLD)
-            add_text(panel, next_row + 4, 2, f"Setup {money(game.production_cost)} | Staff {money(game.labor_cost)} | Marketing {money(game.marketing_cost)} | Live {money(game.post_launch_cost)}", inner)
-        else:
-            add_text(panel, next_row + 1, 2, "Cost history unavailable (historical release)", inner, curses.color_pair(5))
+        total_cost = game_total_cost(game)
+        cash_peak = max(game.net_revenue, total_cost, 1)
+        bar_width = max(6, inner - 19)
+        add_text(panel, next_row + 1, 2, f"REVENUE [{meter(game.net_revenue, cash_peak, bar_width)}] {money(game.net_revenue)}", inner, curses.color_pair(4))
+        add_text(panel, next_row + 2, 2, f"COST    [{meter(total_cost, cash_peak, bar_width)}] {money(total_cost)}", inner, curses.color_pair(5))
+        profit = game_profit(game)
+        margin = profit / game.net_revenue * 100 if game.net_revenue else 0
+        add_text(panel, next_row + 3, 2, f"Profit   {money(profit)} ({margin:+.1f}%)", inner, (curses.color_pair(4) if profit >= 0 else curses.color_pair(5)) | curses.A_BOLD)
+        add_text(panel, next_row + 4, 2, f"Setup {money(game.production_cost)} | Staff {money(game.labor_cost)} | Marketing {money(game.marketing_cost)} | Live {money(game.post_launch_cost)}", inner)
         next_row += 6
     if detail_height >= next_row + 6:
         add_text(panel, next_row, 2, "RECORD", inner, curses.A_BOLD)
@@ -531,12 +528,11 @@ def draw_economics_strip(screen: curses.window, state: GameState, title: str, su
     panel = screen.derwin(summary_height, width, summary_y, 0)
     draw_box(panel, f"Catalogue Economics & Activity | {title}")
     catalog = state.studio.catalog
-    tracked_games = [item for item in catalog if item.cost_history_complete]
-    tracked_revenue = sum(item.net_revenue for item in tracked_games)
-    tracked_cost = sum(game_total_cost(item) for item in tracked_games)
+    tracked_revenue = sum(item.net_revenue for item in catalog)
+    tracked_cost = sum(game_total_cost(item) for item in catalog)
     tracked_profit = tracked_revenue - tracked_cost
     tracked_margin = tracked_profit / tracked_revenue * 100 if tracked_revenue else 0
-    rated_games = [item for item in catalog if item.release_date != "Historical"]
+    rated_games = catalog
     average_rating = sum(item.score for item in rated_games) / len(rated_games) if rated_games else None
     average_rating_attr = curses.color_pair(4) if average_rating is not None and average_rating >= 70 else curses.color_pair(5) if average_rating is not None and average_rating < 45 else 0
     best_rank = min(positions.values(), default=None)

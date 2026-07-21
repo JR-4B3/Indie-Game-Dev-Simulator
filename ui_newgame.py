@@ -340,7 +340,7 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
             add_text(plan, 31, 2, f"for {audience['name']}; lead {primary_direction['name']}, support {secondary_direction['name']};", inner)
             add_text(plan, 32, 2, f"{release_strategy['name']} launch, {marketing['name']} marketing, on {channel_data['name']}.", inner)
             if sequel:
-                score = "score n/a" if sequel.release_date == "Historical" else f"{sequel.score}/100"
+                score = f"{sequel.score}/100"
                 add_text(plan, 33, 2, f"Sequel to {sequel.title} ({score})", inner, curses.color_pair(2))
 
     storefront_width = genre_width + theme_width + 1

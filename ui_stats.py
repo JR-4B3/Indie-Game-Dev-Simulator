@@ -39,8 +39,8 @@ def draw_analysis_overview(panel: curses.window, state: GameState) -> None:
     height, width = panel.getmaxyx()
     studio = state.studio
     games_revenue = sum(game.net_revenue for game in studio.catalog)
-    tracked_game_costs = sum(game_total_cost(game) for game in studio.catalog if game.cost_history_complete)
-    tracked_game_revenue = sum(game.net_revenue for game in studio.catalog if game.cost_history_complete)
+    tracked_game_costs = sum(game_total_cost(game) for game in studio.catalog)
+    tracked_game_revenue = sum(game.net_revenue for game in studio.catalog)
     units = sum(game.units_sold for game in studio.catalog)
     target = recommended_team_size(studio)
     add_text(panel, 3, 2, f"Cash {money(studio.cash)}   Runway {runway_months(studio):.1f} months   Burn {money(monthly_fixed_cost(studio))}/month", width - 4, curses.A_BOLD)
@@ -107,7 +107,7 @@ def genre_statistics(state: GameState) -> list[dict]:
     statistics = []
     for genre in GENRES:
         games = [game for game in state.studio.catalog if game.genre == genre]
-        scored_games = [game for game in games if game.release_date != "Historical"]
+        scored_games = games
         statistics.append(
             {
                 "genre": genre,
@@ -157,8 +157,8 @@ def draw_game_catalog(panel: curses.window, state: GameState) -> None:
     add_text(panel, 3, 2, header, width - 4, curses.A_BOLD)
     rows = []
     for game in games:
-        cost = money(game_total_cost(game)) if game.cost_history_complete else "n/a"
-        profit = money(game_profit(game)) if game.cost_history_complete else "n/a"
+        cost = money(game_total_cost(game))
+        profit = money(game_profit(game))
         if wide:
             title = game_title(game, 28)
             text = f"{title:<28} {game.genre[:16]:<16} {rating_text(game):>6} {game.hype:>5.0f} {game.monthly_players:>9,} {game.units_sold:>10,} {money(game.net_revenue):>11} {cost:>11} {profit:>11} {game.known_bug_count:>9}"
@@ -170,11 +170,8 @@ def draw_game_catalog(panel: curses.window, state: GameState) -> None:
     game = games[state.selected_stat]
     lineage = "original" if game.sequel_of is None else f"sequel generation {game.generation}"
     add_text(panel, height - 3, 2, f"{game_title(game)} | Theme {game.topic} / Storefront {game.channel} / {lineage} | Rating {rating_text(game)}/100 | Hype {game.hype:.0f} | Monthly active players {game.monthly_players:,}", width - 4, curses.color_pair(4))
-    if game.cost_history_complete:
-        costs = f"COSTS: setup/store {money(game.production_cost)} + development staff {money(game.labor_cost)} + marketing {money(game.marketing_cost)} + hosting/updates {money(game.post_launch_cost)} = {money(game_total_cost(game))} total | PROFIT {money(game_profit(game))}"
-    else:
-        costs = "COSTS: full per-game cost tracking was not present when this older title was developed; revenue remains accurate."
-    add_text(panel, height - 2, 2, costs, width - 4, curses.color_pair(4) if game.cost_history_complete and game_profit(game) >= 0 else curses.color_pair(5))
+    costs = f"COSTS: setup/store {money(game.production_cost)} + development staff {money(game.labor_cost)} + marketing {money(game.marketing_cost)} + hosting/updates {money(game.post_launch_cost)} = {money(game_total_cost(game))} total | PROFIT {money(game_profit(game))}"
+    add_text(panel, height - 2, 2, costs, width - 4, curses.color_pair(4) if game_profit(game) >= 0 else curses.color_pair(5))
 
 
 def draw_market_view(panel: curses.window, state: GameState) -> None:

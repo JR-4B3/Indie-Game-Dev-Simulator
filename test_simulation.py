@@ -1021,7 +1021,6 @@ class SimulationTests(unittest.TestCase):
         advance(state, 40)
         game = state.studio.catalog[-1]
 
-        self.assertTrue(game.cost_history_complete)
         self.assertGreater(game.production_cost, 0)
         self.assertGreater(game.labor_cost, 0)
         self.assertEqual(game.marketing_cost, 4_000)
@@ -1493,7 +1492,7 @@ class SimulationTests(unittest.TestCase):
         self.assertIn("PTrust", segment_text)
         self.assertIn("CTrust", segment_text)
 
-    def test_version_two_save_round_trip(self) -> None:
+    def test_current_save_round_trip(self) -> None:
         state = GameState()
         state.marketing_tab = 1
         start_project(state)
@@ -1511,14 +1510,13 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(loaded.studio.contract_offers), len(state.studio.contract_offers))
         self.assertEqual(loaded.marketing_tab, 1)
 
-    def test_version_two_scope_selection_migrates_by_meaning(self) -> None:
+    def test_unsupported_save_version_is_rejected(self) -> None:
         state = GameState(selected_scope=1)
         data = state_to_data(state)
         data["version"] = 2
 
-        loaded = state_from_data(data, "legacy-v2.json")
-
-        self.assertEqual(loaded.selected_scope, 2)
+        with self.assertRaises(ValueError):
+            state_from_data(data, "legacy-v2.json")
 
     def test_accounting_preserves_expense_categories(self) -> None:
         state = GameState()
@@ -2207,23 +2205,6 @@ class SimulationTests(unittest.TestCase):
         unlock(state, "promotion_basics", "paid_dlc")
         self.assertTrue(buy_promotion(state, game.game_id, 0))
         self.assertTrue(queue_game_update(state, game.game_id))
-
-    def test_version_five_save_migrates_capabilities(self) -> None:
-        state = GameState()
-        state.studio.upgrades.append("hardware")
-        data = state_to_data(state)
-        data["version"] = 5
-        for key in ("completed_research", "active_research", "research_queue", "work_priorities", "auto_vacation"):
-            data["studio"].pop(key, None)
-        for employee in data["studio"]["team"] + data["studio"]["applicants"]:
-            for key in ("vacation_weeks_left", "burnout_weeks_left", "career_level", "lifetime_experience"):
-                employee.pop(key, None)
-
-        loaded = state_from_data(data, "legacy-v5.json")
-
-        self.assertEqual(SAVE_VERSION, 6)
-        self.assertTrue(has_research(loaded.studio, "product_foundations"))
-        self.assertTrue(has_research(loaded.studio, "hardware"))
 
     def test_portfolio_management_reduces_old_game_support_load(self) -> None:
         state = GameState()
