@@ -177,7 +177,7 @@ def draw_chart_rows(window: curses.window, chart: list, selected_game_id: int, y
     studio title is dimmed. Returns the first free row below the block."""
     bar_width = 7
     peak_units = max((entry.weekly_units for entry in chart), default=1) or 1
-    studio_width = max(6, min(12, inner - 36))
+    studio_width = max(10, min(20, inner - 40))
     title_width = max(10, inner - studio_width - bar_width - 14)
     for index, entry in enumerate(chart[:count], 1):
         filled = max(1, round(bar_width * entry.weekly_units / peak_units))

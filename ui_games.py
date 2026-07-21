@@ -461,7 +461,7 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         add_text(overview, 3, 2, f"{project.phase} [{meter(bar_value, 1, bar_width)}] {bar_value:>4.0%}", left_inner, curses.color_pair(4))
         plan_text = f"PLAN  Week {project.weeks} | about {remaining}w left / {project.planned_weeks}w planned"
         if project.bug_work:
-            plan_text += f" | {int(project.known_defects)} bugs to clear"
+            plan_text += f" | {project.bugs_to_clear} bugs to clear"
         add_text(overview, 4, 2, plan_text, left_inner)
         add_text(overview, 5, 2, f"{project.scope} / {project.channel} / {money(project.price)} retail | {project.target_audience}", left_inner)
         tracked_cost = project.production_cost + project.labor_cost + project.marketing_cost
@@ -508,8 +508,6 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         add_text(overview, 14, right_x, "MARKET POSITION", right_inner, curses.A_BOLD)
         add_text(overview, 15, right_x, f"Market fit {project.market_score}/100 | {project.competitors} rivals", right_inner)
         add_text(overview, 16, right_x, f"Genre pressure {genre_release_pressure(state.studio, project.genre):.1f}/3.0", right_inner, curses.color_pair(5) if genre_release_pressure(state.studio, project.genre) >= 1.5 else 0)
-        hint_row = detail_height - 2
-        add_text(overview, hint_row, right_x, "P  Open promotion planning", right_inner)
 
         draw_promotion_panel(promotion, state, 0, promotion_width - 4, detail_height, campaign_load, prelaunch_hype=project.hype)
     if summary_height >= 5:
@@ -742,7 +740,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     updates_inner = updates_width - 4
     jobs = update_jobs_for_game(state, game.game_id)
     active_job = state.studio.active_update if state.studio.active_update and state.studio.active_update.game_id == game.game_id else None
-    target_version = planned_update_version(state.studio, game, game.update_size)
+    target_version = active_job.target_version if active_job else planned_update_version(state.studio, game, game.update_size)
     status = "ACTIVE" if active_job else "QUEUED" if jobs else "READY"
     add_text(updates, 1, 2, f"{game.title} -> v{target_version}", updates_inner, curses.A_BOLD)
     add_text(updates, 2, 2, f"Status {status}", updates_inner, (curses.color_pair(4) if active_job else curses.color_pair(3)) | curses.A_BOLD)
@@ -776,9 +774,6 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     history_row = 13 + len(shown_jobs)
     if history_row < detail_height - 1:
         add_text(updates, history_row, 2, f"Release history: {game.updates_released} updates | {game.dlcs_released} DLC", updates_inner)
-    hint_row = detail_height - 2
-    if hint_row > history_row + 1:
-        add_text(updates, hint_row, 2, "U  Open update planner", updates_inner)
 
     recommendation, recommendation_color = game_recommendation(game)
     draw_promotion_panel(promotion, state, game.game_id, promotion_width - 4, detail_height, campaign_load, recommendation=recommendation, recommendation_color=recommendation_color)

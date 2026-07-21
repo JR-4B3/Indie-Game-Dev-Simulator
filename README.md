@@ -156,7 +156,7 @@ followers, reputation, and release count are retained where possible; obsolete
 - `Tab`: cycle `Hub -> Game -> Team -> Statistics`
 - `H` / `G` / `T` / `S`: jump directly to a top-level page; `T` also selects the Team roster
 - `J`: open Jobs from the Hub
-- `N`: plan an original game or sequel from the Hub or Game page
+- `N`: plan a new game, sequel, or spin-off from the Hub or Game page
 - `U`: open Upgrades from the Hub or Update Planner from the Game Catalogue
 - `P`: open Promotion Planning from the Game page
 - `C`: select waiting work to cancel in Promotion Planning or Update Planner

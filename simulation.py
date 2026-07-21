@@ -17,8 +17,8 @@ SECONDS_PER_WEEK = 20.0
 SECONDS_PER_DAY = SECONDS_PER_WEEK / 7
 SKILLS = ("Design", "Art", "Audio", "Code")
 EMPLOYEE_SKILLS = SKILLS + ("Research",)
-TIME_SPEEDS = (0.0, 1.0, 2.0, 4.0, 8.0)
-TIME_LABELS = ("||", "> 1x", ">> 2x", ">>> 4x", ">>>> 8x")
+TIME_SPEEDS = (0.0, 4.0, 8.0, 10.0, 12.0)
+TIME_LABELS = ("||", "> 4x", ">> 8x", ">>> 10x", ">>>> 12x")
 
 CHANNELS = (
     {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00},
@@ -142,11 +142,11 @@ UPDATE_FOCUSES = (
 )
 
 UPDATE_SIZES = (
-    {"name": "Hotfix", "work": 24, "bugs": 3, "fixes": 4, "escaped": 0.2, "cost": 75, "hype": 2, "sales": 1, "version": (0, 0, 1), "team": 0.06},
-    {"name": "Patch", "work": 70, "bugs": 8, "fixes": 10, "escaped": 0.8, "cost": 250, "hype": 7, "sales": 2, "version": (0, 0, 10), "team": 0.12},
-    {"name": "Content", "work": 170, "bugs": 20, "fixes": 25, "escaped": 2.5, "cost": 900, "hype": 18, "sales": 4, "version": (0, 1, 0), "team": 0.20},
-    {"name": "Expansion", "work": 380, "bugs": 45, "fixes": 55, "escaped": 6.0, "cost": 3_500, "hype": 42, "sales": 9, "version": (0, 10, 0), "team": 0.30},
-    {"name": "Paid DLC", "work": 620, "bugs": 65, "fixes": 70, "escaped": 8.0, "cost": 8_000, "hype": 58, "sales": 12, "version": (1, 0, 0), "team": 0.38, "price": 9.99},
+    {"name": "Hotfix", "work": 16, "bugs": 3, "fixes": 4, "escaped": 0.2, "cost": 75, "hype": 2, "sales": 1, "version": (0, 0, 1), "team": 0.06},
+    {"name": "Patch", "work": 45, "bugs": 8, "fixes": 10, "escaped": 0.8, "cost": 250, "hype": 7, "sales": 2, "version": (0, 0, 10), "team": 0.12},
+    {"name": "Content", "work": 110, "bugs": 20, "fixes": 25, "escaped": 2.5, "cost": 900, "hype": 18, "sales": 4, "version": (0, 1, 0), "team": 0.20},
+    {"name": "Expansion", "work": 240, "bugs": 45, "fixes": 55, "escaped": 6.0, "cost": 3_500, "hype": 42, "sales": 9, "version": (0, 10, 0), "team": 0.30},
+    {"name": "Paid DLC", "work": 380, "bugs": 65, "fixes": 70, "escaped": 8.0, "cost": 8_000, "hype": 58, "sales": 12, "version": (1, 0, 0), "team": 0.38, "price": 9.99},
 )
 
 LEGACY_MARKETING_NAMES = {
@@ -367,6 +367,12 @@ class Project:
         return min(1.0, self.bug_work_done / self.bug_work) if self.bug_work else 0.0
 
     @property
+    def bugs_to_clear(self) -> int:
+        if not self.bug_work:
+            return 0
+        return max(0, math.ceil((self.bug_work - self.bug_work_done) / BUG_FIX_WORK_PER_DEFECT))
+
+    @property
     def remaining_work(self) -> float:
         return max(0.0, self.total_work - self.work_done) + max(0.0, self.bug_work - self.bug_work_done)
 
@@ -418,6 +424,7 @@ class ReleasedGame:
     channel: str
     score: int
     release_date: str
+    release_week: int = 0
     sequel_of: int | None = None
     generation: int = 1
     franchise_id: int | None = None
@@ -715,6 +722,7 @@ class GameState:
     naming_game: bool = False
     sequel_game_id: int | None = None
     spinoff_franchise_id: int | None = None
+    new_game_kind: str = ""
     time_speed_index: int = 1
     resume_speed_index: int = 1
     save_path: str = "gamedev_save.json"
@@ -1301,7 +1309,7 @@ def update_weekly_output(studio: Studio, game_or_focus: ReleasedGame | str) -> f
         workers += 1
         skill = sum(employee.skills) / 4 if skill_index is None else employee.skills[skill_index]
         availability = max(0.35, employee.morale / 100) * max(0.35, 1 - employee.fatigue / 130)
-        output += skill * availability * employee_modifiers(employee)["output"] * 0.16
+        output += skill * availability * employee_modifiers(employee)["output"] * 0.45
     return max(1.0, output * team_speed_factor(workers))
 
 
@@ -1737,7 +1745,7 @@ def generate_contract_offer(studio: Studio, rng: random.Random, difficulty: int)
     focus = rng.choice(tuple(CONTRACT_TYPES))
     required_work = 65 + difficulty * 55 + rng.randint(0, 45)
     reputation_required = max(0, (difficulty - 1) * 15)
-    rate = 58 + difficulty * 17 + studio.contractor_reputation * 0.35
+    rate = 38 + difficulty * 14 + studio.contractor_reputation * 1.15
     payout = round(required_work * rate / 500) * 500
     provisional = Contract(
         rng.choice(CONTRACT_TYPES[focus]),
@@ -1893,6 +1901,7 @@ def finish_project(state: GameState) -> None:
         project.channel,
         score,
         state.clock.current_date.isoformat(),
+        state.clock.week,
         project.sequel_of,
         project.generation,
         hype=min(150, project.hype + score / 5),
@@ -2124,7 +2133,7 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
             finish_project(state)
     elif project.work_done >= project.total_work - 0.01:
         if project.defects > 0.5:
-            project.bug_work = project.defects * BUG_FIX_WORK_PER_DEFECT
+            project.bug_work = project.defects * BUG_FIX_WORK_PER_DEFECT * QA_CLEAR_FRACTION
             state.log(f"{project.title} entered bug fixing: {project.defects:.0f} defects from development must be cleared before release.")
         else:
             finish_project(state)
@@ -2441,6 +2450,8 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
             undiscovered = max(0, game.actual_bugs - game.known_bugs)
             if undiscovered > 0:
                 discovery_rate = min(0.35, 0.015 + week_units / 10_000 + game.monthly_players / 100_000)
+                if game.release_week and 0 <= state.clock.week - game.release_week <= LAUNCH_DISCOVERY_WEEKS:
+                    discovery_rate = min(0.5, discovery_rate + 0.12)
                 game.known_bugs = min(game.actual_bugs * 0.98, game.known_bugs + undiscovered * discovery_rate)
                 newly_reported = game.known_bug_count - game.reported_bug_count
                 if newly_reported > 0:
@@ -2564,7 +2575,7 @@ def process_contract(state: GameState, week_end: bool = True, workday: bool = Tr
         contract.weeks_left -= 1
     if contract.work_done >= contract.required_work:
         add_revenue(studio, contract.payout, "Contracts")
-        reputation_gain = contract.difficulty * 2 + max(0, contract.weeks_left) * 0.25
+        reputation_gain = contract.difficulty * 0.75 + max(0, contract.weeks_left) * 0.1
         studio.contractor_reputation = min(100, studio.contractor_reputation + reputation_gain)
         studio.contracts_completed += 1
         state.log(f"Delivered {contract.client}'s {contract.title}; paid ${contract.payout:,}, contractor reputation +{reputation_gain:.1f}.")
@@ -2783,6 +2794,8 @@ def process_media_ventures_week(state: GameState) -> None:
 
 
 BUG_FIX_WORK_PER_DEFECT = 1.6
+QA_CLEAR_FRACTION = 0.75
+LAUNCH_DISCOVERY_WEEKS = 4
 
 
 def seed_market(state: GameState) -> None:
@@ -2970,6 +2983,7 @@ def state_to_data(state: GameState) -> dict:
             "title_roll": state.title_roll,
             "sequel_game_id": state.sequel_game_id,
             "spinoff_franchise_id": state.spinoff_franchise_id,
+            "new_game_kind": state.new_game_kind,
             "selected_venture": state.selected_venture,
         },
         "logs": state.logs,
@@ -3194,6 +3208,7 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         title_roll=ui.get("title_roll", 0),
         sequel_game_id=ui.get("sequel_game_id"),
         spinoff_franchise_id=ui.get("spinoff_franchise_id"),
+        new_game_kind=ui.get("new_game_kind", ""),
         selected_venture=ui.get("selected_venture", 0),
         save_path=save_path,
         logs=data.get("logs", []),

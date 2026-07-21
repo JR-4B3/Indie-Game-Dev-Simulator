@@ -24,8 +24,19 @@ from simulation import (
 from ui_common import COLOR_GOOD, add_text, draw_box, draw_selectable_list, game_title, meter, money, range_meter, rating_text, update_status
 
 
-def sequel_choices(state: GameState) -> list:
-    return [None] + list(reversed(state.studio.catalog))
+def project_kind_choices(state: GameState) -> list[tuple[str, str, bool]]:
+    """(key, description, enabled) rows for the new-project menu."""
+    has_releases = bool(state.studio.catalog)
+    return [
+        ("new", "Start a fresh genre/theme concept with a generated title", True),
+        ("sequel", "Continue one of your released games", has_releases),
+        ("spinoff", "New genre and theme inside one of your existing IPs", has_releases),
+        ("engine", "Build your own engine (not available yet)", False),
+    ]
+
+
+def base_game_choices(state: GameState) -> list:
+    return list(reversed(state.studio.catalog))
 
 
 def topic_order(state: GameState) -> list[tuple[str, str]]:
@@ -77,23 +88,32 @@ PLAN_FIELDS = (
 
 def draw_project_type(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel = screen.derwin(height - 4, width, 2, 0)
-    draw_box(panel, "Start Production | Original Game or Sequel")
-    add_text(panel, 1, 2, "Choose an original concept or continue one of your released games.", width - 4, curses.color_pair(4))
-    choices = sequel_choices(state)
+    draw_box(panel, "Start Production | Project Type")
+    add_text(panel, 1, 2, "Choose what your studio builds next.", width - 4, curses.color_pair(4))
+    choices = project_kind_choices(state)
+    state.selected_sequel_choice = min(state.selected_sequel_choice, len(choices) - 1)
+    labels = {"new": "NEW GAME", "sequel": "SEQUEL", "spinoff": "SPIN-OFF", "engine": "ENGINE"}
+    rows = []
+    for key, description, enabled in choices:
+        attr = 0 if enabled else curses.color_pair(2)
+        suffix = "" if enabled else "  (requires a released game)" if key in ("sequel", "spinoff") else ""
+        rows.append((f"{labels[key]:<10} {description}{suffix}", attr))
+    draw_selectable_list(panel, rows, state.selected_sequel_choice, True, y=3, width=width - 4, visible=height - 8)
+    add_text(panel, height - 2, 2, "Enter or double-click to continue.", width - 4, curses.color_pair(4))
+
+
+def draw_base_game_picker(screen: curses.window, state: GameState, width: int, height: int) -> None:
+    panel = screen.derwin(height - 4, width, 2, 0)
+    noun = "Spin-off" if state.new_game_kind == "spinoff" else "Sequel"
+    draw_box(panel, f"Start Production | {noun} Base Game")
+    add_text(panel, 1, 2, f"Pick the released game this {noun.lower()} builds on.", width - 4, curses.color_pair(4))
+    choices = base_game_choices(state)
     state.selected_sequel_choice = min(state.selected_sequel_choice, len(choices) - 1)
     rows = []
     for choice in choices:
-        if choice is None:
-            text = "ORIGINAL GAME  Create a new genre/theme concept and generated title"
-        else:
-            label = game_title(choice, 34)
-            text = f"SEQUEL         {label:<34} {choice.genre[:13]:<13} rating {rating_text(choice):>3} | hype {choice.hype:.0f} | {choice.monthly_players:,} monthly players | {update_status(choice)}"
-        rows.append((text, 0))
+        label = game_title(choice, 34)
+        rows.append((f"{label:<34} {choice.genre[:13]:<13} rating {rating_text(choice):>3} | hype {choice.hype:.0f} | {choice.monthly_players:,} monthly players | {update_status(choice)}", 0))
     draw_selectable_list(panel, rows, state.selected_sequel_choice, True, y=3, width=width - 4, visible=height - 8)
-    tracked = len(state.studio.catalog)
-    missing = max(0, state.studio.released_games - tracked)
-    if missing:
-        add_text(panel, height - 3, 2, f"{missing} older release(s) lack recoverable title data and cannot be selected as sequels.", width - 4, curses.color_pair(5))
     add_text(panel, height - 2, 2, "Enter or double-click to continue. Mouse wheel scrolls the release list.", width - 4, curses.color_pair(4))
 
 
@@ -109,6 +129,9 @@ def new_game_panel_geometry(width: int, height: int) -> tuple[int, int, int, int
 def draw_new_game(screen: curses.window, state: GameState, width: int, height: int) -> None:
     if state.new_game_step == -1:
         draw_project_type(screen, state, width, height)
+        return
+    if state.new_game_step == -2:
+        draw_base_game_picker(screen, state, width, height)
         return
     top_height, genre_width, theme_width, plan_width, storefront_height = new_game_panel_geometry(width, height)
     plan_height = top_height + storefront_height

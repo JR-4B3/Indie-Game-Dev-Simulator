@@ -376,8 +376,8 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(all(call.args[1] == 1 for call in backgrounds))
 
     def test_header_speed_indicator_matches_four_speed_levels(self) -> None:
-        self.assertEqual(TIME_SPEEDS, (0.0, 1.0, 2.0, 4.0, 8.0))
-        self.assertEqual(TIME_LABELS, ("||", "> 1x", ">> 2x", ">>> 4x", ">>>> 8x"))
+        self.assertEqual(TIME_SPEEDS, (0.0, 4.0, 8.0, 10.0, 12.0))
+        self.assertEqual(TIME_LABELS, ("||", "> 4x", ">> 8x", ">>> 10x", ">>>> 12x"))
 
         for speed_index, label in enumerate(TIME_LABELS):
             state = GameState()
@@ -933,6 +933,13 @@ class SimulationTests(unittest.TestCase):
         self.assertIsNone(state.studio.current_project)
         game = state.studio.catalog[-1]
         self.assertLess(game.actual_bugs, 30, "the bug-fixing phase clears most defects before shipping")
+        self.assertGreater(game.actual_bugs, 1, "QA must not clear every bug before release")
+        known_after_launch = game.known_bugs
+        for _ in range(3):
+            state.clock.current_date += timedelta(days=7)
+            state.clock.week += 1
+            advance_game(state, 1)
+        self.assertGreater(game.known_bugs, known_after_launch, "hidden bugs surface quickly after release")
         self.assertTrue(any("bug fixing" in message for message in state.logs))
 
     def test_bigger_teams_create_more_defects(self) -> None:
@@ -1698,6 +1705,8 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(state.new_game_step, -1)
         handle_new_game_key(state, curses.KEY_DOWN)
         handle_new_game_key(state, 10)
+        self.assertEqual(state.new_game_step, -2)
+        handle_new_game_key(state, 10)
         self.assertEqual(state.draft_title, "My First Commercial Game II")
         self.assertEqual(state.new_game_step, 2)
         self.assertTrue(start_project(state))
@@ -1714,6 +1723,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded.studio.catalog[-1].title, "My First Commercial Game II")
         open_new_game(loaded)
         handle_new_game_key(loaded, curses.KEY_DOWN)
+        handle_new_game_key(loaded, 10)
         handle_new_game_key(loaded, 10)
         self.assertEqual(loaded.draft_title, "My First Commercial Game III")
 

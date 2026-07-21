@@ -68,7 +68,7 @@ from ui_chrome import (
 from ui_common import catalogue_entries, list_start, live_games, promotion_targets
 from ui_contracts import contract_board_width
 from ui_games import catalogue_table_height, catalogue_table_width, games_list_width, summary_panel_width
-from ui_newgame import PLAN_FIELDS, new_game_panel_geometry, select_topic_at, sequel_choices, topic_order, topic_position
+from ui_newgame import PLAN_FIELDS, base_game_choices, new_game_panel_geometry, project_kind_choices, select_topic_at, topic_order, topic_position
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
 from ui_title import TITLE_MENU, title_layout
@@ -95,6 +95,7 @@ def open_new_game(state: GameState) -> None:
     state.new_game_step = -1
     state.selected_focus = 0
     state.selected_sequel_choice = 0
+    state.new_game_kind = ""
     state.mix_blend = False
 
 
@@ -134,7 +135,7 @@ def cancel_selected_queue_item(state: GameState) -> bool:
 def released_selection_index(state: GameState) -> int:
     """On the Game page ``selected_game`` indexes the catalogue entries, where
     the in-development project is row 0; convert to a released-games index for
-    planner, marketing, and spin-off actions."""
+    planner and marketing actions."""
     games = live_games(state)
     offset = 1 if state.modal == "games" and state.studio.current_project else 0
     return max(0, min(state.selected_game - offset, len(games) - 1))
@@ -213,12 +214,6 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         state.modal = "marketing"
         state.marketing_tab = 0
         state.queue_cancellation = ""
-    elif action == "game_spinoff":
-        games = live_games(state)
-        project_selected = state.modal == "games" and state.studio.current_project and state.selected_game == 0
-        if games and not project_selected:
-            game = games[released_selection_index(state)]
-            prepare_spinoff(state, game)
     elif action == "production_option":
         state.selected_project_decision = (state.selected_project_decision + 1) % 2
     elif action == "resolve_decision":
@@ -295,8 +290,7 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "cancel_title":
         state.naming_game = False
     elif action == "project_choice":
-        choices = sequel_choices(state)
-        state.selected_sequel_choice = (state.selected_sequel_choice + 1) % len(choices)
+        handle_new_game_key(state, curses.KEY_DOWN)
     elif action == "new_game_selection":
         handle_new_game_key(state, curses.KEY_DOWN)
     elif action == "toggle_blend":
@@ -357,10 +351,17 @@ def close_blend(state: GameState, confirm: bool) -> None:
 
 def handle_new_game_key(state: GameState, key: int) -> None:
     if state.new_game_step == -1:
-        choices = sequel_choices(state)
+        choices = project_kind_choices(state)
         if key in (10, 13, curses.KEY_ENTER):
-            choice = choices[state.selected_sequel_choice]
-            if choice is None:
+            kind, _, enabled = choices[state.selected_sequel_choice]
+            if not enabled:
+                if kind == "engine":
+                    state.log("Building your own engine is not available yet.")
+                else:
+                    state.log("Release a game first to unlock this option.")
+                return
+            if kind == "new":
+                state.new_game_kind = ""
                 state.sequel_game_id = None
                 state.selected_secondary_genre = state.selected_genre
                 state.selected_secondary_topic = state.selected_topic
@@ -368,9 +369,31 @@ def handle_new_game_key(state: GameState, key: int) -> None:
                 state.title_roll += 1
                 refresh_draft_title(state)
             else:
-                prepare_sequel(state, choice)
+                state.new_game_kind = kind
+                state.new_game_step = -2
+                state.selected_sequel_choice = 0
         elif key in (8, 127, curses.KEY_BACKSPACE):
             state.modal = "games"
+        elif key == curses.KEY_UP:
+            state.selected_sequel_choice = (state.selected_sequel_choice - 1) % len(choices)
+        elif key == curses.KEY_DOWN:
+            state.selected_sequel_choice = (state.selected_sequel_choice + 1) % len(choices)
+        return
+    if state.new_game_step == -2:
+        choices = base_game_choices(state)
+        if not choices:
+            state.new_game_step = -1
+            return
+        if key in (10, 13, curses.KEY_ENTER):
+            choice = choices[state.selected_sequel_choice]
+            if state.new_game_kind == "spinoff":
+                if not prepare_spinoff(state, choice):
+                    return
+            else:
+                prepare_sequel(state, choice)
+        elif key in (8, 127, curses.KEY_BACKSPACE):
+            state.new_game_step = -1
+            state.selected_sequel_choice = 0
         elif key == curses.KEY_UP:
             state.selected_sequel_choice = (state.selected_sequel_choice - 1) % len(choices)
         elif key == curses.KEY_DOWN:
@@ -767,8 +790,8 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         return
 
     if state.modal == "new_game":
-        if state.new_game_step == -1:
-            choices = sequel_choices(state)
+        if state.new_game_step in (-2, -1):
+            choices = base_game_choices(state) if state.new_game_step == -2 else project_kind_choices(state)
             visible = height - 8
             row = y - 5
             if row >= 0:
@@ -1046,8 +1069,6 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.selected_game = (state.selected_game + 1) % entry_count
         elif key in (ord("p"), ord("P")):
             perform_footer_action(state, "game_marketing")
-        elif key in (ord("o"), ord("O")) and games:
-            perform_footer_action(state, "game_spinoff")
     elif state.modal == "update_planner":
         games = live_games(state)
         if state.queue_cancellation == "update":

@@ -150,8 +150,10 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
     if state.modal == "new_game":
         if state.naming_game:
             return [("[Enter]" if compact else control_label("Enter", "Accept title"), "accept_title")]
+        if state.new_game_step == -2:
+            return [("[Bksp]" if compact else control_label("Backspace", "Project type"), "back"), ("[Up/Dn]" if dense else control_label("Up/Down", "Game"), "project_choice"), ("[Enter]" if compact else control_label("Enter", "Choose"), "confirm")]
         if state.new_game_step == -1:
-            return [("[Bksp]" if compact else control_label("Backspace", "Catalogue"), "back"), ("[Up/Dn]" if dense else control_label("Up/Down", "Game"), "project_choice"), ("[Enter]" if compact else control_label("Enter", "Choose"), "confirm")]
+            return [("[Bksp]" if compact else control_label("Backspace", "Catalogue"), "back"), ("[Up/Dn]" if dense else control_label("Up/Down", "Option"), "project_choice"), ("[Enter]" if compact else control_label("Enter", "Choose"), "confirm")]
         panel_names = ("Genre", "Theme", "Production Plan", "Storefront")
         if compact:
             actions = [(control_label("Bksp", "Prev"), "back"), ("[Up/Dn]", "new_game_selection")]
@@ -193,7 +195,7 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
                 ("[Up/Dn]" if compact else control_label("Up/Down", "Option"), "production_option"),
                 ("[Enter]" if compact else control_label("Enter", "Commit Decision"), "resolve_decision"),
             ]
-        return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing"), ("[O]" if compact else control_label("O", "Spin-off"), "game_spinoff")]
+        return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
     if state.modal == "update_planner":
         if state.queue_cancellation == "update":
             return [("[Bksp]" if compact else control_label("Backspace", "Return to planning"), "leave_queue_cancellation"), ("[Up/Dn]" if compact else control_label("Up/Down", "Queued update"), "queue_cancellation_selection"), ("[Enter]" if compact else control_label("Enter", "Cancel selected"), "cancel_selected_queue_item")]
