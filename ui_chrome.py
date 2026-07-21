@@ -26,6 +26,7 @@ from simulation import (
     PRODUCTION_DECISIONS,
     TIME_LABELS,
     GameState,
+    has_research,
     runway_months,
     save_game,
     selected_roster_employee,
@@ -182,6 +183,7 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             selected = selected_roster_employee(state)
             if selected:
                 actions.append(("[L]" if compact else control_label("L", "Learn"), "train"))
+                actions.append(("[V]" if compact else control_label("V", "Vacation"), "vacation"))
                 if not selected.founder:
                     actions.append(("[D]" if compact else control_label("D", "Dismiss"), "dismiss"))
         return actions
@@ -195,7 +197,10 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
                 ("[Up/Dn]" if compact else control_label("Up/Down", "Option"), "production_option"),
                 ("[Enter]" if compact else control_label("Enter", "Commit Decision"), "resolve_decision"),
             ]
-        return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
+        actions = [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
+        if live_games(state) and has_research(state.studio, "portfolio_management"):
+            actions.append(("[X]" if compact else control_label("X", "Support level"), "cycle_support"))
+        return actions
     if state.modal == "update_planner":
         if state.queue_cancellation == "update":
             return [("[Bksp]" if compact else control_label("Backspace", "Return to planning"), "leave_queue_cancellation"), ("[Up/Dn]" if compact else control_label("Up/Down", "Queued update"), "queue_cancellation_selection"), ("[Enter]" if compact else control_label("Enter", "Cancel selected"), "cancel_selected_queue_item")]
@@ -224,7 +229,10 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
         actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
         return actions
     if state.modal == "upgrades":
-        return [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Enter]" if compact else control_label("Enter", "Buy"), "buy")]
+        actions = [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Enter]" if compact else control_label("Enter", "Start R&D"), "buy")]
+        if state.studio.research_queue:
+            actions.append(("[C]" if compact else control_label("C", "Cancel queued R&D"), "cancel_research"))
+        return actions
     return []
 
 
@@ -257,6 +265,8 @@ def horizontal_actions(state: GameState) -> tuple[str, str]:
         return "new_game_adjust_left", "new_game_adjust_right"
     if state.modal == "analysis":
         return "previous_view", "next_view"
+    if state.modal == "upgrades":
+        return "previous_research_branch", "next_research_branch"
     return "slower", "faster"
 
 
@@ -326,6 +336,8 @@ def status_segments(state: GameState, width: int) -> list[tuple[str, int]]:
     if contract is not None:
         progress = 0 if contract.required_work <= 0 else contract.work_done / contract.required_work
         segments.append((f"JOB {meter(progress, 1, job_width)}", curses.color_pair(4) | curses.A_BOLD))
+    if studio.active_research is not None:
+        segments.append((f"R&D {meter(studio.active_research.progress, 1, job_width)}", curses.color_pair(3) | curses.A_BOLD))
     if width >= 150:
         segments.append((f"Fans {studio.followers:,}", 0))
         segments.append((f"PTrust {studio.reputation:.1f}", 0))

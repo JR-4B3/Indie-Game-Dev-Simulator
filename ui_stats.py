@@ -185,7 +185,7 @@ def draw_market_view(panel: curses.window, state: GameState) -> None:
     ip_slots = max(1, (height - 10) // 2)
     if studio.franchises:
         for row, franchise in enumerate(studio.franchises[:ip_slots], 4):
-            add_text(panel, row, 2, f"{franchise.name[:18]:<18} {franchise.rank_name:<10} r{franchise.entries}", own_width - 2, curses.color_pair(3) if franchise.rank >= 3 else 0)
+            add_text(panel, row, 2, f"{franchise.name[:18]:<18} {franchise.rank_name:<11} r{franchise.entries}", own_width - 2, curses.color_pair(3) if franchise.rank >= 4 else 0)
     else:
         add_text(panel, 4, 2, "Release a game to found an IP.", own_width - 2)
     chart_top = 5 + ip_slots

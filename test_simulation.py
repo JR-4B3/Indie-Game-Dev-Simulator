@@ -9,18 +9,23 @@ from unittest.mock import MagicMock, patch
 from game_data import GENRES, GOOD_MATCHES, TOPICS
 from main import CTRL_S, active_top_tab, bottom_time_layout, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_insolvency_popup, draw_main_content, draw_marketing_screen, draw_new_game, draw_screen, draw_settings_popup, draw_team_screen, footer_button_ranges, footer_layout, global_action_layout, handle_key, handle_mouse, handle_new_game_key, new_game_panel_geometry, open_new_game, parse_args, status_segments, team_layout, top_context_uses_second_row, top_control_layout, top_tab_actions, top_tab_layout
 from ui_newgame import topic_order
+from ui_upgrades import draw_upgrades
 from simulation import (
     ActiveSale,
     GAME_FORMATS,
     MEDIA_VENTURES,
     PRODUCTION_DECISIONS,
     QUIRKS,
+    RESEARCH_NODES,
+    SAVE_VERSION,
+    SCOPES,
     START_DATE,
     TIME_LABELS,
     TIME_SPEEDS,
     GameState,
     accept_contract,
     accept_contract_offer,
+    activity_allocations,
     advance_days,
     advance_game,
     bump_version,
@@ -29,23 +34,32 @@ from simulation import (
     capacity_drains,
     chart_positions,
     contract_weekly_output,
+    cycle_work_priority,
     cycle_game_update_size,
+    cycle_game_support,
     estimated_update_weeks,
     franchise_by_id,
     game_profit,
     game_total_cost,
     hire_candidate,
+    has_research,
     load_game,
     market_chart,
     market_report,
     market_truth,
     monthly_fixed_cost,
+    plan_requirements,
     prepare_spinoff,
+    projected_weekly_output,
     queue_game_update,
+    queue_research,
     recommended_team_size,
     refresh_applicants,
+    research_by_key,
+    research_work_requirement,
     save_game,
     start_project,
+    start_employee_vacation,
     state_from_data,
     state_to_data,
     toggle_auto_contracts,
@@ -57,6 +71,12 @@ def advance(state: GameState, weeks: int) -> None:
         state.clock.current_date += timedelta(days=7)
         state.clock.week += 1
         advance_game(state, 1)
+
+
+def unlock(state: GameState, *node_keys: str) -> None:
+    for key in node_keys:
+        if key not in state.studio.completed_research:
+            state.studio.completed_research.append(key)
 
 
 def rendered_games_text(state: GameState, width: int, height: int) -> list[str]:
@@ -299,7 +319,7 @@ class SimulationTests(unittest.TestCase):
         self.assertIn(state.studio.current_project.title, text)
         self.assertIn("PLAN", text)
         self.assertTrue(any("Week 2" in line and "w left /" in line and "w planned" in line for line in text))
-        self.assertTrue(any("Contract is cutting capacity by 45%" in line for line in text))
+        self.assertTrue(any("Contract uses" in line and "capacity" in line for line in text))
         self.assertFalse(any(line == "Contract is cutting project capacity by 45%" for line in text))
 
     def test_production_progress_keeps_fixed_bar_and_visible_percentage(self) -> None:
@@ -376,8 +396,8 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(all(call.args[1] == 1 for call in backgrounds))
 
     def test_header_speed_indicator_matches_four_speed_levels(self) -> None:
-        self.assertEqual(TIME_SPEEDS, (0.0, 4.0, 8.0, 10.0, 12.0))
-        self.assertEqual(TIME_LABELS, ("||", "> 4x", ">> 8x", ">>> 10x", ">>>> 12x"))
+        self.assertEqual(TIME_SPEEDS, (0.0, 12.0, 24.0, 48.0))
+        self.assertEqual(TIME_LABELS, ("||", "> 1x", ">> 2x", ">>> 4x"))
 
         for speed_index, label in enumerate(TIME_LABELS):
             state = GameState()
@@ -411,12 +431,18 @@ class SimulationTests(unittest.TestCase):
             handle_mouse(state, (36, 120))
         self.assertEqual(state.time_speed_index, 0)
 
-        for modal in ("main", "games", "team", "contracts", "marketing", "upgrades"):
+        for modal in ("main", "games", "team", "contracts", "marketing"):
             state = GameState(modal=modal)
             handle_key(state, curses.KEY_RIGHT)
             self.assertEqual(state.time_speed_index, 2)
             handle_key(state, curses.KEY_LEFT)
             self.assertEqual(state.time_speed_index, 1)
+
+        state = GameState(modal="upgrades")
+        branch_before = state.selected_research_branch
+        handle_key(state, curses.KEY_RIGHT)
+        self.assertNotEqual(state.selected_research_branch, branch_before)
+        self.assertEqual(state.time_speed_index, 1)
 
     def test_promotion_panels_use_enter_and_backspace_while_arrows_adjust_speed(self) -> None:
         state = GameState()
@@ -570,7 +596,7 @@ class SimulationTests(unittest.TestCase):
         handle_new_game_key(state, 10)
         self.assertFalse(state.mix_blend)
         self.assertEqual(state.new_game_step, 0)
-        self.assertEqual(state.selected_secondary_genre, 2)
+        self.assertEqual(state.selected_secondary_genre, GENRES.index("Platformer"))
         handle_new_game_key(state, 10)
         self.assertEqual(state.new_game_step, 1)
 
@@ -603,6 +629,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_long_confirmed_blend_keeps_plus_in_panel_border(self) -> None:
         state = GameState(modal="new_game", new_game_step=0)
+        unlock(state, "genre_systems")
         state.selected_genre = GENRES.index("Building Game")
         state.selected_secondary_genre = GENRES.index("Economic Simulation")
         text = rendered_new_game_text(state, 190, 50)
@@ -628,6 +655,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_last_visible_genre_and_theme_rows_are_clickable(self) -> None:
         state = GameState(modal="new_game", new_game_step=0)
+        unlock(state, "genre_story", "genre_systems", "genre_action", "genre_indie", "theme_library_1", "theme_library_2", "theme_library_3", "theme_library_4")
         with patch("main.curses.getmouse", return_value=(0, 10, 34, 0, curses.BUTTON1_CLICKED)):
             handle_mouse(state, (50, 190))
         self.assertEqual(state.selected_genre, len(GENRES) - 1)
@@ -879,14 +907,13 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
 
         self.assertTrue(start_project(state))
-        setup_cash = state.studio.cash
         self.assertGreater(state.studio.current_project.planned_weeks, 8)
         advance(state, 40)
 
         self.assertIsNone(state.studio.current_project)
         self.assertEqual(state.studio.released_games, 1)
         self.assertGreaterEqual(state.studio.followers, 40)
-        self.assertLess(state.studio.cash, setup_cash)
+        self.assertGreater(state.studio.catalog[-1].net_revenue, 0)
 
     def test_testing_and_players_reveal_only_part_of_real_bug_count(self) -> None:
         state = GameState()
@@ -952,8 +979,8 @@ class SimulationTests(unittest.TestCase):
             member.founder = False
             team.studio.team.append(member)
         self.assertTrue(start_project(team))
-        advance(solo, 6)
-        advance(team, 6)
+        advance(solo, 3)
+        advance(team, 3)
         self.assertGreater(team.studio.current_project.defects, solo.studio.current_project.defects)
 
     def test_bug_fix_update_removes_existing_bugs_but_can_miss_hidden_ones(self) -> None:
@@ -988,6 +1015,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_game_profit_includes_development_staff_marketing_and_live_costs(self) -> None:
         state = GameState()
+        unlock(state, "targeted_marketing")
         state.selected_marketing = 2
         self.assertTrue(start_project(state))
         advance(state, 40)
@@ -1044,6 +1072,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_update_size_changes_estimated_development_length(self) -> None:
         state = GameState()
+        unlock(state, "content_updates", "expansion_pipeline")
         start_project(state)
         advance(state, 40)
         game = state.studio.catalog[-1]
@@ -1065,6 +1094,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_update_queue_snapshots_plans_and_requires_bug_fixing(self) -> None:
         state = GameState()
+        unlock(state, "content_updates")
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1098,6 +1128,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_update_queue_and_versions_survive_save_load(self) -> None:
         state = GameState()
+        unlock(state, "content_updates", "expansion_pipeline")
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1120,6 +1151,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_waiting_updates_can_be_cancelled_without_touching_active_work(self) -> None:
         state = GameState()
+        unlock(state, "content_updates", "expansion_pipeline")
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1144,7 +1176,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(state.studio.update_queue), 1)
         self.assertEqual(state.studio.update_queue[0].size, "Expansion")
         self.assertEqual(state.studio.update_queue[0].target_version, "1.10.10")
-        self.assertEqual(state.studio.cash, cash_before - 135)
+        self.assertEqual(state.studio.cash, cash_before + 675)
         self.assertEqual(state.queue_cancellation, "update")
         handle_key(state, curses.KEY_BACKSPACE)
         self.assertEqual(state.modal, "update_planner")
@@ -1207,6 +1239,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_promotions_queue_and_execute_one_at_a_time(self) -> None:
         state = GameState()
+        unlock(state, "promotion_basics")
         self.assertTrue(start_project(state))
         before_cash = state.studio.cash
         before_hype = state.studio.current_project.hype
@@ -1227,6 +1260,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_waiting_promotions_can_be_cancelled_with_a_partial_refund(self) -> None:
         state = GameState()
+        unlock(state, "promotion_basics", "targeted_marketing", "creator_relations")
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1269,6 +1303,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_only_enter_queues_updates_while_mouse_still_selects_games(self) -> None:
         state = GameState()
+        unlock(state, "promotion_basics")
         start_project(state)
         advance(state, 40)
         state.modal = "games"
@@ -1398,6 +1433,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_auto_contract_toggle_queues_every_eligible_offer(self) -> None:
         state = GameState()
+        unlock(state, "contract_automation")
         eligible = sum(job.reputation_required <= state.studio.contractor_reputation for job in state.studio.contract_offers)
 
         self.assertTrue(toggle_auto_contracts(state))
@@ -1411,6 +1447,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_disabling_auto_preserves_manually_queued_job(self) -> None:
         state = GameState()
+        unlock(state, "contract_automation")
         self.assertTrue(accept_contract(state))
         eligible_index = next(index for index, job in enumerate(state.studio.contract_offers) if job.reputation_required <= state.studio.contractor_reputation)
         self.assertTrue(accept_contract_offer(state, eligible_index))
@@ -1670,6 +1707,7 @@ class SimulationTests(unittest.TestCase):
         from ui_newgame import select_topic_at, topic_order, topic_position
 
         state = GameState()
+        unlock(state, "theme_library_1", "theme_library_2", "theme_library_3", "theme_library_4")
         state.selected_genre = GENRES.index("Action")
         order = topic_order(state)
         self.assertEqual(len(order), 303)
@@ -1729,6 +1767,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_modern_mixed_concept_has_market_position_and_capability_gates(self) -> None:
         state = GameState()
+        unlock(state, "genre_action")
         state.selected_genre = GENRES.index("Extraction Shooter")
         state.selected_secondary_genre = GENRES.index("Roguelite")
         state.selected_audience = 2
@@ -1753,6 +1792,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_production_reviews_pause_and_apply_a_real_tradeoff(self) -> None:
         state = GameState(selected_scope=2, modal="analysis")
+        unlock(state, "small_production")
         self.assertTrue(start_project(state))
         state.modal = "analysis"
         self.assertEqual(len(state.studio.current_project.scheduled_decisions), 1)
@@ -1856,6 +1896,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_paid_dlc_generates_post_launch_revenue(self) -> None:
         state = GameState()
+        unlock(state, "paid_dlc")
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1912,9 +1953,11 @@ class SimulationTests(unittest.TestCase):
         franchise = franchise_by_id(state.studio, game.franchise_id)
         franchise.awareness = 0
         franchise.reputation = 0
+        franchise.total_units = 0
         self.assertFalse(buy_media_venture(state, franchise.franchise_id, 0))
         franchise.awareness = 400
         franchise.reputation = 80
+        franchise.total_units = 10_000
         self.assertGreaterEqual(franchise.rank, 1)
         self.assertTrue(buy_media_venture(state, franchise.franchise_id, 0))
         self.assertFalse(buy_media_venture(state, franchise.franchise_id, 0), "same venture twice for one IP")
@@ -1922,6 +1965,7 @@ class SimulationTests(unittest.TestCase):
         self.assertFalse(buy_media_venture(state, franchise.franchise_id, film_index))
         franchise.awareness = 2_500
         franchise.reputation = 92
+        franchise.total_units = 2_500_000
         self.assertGreaterEqual(franchise.rank, MEDIA_VENTURES[film_index]["rank"])
         self.assertTrue(buy_media_venture(state, franchise.franchise_id, film_index))
 
@@ -1932,6 +1976,7 @@ class SimulationTests(unittest.TestCase):
         franchise = franchise_by_id(state.studio, game.franchise_id)
         franchise.awareness = 2_500
         franchise.reputation = 92
+        franchise.total_units = 2_500_000
         film_index = next(i for i, item in enumerate(MEDIA_VENTURES) if item["key"] == "film")
         self.assertTrue(buy_media_venture(state, franchise.franchise_id, film_index))
         cash_before = state.studio.cash
@@ -1939,6 +1984,27 @@ class SimulationTests(unittest.TestCase):
         self.assertFalse(state.studio.media_ventures)
         self.assertGreater(state.studio.cash, cash_before)
         self.assertTrue(any("film adaptation" in message for message in state.logs))
+
+    def test_ip_ranks_require_lifetime_unit_milestones(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        milestones = (
+            (0, "Unknown"),
+            (9_999, "Unknown"),
+            (10_000, "Niche"),
+            (99_999, "Niche"),
+            (100_000, "Recognized"),
+            (500_000, "Established"),
+            (1_000_000, "Popular"),
+            (2_500_000, "Famous"),
+            (5_000_000, "Legendary"),
+            (9_999_999, "Legendary"),
+            (10_000_000, "Iconic"),
+        )
+        for units, expected in milestones:
+            franchise.total_units = units
+            self.assertEqual(franchise.rank_name, expected)
 
     def test_spinoff_shares_the_franchise_but_resets_generation(self) -> None:
         state = GameState()
@@ -2015,6 +2081,7 @@ class SimulationTests(unittest.TestCase):
         franchise = franchise_by_id(state.studio, game.franchise_id)
         franchise.awareness = 400
         franchise.reputation = 80
+        franchise.total_units = 10_000
         self.assertTrue(buy_media_venture(state, franchise.franchise_id, 0))
         advance(state, 3)
         with tempfile.TemporaryDirectory() as directory:
@@ -2028,6 +2095,161 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded.studio.media_ventures[0].kind, "merch")
         first = loaded.studio.competitors[0]
         self.assertTrue(first.franchises)
+
+    def test_timed_research_unlocks_small_games(self) -> None:
+        state = GameState(selected_scope=2)
+        self.assertTrue(any("Small Production" in requirement for requirement in plan_requirements(state)))
+        cash_before = state.studio.cash
+
+        self.assertTrue(queue_research(state, "small_production"))
+        self.assertLess(state.studio.cash, cash_before)
+        self.assertIsNotNone(state.studio.active_research)
+        advance(state, 20)
+
+        self.assertTrue(has_research(state.studio, "small_production"))
+        self.assertIsNone(state.studio.active_research)
+        self.assertFalse(any("Small Production" in requirement for requirement in plan_requirements(state)))
+
+    def test_scope_completion_times_scale_from_months_to_years(self) -> None:
+        bands = {
+            "Micro": (13, 26),
+            "Compact": (26, 39),
+            "Small": (39, 52),
+            "Mid-size": (52, 78),
+            "Ambitious": (104, 156),
+            "Large": (208, 260),
+            "Blockbuster": (312, 364),
+        }
+        completed = [node["key"] for node in RESEARCH_NODES]
+        for scope_index, scope in enumerate(SCOPES):
+            state = GameState(selected_scope=scope_index)
+            state.studio.cash = 1_000_000_000
+            state.studio.reputation = 100
+            state.studio.completed_research = list(completed)
+            founder = state.studio.team[0]
+            while len(state.studio.team) < scope["team"]:
+                employee = deepcopy(founder)
+                employee.employee_id = 100 + len(state.studio.team)
+                employee.founder = False
+                employee.annual_salary = 50_000
+                state.studio.team.append(employee)
+
+            self.assertTrue(start_project(state))
+            weeks = 0
+            while state.studio.current_project and weeks <= bands[scope["name"]][1]:
+                advance(state, 1)
+                weeks += 1
+            low, high = bands[scope["name"]]
+            self.assertGreaterEqual(weeks, low, scope["name"])
+            self.assertLessEqual(weeks, high, scope["name"])
+
+    def test_soft_specialization_reduces_related_research_work(self) -> None:
+        fresh = GameState()
+        specialized = GameState()
+        unlock(specialized, "small_production", "genre_story", "genre_systems", "theme_library_1")
+        node = research_by_key("theme_library_2")
+
+        self.assertLess(research_work_requirement(specialized.studio, node), research_work_requirement(fresh.studio, node))
+
+    def test_activity_allocations_conserve_capacity_and_priorities(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        self.assertTrue(accept_contract(state))
+        self.assertTrue(queue_research(state, "small_production"))
+        allocations = activity_allocations(state.studio)
+        self.assertAlmostEqual(sum(allocations.values()), 1.0)
+        self.assertGreater(allocations["project"], 0)
+        self.assertGreater(allocations["contract"], 0)
+        self.assertGreater(allocations["research"], 0)
+
+        unlock(state, "department_leads")
+        low_research = activity_allocations(state.studio)["research"]
+        cycle_work_priority(state, "research")
+        normal_research = activity_allocations(state.studio)["research"]
+        self.assertGreater(normal_research, low_research)
+        self.assertAlmostEqual(sum(activity_allocations(state.studio).values()), 1.0)
+
+    def test_vacation_removes_capacity_and_recovers_fatigue(self) -> None:
+        state = GameState()
+        employee = state.studio.team[0]
+        employee.fatigue = 80
+        self.assertTrue(start_project(state))
+        self.assertTrue(start_employee_vacation(state, employee))
+        self.assertEqual(projected_weekly_output(state.studio, state.studio.current_project.focus), 0.1)
+
+        advance(state, 1)
+
+        self.assertEqual(employee.vacation_weeks_left, 0)
+        self.assertLess(employee.fatigue, 55)
+
+    def test_contract_deadlines_and_work_experience_advance_weekly(self) -> None:
+        state = GameState()
+        self.assertTrue(accept_contract(state))
+        deadline = state.studio.contract.weeks_left
+        experience = state.studio.team[0].lifetime_experience
+
+        advance(state, 1)
+
+        self.assertLess(state.studio.contract.weeks_left, deadline)
+        self.assertGreater(state.studio.team[0].lifetime_experience, experience)
+
+    def test_promotions_and_paid_dlc_require_research(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        self.assertFalse(buy_promotion(state, 0, 0))
+        state.studio.current_project.work_done = state.studio.current_project.total_work
+        state.studio.current_project.defects = 0
+        advance(state, 1)
+        game = state.studio.catalog[-1]
+        game.update_size = "Paid DLC"
+        self.assertFalse(queue_game_update(state, game.game_id))
+
+        unlock(state, "promotion_basics", "paid_dlc")
+        self.assertTrue(buy_promotion(state, game.game_id, 0))
+        self.assertTrue(queue_game_update(state, game.game_id))
+
+    def test_version_five_save_migrates_capabilities(self) -> None:
+        state = GameState()
+        state.studio.upgrades.append("hardware")
+        data = state_to_data(state)
+        data["version"] = 5
+        for key in ("completed_research", "active_research", "research_queue", "work_priorities", "auto_vacation"):
+            data["studio"].pop(key, None)
+        for employee in data["studio"]["team"] + data["studio"]["applicants"]:
+            for key in ("vacation_weeks_left", "burnout_weeks_left", "career_level", "lifetime_experience"):
+                employee.pop(key, None)
+
+        loaded = state_from_data(data, "legacy-v5.json")
+
+        self.assertEqual(SAVE_VERSION, 6)
+        self.assertTrue(has_research(loaded.studio, "product_foundations"))
+        self.assertTrue(has_research(loaded.studio, "hardware"))
+
+    def test_portfolio_management_reduces_old_game_support_load(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        unlock(state, "portfolio_management")
+        active_burn = monthly_fixed_cost(state.studio)
+        self.assertEqual(activity_allocations(state.studio)["support"], 0.04)
+
+        self.assertEqual(cycle_game_support(state, game.game_id), "Maintenance")
+        self.assertEqual(activity_allocations(state.studio)["support"], 0.015)
+        self.assertLess(monthly_fixed_cost(state.studio), active_burn)
+        self.assertEqual(cycle_game_support(state, game.game_id), "Sunset")
+        self.assertEqual(activity_allocations(state.studio)["support"], 0.0)
+
+    def test_studio_development_tree_renders_wide_and_compact(self) -> None:
+        for width, height in ((190, 50), (74, 24)):
+            state = GameState(modal="upgrades")
+            screen = MagicMock()
+            panel = MagicMock()
+            panel.getmaxyx.return_value = (height - 4, width)
+            screen.derwin.return_value = panel
+            with patch("main.curses.color_pair", return_value=0):
+                draw_upgrades(screen, state, width, height)
+            text = " ".join(call.args[2] for call in panel.addstr.call_args_list)
+            self.assertIn("Studio Development", text)
+            self.assertIn("Product Foundations", text)
 
     def test_marketing_screen_has_merch_and_media_tab(self) -> None:
         state = GameState()

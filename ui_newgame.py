@@ -16,10 +16,18 @@ from simulation import (
     GameState,
     capacity_drains,
     concept_focus,
+    has_research,
     market_report,
     monthly_fixed_cost,
     plan_requirements,
     projected_weekly_output,
+    research_requirement_for_channel,
+    research_requirement_for_format,
+    research_requirement_for_genre,
+    research_requirement_for_marketing,
+    research_requirement_for_scope,
+    research_requirement_for_strategy,
+    research_requirement_for_topic,
 )
 from ui_common import COLOR_GOOD, add_text, draw_box, draw_selectable_list, game_title, meter, money, range_meter, rating_text, update_status
 
@@ -39,6 +47,15 @@ def base_game_choices(state: GameState) -> list:
     return list(reversed(state.studio.catalog))
 
 
+def topic_available(state: GameState, topic: str) -> bool:
+    requirement = research_requirement_for_topic(topic)
+    return not requirement or has_research(state.studio, requirement)
+
+
+def locked_topic_count(state: GameState) -> int:
+    return sum(1 for topic in TOPICS if not topic_available(state, topic))
+
+
 def topic_order(state: GameState) -> list[tuple[str, str]]:
     """The 300+ themes, tiered by signal for the currently selected genre.
 
@@ -47,13 +64,14 @@ def topic_order(state: GameState) -> list[tuple[str, str]]:
     everything else (``"rest"``). This keeps promising themes at the top
     instead of making the player scrub an alphabetical wall; ordering is
     presentation-only — ``selected_topic`` remains an index into TOPICS.
+    Themes still locked behind Studio Development research are omitted.
     """
     genre = GENRES[state.selected_genre]
     fans = state.studio.topic_fans
     fits = GOOD_MATCHES.get(genre, set())
-    strong = sorted((topic for topic in TOPICS if fans.get(topic, 0) > 0), key=lambda topic: -fans[topic])
-    good = sorted(topic for topic in TOPICS if fans.get(topic, 0) <= 0 and topic in fits)
-    rest = sorted(topic for topic in TOPICS if fans.get(topic, 0) <= 0 and topic not in fits)
+    strong = sorted((topic for topic in TOPICS if topic_available(state, topic) and fans.get(topic, 0) > 0), key=lambda topic: -fans[topic])
+    good = sorted(topic for topic in TOPICS if topic_available(state, topic) and fans.get(topic, 0) <= 0 and topic in fits)
+    rest = sorted(topic for topic in TOPICS if topic_available(state, topic) and fans.get(topic, 0) <= 0 and topic not in fits)
     return [(topic, "strong") for topic in strong] + [(topic, "fit") for topic in good] + [(topic, "rest") for topic in rest]
 
 
@@ -63,6 +81,25 @@ def topic_rows(state: GameState) -> list[tuple[str, int]]:
         (topic, (curses.color_pair(COLOR_GOOD) | curses.A_BOLD) if tier == "strong" else curses.color_pair(COLOR_GOOD) if tier == "fit" else 0)
         for topic, tier in topic_order(state)
     ]
+
+
+def available_genre_indices(state: GameState) -> list[int]:
+    return [
+        index
+        for index, name in enumerate(GENRES)
+        if not (requirement := research_requirement_for_genre(name)) or has_research(state.studio, requirement)
+    ]
+
+
+def locked_genre_count(state: GameState) -> int:
+    return len(GENRES) - len(available_genre_indices(state))
+
+
+def cycle_genre_index(state: GameState, attribute: str, delta: int) -> None:
+    available = available_genre_indices(state)
+    current = getattr(state, attribute)
+    position = available.index(current) if current in available else 0
+    setattr(state, attribute, available[(position + delta) % len(available)])
 
 
 def topic_position(state: GameState, order: list[tuple[str, int]]) -> int:
@@ -147,16 +184,25 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
         add_text(genre, 0, 11, f"+ {genre_blend}", genre_width - 13, curses.color_pair(3) | curses.A_BOLD)
     if theme_blend != TOPICS[state.selected_topic]:
         add_text(topic, 0, 11, f"+ {theme_blend}", theme_width - 13, curses.color_pair(3) | curses.A_BOLD)
-    genre_rows = [(name, curses.color_pair(COLOR_GOOD) if state.studio.genre_fans.get(name, 0) > 0 else 0) for name in GENRES]
+    available_genres = available_genre_indices(state)
+    if state.selected_genre not in available_genres:
+        state.selected_genre = available_genres[0]
+    if state.selected_secondary_genre not in available_genres:
+        state.selected_secondary_genre = state.selected_genre
+    genre_rows = [(GENRES[index], curses.color_pair(COLOR_GOOD) if state.studio.genre_fans.get(GENRES[index], 0) > 0 else 0) for index in available_genres]
     genre_blend_mode = state.mix_blend and state.new_game_step == 0
     if genre_blend_mode:
-        genre_rows = [(name, curses.color_pair(3) if index == state.selected_genre else attr) for index, (name, attr) in enumerate(genre_rows)]
+        genre_rows = [(name, curses.color_pair(3) if index == state.selected_genre else attr) for index, (name, attr) in zip(available_genres, genre_rows)]
         add_text(genre, 1, 2, "BLEND (yellow = primary)", genre_width - 4, curses.color_pair(3) | curses.A_BOLD)
     else:
         add_text(genre, 1, 2, "PRIMARY" + (" (green = fans)" if state.studio.genre_fans else ""), genre_width - 4, curses.A_BOLD)
-    genre_visible = max(1, top_height - 3)
-    genre_selected = state.selected_secondary_genre if genre_blend_mode else state.selected_genre
+    genre_locked = locked_genre_count(state)
+    genre_visible = max(1, top_height - (4 if genre_locked else 3))
+    cursor_genre = state.selected_secondary_genre if genre_blend_mode else state.selected_genre
+    genre_selected = available_genres.index(cursor_genre) if cursor_genre in available_genres else 0
     draw_selectable_list(genre, genre_rows, genre_selected, state.new_game_step == 0, y=2, width=genre_width - 4, visible=genre_visible)
+    if genre_locked:
+        add_text(genre, top_height - 2, 2, f"+{genre_locked} unlock via Studio Dev", genre_width - 4, curses.color_pair(2))
 
     ordered_topics = topic_order(state)
     topic_blend_mode = state.mix_blend and state.new_game_step == 1
@@ -167,10 +213,13 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
         add_text(topic, 1, 2, "BLEND (yellow = primary)", theme_width - 4, curses.color_pair(3) | curses.A_BOLD)
     else:
         add_text(topic, 1, 2, "PRIMARY (green = signal)", theme_width - 4, curses.A_BOLD)
-    topic_visible = max(1, top_height - 3)
+    topic_locked = locked_topic_count(state)
+    topic_visible = max(1, top_height - (4 if topic_locked else 3))
     current_topic = TOPICS[state.selected_secondary_topic if topic_blend_mode else state.selected_topic]
     topic_selected = next((index for index, (topic_name, _) in enumerate(ordered_topics) if topic_name == current_topic), 0)
     draw_selectable_list(topic, rows, topic_selected, state.new_game_step == 1, y=2, width=theme_width - 4, visible=topic_visible)
+    if topic_locked:
+        add_text(topic, top_height - 2, 2, f"+{topic_locked} unlock via Studio Dev", theme_width - 4, curses.color_pair(2))
 
     scope = SCOPES[state.selected_scope]
     marketing = MARKETING[state.selected_marketing]
@@ -199,7 +248,18 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     rows = []
     for index, (label, value, detail) in enumerate(field_specs):
         shown = f"<{value}>" if state.new_game_step == 2 and index == state.selected_focus else value
-        rows.append((f"{label:<11} {shown}" + (f" | {detail}" if detail else ""), 0))
+        requirement = None
+        if index == 0:
+            requirement = research_requirement_for_scope(state.selected_scope)
+        elif index == 1:
+            requirement = research_requirement_for_format(state.selected_format)
+        elif index == 5:
+            requirement = research_requirement_for_strategy(state.selected_release_strategy)
+        elif index == 6:
+            requirement = research_requirement_for_marketing(state.selected_marketing)
+        locked = bool(requirement and not has_research(state.studio, requirement))
+        lock_text = " | LOCKED" if locked else ""
+        rows.append((f"{label:<11} {shown}" + (f" | {detail}" if detail else "") + lock_text, curses.color_pair(5) if locked else 0))
     draw_selectable_list(plan, rows, state.selected_focus, state.new_game_step == 2, y=4, width=inner, scroll=False)
     if state.new_game_step == 2:
         _, attribute, options = PLAN_FIELDS[state.selected_focus]
@@ -210,7 +270,18 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
             chip = option["name"]
             if chip_x + len(chip) > plan_width - 2:
                 break
-            add_text(plan, 11, chip_x, chip, len(chip), curses.color_pair(3) | curses.A_BOLD if index == current else curses.color_pair(2))
+            requirement = None
+            if state.selected_focus == 0:
+                requirement = research_requirement_for_scope(index)
+            elif state.selected_focus == 1:
+                requirement = research_requirement_for_format(index)
+            elif state.selected_focus == 5:
+                requirement = research_requirement_for_strategy(index)
+            elif state.selected_focus == 6:
+                requirement = research_requirement_for_marketing(index)
+            locked = bool(requirement and not has_research(state.studio, requirement))
+            attr = curses.color_pair(5) if locked else curses.color_pair(3) | curses.A_BOLD if index == current else curses.color_pair(2)
+            add_text(plan, 11, chip_x, chip, len(chip), attr)
             chip_x += len(chip) + 2
     else:
         add_text(plan, 11, 2, f"Trade-off   {primary_direction['tradeoff']} + {secondary_direction['tradeoff']}", inner, curses.color_pair(2))
@@ -278,5 +349,9 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     store_width = max(8, storefront_width - 24)
     add_text(storefront, 1, 2, f"  {'STORE':<{store_width}} | {'CUT':>4} | {'COST':>8}", storefront_width - 4, curses.A_BOLD)
     visible = storefront_height - 3
-    channel_rows = [(f"{channel['name']:<{store_width}} | {channel['cut']:>4.0%} | {money(channel['fee']):>8}", 0) for channel in CHANNELS]
+    channel_rows = []
+    for index, channel in enumerate(CHANNELS):
+        requirement = research_requirement_for_channel(index)
+        locked = bool(requirement and not has_research(state.studio, requirement))
+        channel_rows.append((f"{channel['name']:<{store_width}} | {channel['cut']:>4.0%} | {money(channel['fee']):>8}", curses.color_pair(5) if locked else 0))
     draw_selectable_list(storefront, channel_rows, state.selected_channel, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)

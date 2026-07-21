@@ -208,11 +208,15 @@ def draw_person_detail(panel: curses.window, state: GameState, width: int, heigh
     warn = curses.color_pair(COLOR_BAD) if person.morale < 30 or person.fatigue > 70 else 0
     put(1, f"Morale {person.morale:.0f}/100 | Fatigue {person.fatigue:.0f}/100", warn)
     put(2, f"Pay {money(person.annual_salary)}/yr ({money(person.monthly_salary)}/mo)")
-    put(3, f"Employed {person.weeks_employed}w | XP {person.experience}/100")
+    put(3, f"Career L{person.career_level} | Employed {person.weeks_employed}w | XP {person.experience}/100")
     if person.training_weeks_left:
         put(4, f"In training: {person.training_skill}, {person.training_weeks_left}w left", curses.color_pair(3) | curses.A_BOLD)
+    elif person.vacation_weeks_left:
+        put(4, f"On vacation: {person.vacation_weeks_left}w left", curses.color_pair(4) | curses.A_BOLD)
+    elif person.burnout_weeks_left:
+        put(4, f"Burned out: unavailable {person.burnout_weeks_left}w", curses.color_pair(5) | curses.A_BOLD)
     else:
-        put(4, "Available for training [L]", curses.color_pair(4))
+        put(4, "[L] training | [V] one-week vacation", curses.color_pair(4))
     if person.founder:
         add_text(panel, bottom_row, 2, "Founder: cannot be dismissed; draw instead of salary.", inner)
     else:
@@ -233,7 +237,14 @@ def draw_roster(panel: curses.window, state: GameState, width: int, height: int)
     selected_index = next((index for index, employee in enumerate(studio.team) if employee is selected_member), -1)
     entries = []
     for employee in studio.team:
-        training = f"{employee.training_weeks_left}w" if employee.training_weeks_left else ""
+        if employee.training_weeks_left:
+            training = f"TR {employee.training_weeks_left}w"
+        elif employee.vacation_weeks_left:
+            training = f"VAC {employee.vacation_weeks_left}w"
+        elif employee.burnout_weeks_left:
+            training = f"OUT {employee.burnout_weeks_left}w"
+        else:
+            training = ""
         name = employee.name + (" *" if employee.founder else "")
         personality = f"{employee.trait} / {employee.quirk}"
         values = [name, employee.role, *employee.all_skills, f"{employee.morale:.0f}", f"{employee.fatigue:.0f}", training, money(employee.monthly_salary)]

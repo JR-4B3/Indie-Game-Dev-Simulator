@@ -167,7 +167,7 @@ def run(screen: curses.window, load_save: bool, save_path: str) -> None:
     running = True
     while running:
         now = time.monotonic()
-        days = 0 if state.title_screen else state.clock.update((now - previous_time) * TIME_SPEEDS[state.time_speed_index])
+        days = 0 if state.title_screen else state.clock.update((now - previous_time) * TIME_SPEEDS[min(state.time_speed_index, len(TIME_SPEEDS) - 1)])
         previous_time = now
         advance_days(state, days)
         draw_screen(screen, state)

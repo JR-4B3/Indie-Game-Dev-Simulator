@@ -12,6 +12,7 @@ from simulation import (
     UPDATE_FOCUSES,
     UPDATE_SIZES,
     GameState,
+    activity_allocations,
     capacity_drains,
     chart_positions,
     estimated_update_delivery_weeks,
@@ -20,11 +21,14 @@ from simulation import (
     game_profit,
     game_total_cost,
     genre_release_pressure,
+    has_research,
     market_chart,
     media_venture_available,
     monthly_fixed_cost,
     planned_update_version,
     projected_weekly_output,
+    research_requirement_for_update,
+    research_requirement_for_promotion,
     sale_for_game,
 )
 from ui_common import (
@@ -174,7 +178,10 @@ def draw_update_planner(panel: curses.window, state: GameState, game, panel_widt
         for item in UPDATE_SIZES:
             step = item["version"]
             price = f" | {money(item['price'])}" if "price" in item else ""
-            scope_rows.append((f"{item['name']:<10} +{step[0]}.{step[1]:02d}.{step[2]:02d} | {item['work']:>3} work | {item['bugs']:>2} QA bugs{price}", 0))
+            requirement = research_requirement_for_update(item["name"])
+            locked = bool(requirement and not has_research(studio, requirement))
+            lock = " | LOCKED" if locked else ""
+            scope_rows.append((f"{item['name']:<10} +{step[0]}.{step[1]:02d}.{step[2]:02d} | {item['work']:>3} work | {item['bugs']:>2} QA bugs{price}{lock}", curses.color_pair(5) if locked else 0))
         selected_scope = next((index for index, item in enumerate(UPDATE_SIZES) if item["name"] == game.update_size), 0)
         draw_selectable_list(panel, scope_rows, selected_scope, state.games_tab == 1, y=5, width=plan_width, scroll=False)
         add_text(panel, 10, 2, "UPDATE AREA", plan_width, curses.A_BOLD)
@@ -310,6 +317,8 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     add_text(panel, 2, 2, f"{genre_mix} | {topic_mix}", inner)
     add_text(panel, 3, 2, f"{game.target_audience} | {game.game_format}", inner)
     add_text(panel, 4, 2, f"{game.channel} | {game.scope} | {money(game.price)}", inner)
+    support_hint = " | [X] change" if has_research(state.studio, "portfolio_management") else ""
+    add_text(panel, 5, 2, f"Support {game.support_level.upper()}{support_hint}", inner, curses.color_pair(4) if game.support_level == "Active" else curses.color_pair(5) if game.support_level == "Sunset" else curses.color_pair(3))
     meter_width = max(10, min(18, inner - 26))
     add_text(panel, 6, 2, "CONDITION", inner, curses.A_BOLD)
     known = game.known_bug_count
@@ -343,7 +352,7 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
         rank = franchise.rank
         if rank < len(FRANCHISE_RANK_THRESHOLDS):
             target = FRANCHISE_RANK_THRESHOLDS[rank]
-            add_text(panel, 20, 2, f"{franchise.name[:20]} [{meter(franchise.value, target, meter_width)}] {franchise.value:.0f}/{target}", inner, curses.color_pair(3))
+            add_text(panel, 20, 2, f"{franchise.name[:20]} [{meter(franchise.total_units, target, meter_width)}] {franchise.total_units:,}/{target:,} units", inner, curses.color_pair(3))
             add_text(panel, 21, 2, f"{franchise.rank_name} -> {FRANCHISE_RANKS[rank + 1]} | gen {game.generation} | {franchise.entries} releases", inner)
         else:
             add_text(panel, 20, 2, f"{franchise.name[:20]} [{'█' * meter_width}] {franchise.rank_name}", inner, curses.color_pair(3) | curses.A_BOLD)
@@ -746,7 +755,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
     add_text(updates, 2, 2, f"Status {status}", updates_inner, (curses.color_pair(4) if active_job else curses.color_pair(3)) | curses.A_BOLD)
     add_text(updates, 3, 2, f"Focus {game.update_focus} ({focus['skill']} skill)", updates_inner)
     add_text(updates, 4, 2, f"Scope {game.update_size} | +{size['version'][0]}.{size['version'][1]:02d}.{size['version'][2]:02d} step", updates_inner)
-    update_load = size["team"] if active_job else 0
+    update_load = activity_allocations(state.studio)["update"] if active_job else 0
     add_text(updates, 5, 2, f"Cost {money(size['cost'])} | Team load {update_load:.0%}", updates_inner)
     rating_factor = max(0.10, (game.score / 100) ** 2)
     expected_hype = size["hype"] * focus["hype"] * rating_factor
@@ -876,11 +885,13 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
     add_text(options_panel, 1, 2, option_header, option_inner, curses.A_BOLD)
     option_rows = []
     for promotion in PROMOTIONS:
-        locked = state.studio.reputation < promotion["rep"]
+        research_key = research_requirement_for_promotion(promotion["key"])
+        research_locked = bool(research_key and not has_research(state.studio, research_key))
+        locked = state.studio.reputation < promotion["rep"] or research_locked
         if option_expanded:
             text = f"{promotion['name'][:promotion_name_width]:<{promotion_name_width}} {money(promotion['cost']):>10} {promotion['weeks']:>5} {promotion['hype']:>6} {promotion['team']:>6.0%} {promotion['rep']:>7} {promotion['effect'][:effect_width]:<{effect_width}}"
         else:
-            status = f"REP {promotion['rep']}" if locked else "AVAILABLE"
+            status = "RESEARCH" if research_locked else f"REP {promotion['rep']}" if locked else "AVAILABLE"
             text = f"{promotion['name'][:promotion_name_width]:<{promotion_name_width}} {money(promotion['cost']):>9} {status:>10}"
         option_rows.append((text, curses.color_pair(5) if locked else 0))
     draw_selectable_list(options_panel, option_rows, state.selected_promotion, state.marketing_tab == 1, y=2, width=option_width - 4, scroll=False, highlight_wins=False)

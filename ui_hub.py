@@ -7,11 +7,14 @@ import curses
 from simulation import (
     SKILLS,
     GameState,
+    activity_allocations,
     chart_positions,
     game_profit,
     market_chart,
     monthly_fixed_cost,
     projected_weekly_output,
+    has_research,
+    research_by_key,
     recommended_team_size,
     runway_months,
     sale_for_game,
@@ -24,13 +27,18 @@ def draw_live_operations(panel: curses.window, state: GameState, panel_width: in
     active = 1 if studio.active_update else 0
     promotion_active = 1 if studio.active_promotions else 0
     add_text(panel, start_row, 2, f"Update queue {active + len(studio.update_queue)} ({active} active) | Promotion queue {len(studio.active_promotions)} ({promotion_active} active)", panel_width - 4)
-    add_text(panel, start_row + 1, 2, f"Monthly players {sum(game.monthly_players for game in studio.catalog):,} | Weekly game sales {sum(sale.week_to_date for sale in studio.active_sales):,}", panel_width - 4)
+    activity = f"Monthly players {sum(game.monthly_players for game in studio.catalog):,} | Weekly game sales {sum(sale.week_to_date for sale in studio.active_sales):,}"
+    if studio.active_research:
+        node = research_by_key(studio.active_research.node_key)
+        activity += f" | R&D {node['name'] if node else studio.active_research.node_key} {studio.active_research.progress:.0%}"
+    add_text(panel, start_row + 1, 2, activity, panel_width - 4)
 
 
 def draw_contract_status(panel: curses.window, state: GameState, panel_width: int, start_row: int) -> None:
     studio = state.studio
     active = studio.contract
-    add_text(panel, start_row, 2, f"[C] Auto contracts {'ON' if studio.auto_contracts else 'OFF'} | Queue {len(studio.contract_queue)} | Contractor rep {studio.contractor_reputation:.1f}", panel_width - 4, curses.A_BOLD)
+    auto_status = "ON" if studio.auto_contracts else "OFF" if has_research(studio, "contract_automation") else "LOCKED"
+    add_text(panel, start_row, 2, f"[C] Auto contracts {auto_status} | Queue {len(studio.contract_queue)} | Contractor rep {studio.contractor_reputation:.1f}", panel_width - 4, curses.A_BOLD)
     if active:
         progress = 0 if active.required_work <= 0 else active.work_done / active.required_work
         add_text(panel, start_row + 1, 2, f"Active: {active.client} / {active.focus}", panel_width - 4)
@@ -97,7 +105,8 @@ def draw_dashboard(screen: curses.window, state: GameState, width: int) -> int:
         plan_text = f"Week {project.weeks} | about {remaining}w left / {project.planned_weeks}w planned"
         add_text(project_panel, 3, 8, plan_text, right_width - 10)
         if studio.contract:
-            contract_note = " | Contract is cutting capacity by 45%" if right_width >= 90 else " | Contract capacity -45%"
+            contract_share = activity_allocations(studio)["contract"]
+            contract_note = f" | Contract uses {contract_share:.0%} capacity" if right_width >= 90 else f" | Job {contract_share:.0%}"
             add_text(project_panel, 3, 8 + len(plan_text), contract_note, right_width - 10 - len(plan_text), curses.color_pair(5))
         platform_text = f"{project.scope} / {project.channel} / {money(project.price)} retail"
         if not studio.contract:

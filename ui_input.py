@@ -15,19 +15,22 @@ from simulation import (
     MARKETING,
     MEDIA_VENTURES,
     PROMOTIONS,
+    RESEARCH_BRANCHES,
     RELEASE_STRATEGIES,
     SCOPES,
     TIME_SPEEDS,
-    UPGRADES,
     GameState,
     accept_contract_offer,
     buy_media_venture,
     buy_promotion,
     buy_upgrade,
     cancel_queued_promotion,
+    cancel_queued_research,
     cancel_queued_update,
+    cycle_work_priority,
     cycle_game_update_focus,
     cycle_game_update_size,
+    cycle_game_support,
     dismiss_employee,
     franchise_for_game,
     game_by_id,
@@ -36,9 +39,11 @@ from simulation import (
     prepare_sequel,
     prepare_spinoff,
     queue_game_update,
+    research_nodes_for_branch,
     refresh_draft_title,
     resolve_project_decision,
     selected_roster_employee,
+    start_employee_vacation,
     start_project,
     toggle_auto_contracts,
 )
@@ -68,7 +73,7 @@ from ui_chrome import (
 from ui_common import catalogue_entries, list_start, live_games, promotion_targets
 from ui_contracts import contract_board_width
 from ui_games import catalogue_table_height, catalogue_table_width, games_list_width, summary_panel_width
-from ui_newgame import PLAN_FIELDS, base_game_choices, new_game_panel_geometry, project_kind_choices, select_topic_at, topic_order, topic_position
+from ui_newgame import PLAN_FIELDS, available_genre_indices, base_game_choices, cycle_genre_index, locked_topic_count, new_game_panel_geometry, project_kind_choices, select_topic_at, topic_order, topic_position
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
 from ui_title import TITLE_MENU, title_layout
@@ -214,6 +219,11 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         state.modal = "marketing"
         state.marketing_tab = 0
         state.queue_cancellation = ""
+    elif action == "cycle_support":
+        games = live_games(state)
+        project_selected = state.modal == "games" and state.studio.current_project and state.selected_game == 0
+        if games and not project_selected:
+            cycle_game_support(state, games[released_selection_index(state)].game_id)
     elif action == "production_option":
         state.selected_project_decision = (state.selected_project_decision + 1) % 2
     elif action == "resolve_decision":
@@ -320,8 +330,19 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "train":
         if state.team_tab == 1:
             open_training(state)
+    elif action == "vacation":
+        if state.team_tab == 1:
+            start_employee_vacation(state)
     elif action == "buy":
         buy_upgrade(state)
+    elif action == "cancel_research":
+        cancel_queued_research(state)
+    elif action == "previous_research_branch":
+        state.selected_research_branch = (state.selected_research_branch - 1) % len(RESEARCH_BRANCHES)
+        state.selected_upgrade = 0
+    elif action == "next_research_branch":
+        state.selected_research_branch = (state.selected_research_branch + 1) % len(RESEARCH_BRANCHES)
+        state.selected_upgrade = 0
     elif action == "previous_view":
         state.analysis_view = (state.analysis_view - 1) % len(ANALYSIS_TABS)
         state.selected_stat = 0
@@ -426,10 +447,10 @@ def handle_new_game_key(state: GameState, key: int) -> None:
     elif key == curses.KEY_UP:
         if state.new_game_step == 0:
             if state.mix_blend:
-                state.selected_secondary_genre = (state.selected_secondary_genre - 1) % len(GENRES)
+                cycle_genre_index(state, "selected_secondary_genre", -1)
             else:
                 had_blend = state.selected_secondary_genre != state.selected_genre
-                state.selected_genre = (state.selected_genre - 1) % len(GENRES)
+                cycle_genre_index(state, "selected_genre", -1)
                 if not had_blend:
                     state.selected_secondary_genre = state.selected_genre
         elif state.new_game_step == 1:
@@ -450,10 +471,10 @@ def handle_new_game_key(state: GameState, key: int) -> None:
     elif key == curses.KEY_DOWN:
         if state.new_game_step == 0:
             if state.mix_blend:
-                state.selected_secondary_genre = (state.selected_secondary_genre + 1) % len(GENRES)
+                cycle_genre_index(state, "selected_secondary_genre", 1)
             else:
                 had_blend = state.selected_secondary_genre != state.selected_genre
-                state.selected_genre = (state.selected_genre + 1) % len(GENRES)
+                cycle_genre_index(state, "selected_genre", 1)
                 if not had_blend:
                     state.selected_secondary_genre = state.selected_genre
         elif state.new_game_step == 1:
@@ -515,6 +536,8 @@ def handle_team_key(state: GameState, key: int) -> None:
         dismiss_employee(state)
     elif key in (ord("l"), ord("L")) and state.team_tab == 1:
         open_training(state)
+    elif key in (ord("v"), ord("V")) and state.team_tab == 1:
+        start_employee_vacation(state)
 
 
 def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
@@ -569,7 +592,8 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             else:
                 state.selected_promotion = (state.selected_promotion + (-1 if wheel_up else 1)) % len(PROMOTIONS)
         elif state.modal == "upgrades":
-            state.selected_upgrade = (state.selected_upgrade + (-1 if wheel_up else 1)) % len(UPGRADES)
+            nodes = research_nodes_for_branch(RESEARCH_BRANCHES[state.selected_research_branch])
+            state.selected_upgrade = (state.selected_upgrade + (-1 if wheel_up else 1)) % len(nodes)
         elif state.modal == "new_game":
             handle_new_game_key(state, key)
         elif state.modal == "main":
@@ -679,8 +703,18 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         return
 
     if state.modal == "upgrades":
-        row = y - 4
-        if 0 <= row < len(UPGRADES):
+        if y == 3:
+            branch_x = 2
+            for index, branch_name in enumerate(RESEARCH_BRANCHES):
+                label_width = len(branch_name) + 2
+                if branch_x <= x < branch_x + label_width:
+                    state.selected_research_branch = index
+                    state.selected_upgrade = 0
+                    return
+                branch_x += label_width + 1
+        nodes = research_nodes_for_branch(RESEARCH_BRANCHES[state.selected_research_branch])
+        row = y - 5
+        if 0 <= row < len(nodes):
             state.selected_upgrade = row
             if double_click:
                 buy_upgrade(state)
@@ -813,27 +847,32 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             if x < genre_width:
                 was_blend = state.mix_blend
                 state.new_game_step = 0
+                available = available_genre_indices(state)
+                genre_visible = visible - (1 if len(available) < len(GENRES) else 0)
                 cursor = state.selected_secondary_genre if was_blend else state.selected_genre
-                index = list_start(cursor, len(GENRES), visible) + row
+                position = available.index(cursor) if cursor in available else 0
+                index = list_start(position, len(available), genre_visible) + row
+                picked = available[min(index, len(available) - 1)]
                 if was_blend:
-                    state.selected_secondary_genre = min(index, len(GENRES) - 1)
+                    state.selected_secondary_genre = picked
                 else:
                     had_blend = state.selected_secondary_genre != state.selected_genre
-                    state.selected_genre = min(index, len(GENRES) - 1)
+                    state.selected_genre = picked
                     if not had_blend:
                         state.selected_secondary_genre = state.selected_genre
             elif genre_width < x < plan_x:
                 was_blend = state.mix_blend
                 state.new_game_step = 1
                 order = topic_order(state)
+                topic_visible = visible - (1 if locked_topic_count(state) else 0)
                 if was_blend:
                     current = TOPICS[state.selected_secondary_topic]
                     position = next((i for i, (topic, _) in enumerate(order) if topic == current), 0)
-                    start = list_start(position, len(order), visible)
+                    start = list_start(position, len(order), topic_visible)
                     state.selected_secondary_topic = TOPICS.index(order[min(start + row, len(order) - 1)][0])
                 else:
                     had_blend = state.selected_secondary_topic != state.selected_topic
-                    start = list_start(topic_position(state, order), len(order), visible)
+                    start = list_start(topic_position(state, order), len(order), topic_visible)
                     select_topic_at(state, order, min(start + row, len(order) - 1))
                     if not had_blend:
                         state.selected_secondary_topic = state.selected_topic
@@ -1069,6 +1108,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.selected_game = (state.selected_game + 1) % entry_count
         elif key in (ord("p"), ord("P")):
             perform_footer_action(state, "game_marketing")
+        elif key in (ord("x"), ord("X")) and games:
+            perform_footer_action(state, "cycle_support")
     elif state.modal == "update_planner":
         games = live_games(state)
         if state.queue_cancellation == "update":
@@ -1150,11 +1191,24 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
         if key in (8, 127, curses.KEY_BACKSPACE):
             state.modal = "main"
         elif key == curses.KEY_UP:
-            state.selected_upgrade = (state.selected_upgrade - 1) % len(UPGRADES)
+            nodes = research_nodes_for_branch(RESEARCH_BRANCHES[state.selected_research_branch])
+            state.selected_upgrade = (state.selected_upgrade - 1) % len(nodes)
         elif key == curses.KEY_DOWN:
-            state.selected_upgrade = (state.selected_upgrade + 1) % len(UPGRADES)
+            nodes = research_nodes_for_branch(RESEARCH_BRANCHES[state.selected_research_branch])
+            state.selected_upgrade = (state.selected_upgrade + 1) % len(nodes)
         elif key in (10, 13, curses.KEY_ENTER):
             buy_upgrade(state)
+        elif key in (ord("c"), ord("C")):
+            cancel_queued_research(state)
+        elif key in (ord("1"), ord("2"), ord("3"), ord("4"), ord("5")):
+            kind = ("project", "contract", "update", "promotion", "research")[key - ord("1")]
+            cycle_work_priority(state, kind)
+        elif key in (ord("a"), ord("A")):
+            if "auto_leave" in state.studio.completed_research or "auto_leave" in state.studio.upgrades:
+                state.studio.auto_vacation = not state.studio.auto_vacation
+                state.log(f"Automatic vacation scheduling {'enabled' if state.studio.auto_vacation else 'disabled'}.")
+            else:
+                state.log("Automatic vacation requires Sustainable Scheduling research.")
     elif state.modal == "analysis":
         if key in (8, 127, curses.KEY_BACKSPACE):
             state.modal = "main"

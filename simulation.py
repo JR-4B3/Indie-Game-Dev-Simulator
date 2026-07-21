@@ -11,14 +11,14 @@ from pathlib import Path
 from game_data import GENRES, GENRE_PROFILES, GOOD_MATCHES, TOPICS
 
 
-SAVE_VERSION = 5
+SAVE_VERSION = 6
 START_DATE = date.today()
-SECONDS_PER_WEEK = 20.0
+SECONDS_PER_WEEK = 120.0
 SECONDS_PER_DAY = SECONDS_PER_WEEK / 7
 SKILLS = ("Design", "Art", "Audio", "Code")
 EMPLOYEE_SKILLS = SKILLS + ("Research",)
-TIME_SPEEDS = (0.0, 4.0, 8.0, 10.0, 12.0)
-TIME_LABELS = ("||", "> 4x", ">> 8x", ">>> 10x", ">>>> 12x")
+TIME_SPEEDS = (0.0, 12.0, 24.0, 48.0)
+TIME_LABELS = ("||", "> 1x", ">> 2x", ">>> 4x")
 
 CHANNELS = (
     {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00},
@@ -32,13 +32,13 @@ CHANNELS = (
 )
 
 SCOPES = (
-    {"name": "Micro", "work": 900, "setup": 1_800, "price": 9.99, "risk": 0, "team": 1, "rep": 0, "market": 0.55},
-    {"name": "Compact", "work": 1_350, "setup": 3_200, "price": 12.99, "risk": 1, "team": 1, "rep": 0, "market": 0.75},
+    {"name": "Micro", "work": 600, "setup": 1_800, "price": 9.99, "risk": 0, "team": 1, "rep": 0, "market": 0.55},
+    {"name": "Compact", "work": 1_000, "setup": 3_200, "price": 12.99, "risk": 1, "team": 1, "rep": 0, "market": 0.75},
     {"name": "Small", "work": 1_900, "setup": 5_500, "price": 14.99, "risk": 4, "team": 1, "rep": 0, "market": 1.0},
-    {"name": "Mid-size", "work": 2_700, "setup": 9_000, "price": 19.99, "risk": 7, "team": 2, "rep": 0, "market": 1.35},
-    {"name": "Ambitious", "work": 3_600, "setup": 14_000, "price": 24.99, "risk": 10, "team": 3, "rep": 4, "market": 1.75},
-    {"name": "Large", "work": 7_000, "setup": 80_000, "price": 39.99, "risk": 17, "team": 7, "rep": 18, "market": 2.8},
-    {"name": "Blockbuster", "work": 15_000, "setup": 500_000, "price": 69.99, "risk": 28, "team": 18, "rep": 45, "market": 5.0},
+    {"name": "Mid-size", "work": 5_500, "setup": 9_000, "price": 19.99, "risk": 7, "team": 2, "rep": 0, "market": 1.35},
+    {"name": "Ambitious", "work": 13_000, "setup": 14_000, "price": 24.99, "risk": 10, "team": 3, "rep": 4, "market": 1.75},
+    {"name": "Large", "work": 60_000, "setup": 80_000, "price": 39.99, "risk": 17, "team": 7, "rep": 18, "market": 2.8},
+    {"name": "Blockbuster", "work": 190_000, "setup": 500_000, "price": 69.99, "risk": 28, "team": 18, "rep": 45, "market": 5.0},
 )
 
 AUDIENCES = (
@@ -153,23 +153,97 @@ LEGACY_MARKETING_NAMES = {
     "Campaign": "Launch campaign",
 }
 
-UPGRADES = (
-    {"key": "hardware", "name": "Current workstations", "cost": 7_500, "monthly": 120, "effect": "+10% production"},
-    {"key": "tools", "name": "Professional toolchain", "cost": 11_000, "monthly": 350, "effect": "+8% quality"},
-    {"key": "qa", "name": "QA device library", "cost": 8_000, "monthly": 180, "effect": "-25% defects"},
-    {"key": "coworking", "name": "Coworking studio", "cost": 3_500, "monthly": 1_450, "effect": "+5 morale/month"},
-    {"key": "health", "name": "Health plan", "cost": 1_500, "monthly": 650, "per_employee": 280, "effect": "less burnout"},
-    {"key": "analytics", "name": "Store analytics", "cost": 5_000, "monthly": 190, "effect": "+12% sales tail"},
+STARTER_RESEARCH = ("product_foundations", "garage_workflow", "basic_rest", "contract_basics", "basic_support")
+
+RESEARCH_NODES = (
+    # Product development
+    {"key": "product_foundations", "branch": "Product", "tier": 0, "name": "Product Foundations", "cost": 0, "work": 0, "prereq": (), "effect": "Micro and Compact offline PC games"},
+    {"key": "small_production", "branch": "Product", "tier": 1, "name": "Small Production", "cost": 2_500, "work": 260, "prereq": ("product_foundations",), "effect": "Unlock Small games"},
+    {"key": "genre_story", "branch": "Product", "tier": 1, "name": "Story & Role-play Genres", "cost": 2_000, "work": 230, "prereq": ("product_foundations",), "effect": "Adventure, RPG, Visual Novel and related genres"},
+    {"key": "genre_systems", "branch": "Product", "tier": 1, "name": "Systems & Strategy Genres", "cost": 2_000, "work": 230, "prereq": ("product_foundations",), "effect": "Strategy, simulation and building genres"},
+    {"key": "theme_library_1", "branch": "Product", "tier": 1, "name": "Expanded Theme Library I", "cost": 1_500, "work": 180, "prereq": ("product_foundations",), "effect": "Unlock 25% of the extended theme catalogue"},
+    {"key": "mid_production", "branch": "Product", "tier": 2, "name": "Mid-size Production", "cost": 9_000, "work": 700, "prereq": ("small_production", "production_pipeline"), "effect": "Unlock Mid-size games"},
+    {"key": "online_coop", "branch": "Product", "tier": 2, "name": "Connected Games", "cost": 12_000, "work": 850, "prereq": ("small_production",), "effect": "Unlock online co-op"},
+    {"key": "genre_action", "branch": "Product", "tier": 2, "name": "Action & Competition Genres", "cost": 7_500, "work": 620, "prereq": ("small_production",), "effect": "Shooters, fighting, racing and sports genres"},
+    {"key": "genre_indie", "branch": "Product", "tier": 2, "name": "Modern Indie Genres", "cost": 7_500, "work": 620, "prereq": ("small_production",), "effect": "Roguelikes, deckbuilders, cozy and hybrid genres"},
+    {"key": "theme_library_2", "branch": "Product", "tier": 2, "name": "Expanded Theme Library II", "cost": 6_000, "work": 500, "prereq": ("theme_library_1",), "effect": "Unlock another 25% of themes"},
+    {"key": "ambitious_production", "branch": "Product", "tier": 3, "name": "Ambitious Production", "cost": 30_000, "work": 1_800, "prereq": ("mid_production", "department_leads"), "effect": "Unlock Ambitious games"},
+    {"key": "competitive_online", "branch": "Product", "tier": 3, "name": "Competitive Networking", "cost": 45_000, "work": 2_000, "prereq": ("online_coop", "qa"), "effect": "Unlock competitive online games"},
+    {"key": "theme_library_3", "branch": "Product", "tier": 3, "name": "Expanded Theme Library III", "cost": 20_000, "work": 1_400, "prereq": ("theme_library_2",), "effect": "Unlock another 25% of themes"},
+    {"key": "large_production", "branch": "Product", "tier": 4, "name": "Large-scale Production", "cost": 180_000, "work": 5_000, "prereq": ("ambitious_production", "advanced_coordination"), "effect": "Unlock Large games"},
+    {"key": "persistent_worlds", "branch": "Product", "tier": 4, "name": "Persistent Worlds", "cost": 250_000, "work": 6_000, "prereq": ("competitive_online", "live_operations"), "effect": "Unlock persistent-world games"},
+    {"key": "theme_library_4", "branch": "Product", "tier": 4, "name": "Complete Theme Archive", "cost": 80_000, "work": 3_500, "prereq": ("theme_library_3",), "effect": "Unlock every theme"},
+    {"key": "blockbuster_production", "branch": "Product", "tier": 5, "name": "Blockbuster Production", "cost": 1_200_000, "work": 12_000, "prereq": ("large_production", "executive_management"), "effect": "Unlock Blockbuster games"},
+    {"key": "mmo_technology", "branch": "Product", "tier": 5, "name": "Massive Online Technology", "cost": 2_500_000, "work": 15_000, "prereq": ("persistent_worlds", "blockbuster_production"), "effect": "Unlock MMO development"},
+    {"key": "internal_engine", "branch": "Product", "tier": 5, "name": "Internal Engine Program", "cost": 900_000, "work": 10_000, "prereq": ("large_production", "research_lab"), "effect": "Unlock engine projects (preview)"},
+
+    # Studio operations
+    {"key": "garage_workflow", "branch": "Operations", "tier": 0, "name": "Garage Workflow", "cost": 0, "work": 0, "prereq": (), "effect": "One project and manual management"},
+    {"key": "hardware", "branch": "Operations", "tier": 1, "name": "Current Workstations", "cost": 7_500, "work": 300, "monthly": 120, "prereq": ("garage_workflow",), "effect": "+10% work output"},
+    {"key": "tools", "branch": "Operations", "tier": 1, "name": "Professional Toolchain", "cost": 11_000, "work": 420, "monthly": 350, "prereq": ("garage_workflow",), "effect": "+4 release quality"},
+    {"key": "production_pipeline", "branch": "Operations", "tier": 2, "name": "Production Pipeline", "cost": 18_000, "work": 900, "prereq": ("hardware",), "effect": "Better coordination for teams above five"},
+    {"key": "qa", "branch": "Operations", "tier": 2, "name": "QA Device Library", "cost": 12_000, "work": 800, "monthly": 180, "prereq": ("tools",), "effect": "Fewer defects and faster discovery"},
+    {"key": "research_lab", "branch": "Operations", "tier": 2, "name": "Research Lab", "cost": 25_000, "work": 1_100, "monthly": 400, "prereq": ("production_pipeline",), "effect": "+20% research output"},
+    {"key": "department_leads", "branch": "Operations", "tier": 3, "name": "Department Leads", "cost": 55_000, "work": 2_200, "monthly": 800, "prereq": ("production_pipeline", "mentorship"), "effect": "Unlock automatic work priorities"},
+    {"key": "portfolio_management", "branch": "Operations", "tier": 3, "name": "Portfolio Management", "cost": 65_000, "work": 2_600, "monthly": 500, "prereq": ("department_leads", "content_updates"), "effect": "Set released games to active, maintenance or sunset support"},
+    {"key": "advanced_coordination", "branch": "Operations", "tier": 4, "name": "Advanced Coordination", "cost": 180_000, "work": 5_000, "monthly": 1_800, "prereq": ("department_leads",), "effect": "Large teams retain more marginal output"},
+    {"key": "executive_management", "branch": "Operations", "tier": 5, "name": "Executive Management", "cost": 650_000, "work": 9_000, "monthly": 5_000, "prereq": ("advanced_coordination",), "effect": "Late-game automation and lower off-branch penalty"},
+
+    # People and culture
+    {"key": "basic_rest", "branch": "People", "tier": 0, "name": "Basic Rest Policy", "cost": 0, "work": 0, "prereq": (), "effect": "Manual one-week vacations"},
+    {"key": "mentorship", "branch": "People", "tier": 1, "name": "Mentorship", "cost": 3_000, "work": 260, "prereq": ("basic_rest",), "effect": "+25% experience gain"},
+    {"key": "structured_training", "branch": "People", "tier": 1, "name": "Structured Training", "cost": 5_000, "work": 380, "prereq": ("basic_rest",), "effect": "Training takes three weeks"},
+    {"key": "paid_leave", "branch": "People", "tier": 2, "name": "Paid Leave Program", "cost": 8_000, "work": 650, "monthly": 120, "per_employee": 40, "prereq": ("structured_training",), "effect": "Vacations recover more fatigue and morale"},
+    {"key": "health", "branch": "People", "tier": 2, "name": "Health Plan", "cost": 12_000, "work": 850, "monthly": 650, "per_employee": 280, "prereq": ("paid_leave",), "effect": "Slower fatigue and burnout recovery"},
+    {"key": "coworking", "branch": "People", "tier": 2, "name": "Coworking Studio", "cost": 18_000, "work": 900, "monthly": 1_450, "prereq": ("paid_leave",), "effect": "+5 monthly morale"},
+    {"key": "auto_leave", "branch": "People", "tier": 3, "name": "Sustainable Scheduling", "cost": 35_000, "work": 1_800, "prereq": ("health", "department_leads"), "effect": "Automatically schedule vacation at high fatigue"},
+    {"key": "academy", "branch": "People", "tier": 4, "name": "Internal Academy", "cost": 150_000, "work": 4_500, "monthly": 2_500, "prereq": ("mentorship", "structured_training"), "effect": "+35% experience and stronger courses"},
+
+    # Marketing and business
+    {"key": "contract_basics", "branch": "Business", "tier": 0, "name": "Contract Basics", "cost": 0, "work": 0, "prereq": (), "effect": "Manual contract work"},
+    {"key": "promotion_basics", "branch": "Business", "tier": 1, "name": "Community Marketing", "cost": 4_000, "work": 350, "prereq": ("contract_basics",), "effect": "Unlock community launch plans and social promotion"},
+    {"key": "market_research", "branch": "Business", "tier": 1, "name": "Market Research", "cost": 5_000, "work": 420, "prereq": ("contract_basics",), "effect": "+10 forecast confidence"},
+    {"key": "targeted_marketing", "branch": "Business", "tier": 2, "name": "Targeted Marketing", "cost": 15_000, "work": 900, "prereq": ("promotion_basics",), "effect": "Unlock targeted campaigns and press outreach"},
+    {"key": "mobile_distribution", "branch": "Business", "tier": 2, "name": "Mobile Distribution", "cost": 20_000, "work": 1_000, "prereq": ("market_research",), "effect": "Unlock mobile storefronts"},
+    {"key": "creator_relations", "branch": "Business", "tier": 3, "name": "Creator Relations", "cost": 45_000, "work": 2_000, "prereq": ("targeted_marketing",), "effect": "Unlock creator and streamer campaigns"},
+    {"key": "console_certification", "branch": "Business", "tier": 3, "name": "Console Certification", "cost": 75_000, "work": 2_500, "prereq": ("mobile_distribution", "qa"), "effect": "Unlock console storefronts"},
+    {"key": "analytics", "branch": "Business", "tier": 3, "name": "Store Analytics", "cost": 30_000, "work": 1_600, "monthly": 190, "prereq": ("market_research",), "effect": "+2% weekly sales retention"},
+    {"key": "event_marketing", "branch": "Business", "tier": 4, "name": "Events & Showcases", "cost": 120_000, "work": 4_000, "prereq": ("creator_relations",), "effect": "Unlock events and premium showcases"},
+    {"key": "contract_automation", "branch": "Business", "tier": 4, "name": "Client Relations Office", "cost": 100_000, "work": 3_500, "prereq": ("department_leads",), "effect": "Unlock automatic contract policies"},
+
+    # Live operations
+    {"key": "basic_support", "branch": "Live Ops", "tier": 0, "name": "Basic Support", "cost": 0, "work": 0, "prereq": (), "effect": "Hotfixes and patches"},
+    {"key": "content_updates", "branch": "Live Ops", "tier": 1, "name": "Content Updates", "cost": 6_000, "work": 500, "prereq": ("basic_support",), "effect": "Unlock content updates"},
+    {"key": "expansion_pipeline", "branch": "Live Ops", "tier": 2, "name": "Expansion Pipeline", "cost": 22_000, "work": 1_300, "prereq": ("content_updates", "production_pipeline"), "effect": "Unlock expansions"},
+    {"key": "paid_dlc", "branch": "Live Ops", "tier": 3, "name": "Paid DLC Pipeline", "cost": 55_000, "work": 2_500, "prereq": ("expansion_pipeline", "targeted_marketing"), "effect": "Unlock Paid DLC and DLC roadmaps"},
+    {"key": "live_operations", "branch": "Live Ops", "tier": 4, "name": "Live Operations Department", "cost": 180_000, "work": 5_000, "monthly": 2_200, "prereq": ("paid_dlc", "department_leads"), "effect": "Unlock live-service plans"},
+    {"key": "automated_deployment", "branch": "Live Ops", "tier": 4, "name": "Automated Deployment", "cost": 110_000, "work": 3_800, "prereq": ("qa", "expansion_pipeline"), "effect": "+20% update and DLC output"},
 )
 
-FRANCHISE_RANKS = ("Unknown", "Niche", "Recognized", "Popular", "Famous", "Iconic")
-FRANCHISE_RANK_THRESHOLDS = (30, 120, 400, 1_100, 2_600)
+# Kept as the public name used by the existing Upgrades page and tests.
+UPGRADES = RESEARCH_NODES
+RESEARCH_BY_KEY = {node["key"]: node for node in RESEARCH_NODES}
+RESEARCH_BRANCHES = tuple(dict.fromkeys(node["branch"] for node in RESEARCH_NODES))
+
+STARTER_GENRES = {
+    "Action", "Adventure", "Platformer", "Puzzle Game", "Simulation", "Skill Game",
+}
+GENRE_UNLOCKS = {
+    "genre_story": {"Interactive Movie", "Role-Playing Game", "Visual Novel", "Soulslike", "Metroidvania"},
+    "genre_systems": {"Building Game", "Economic Simulation", "Real-Time Strategy", "Strategy", "Automation"},
+    "genre_action": {"Fighting Game", "First-Person Shooter", "Racing", "Sports Game", "Survival Game", "Third-Person Shooter", "Battle Royale", "Extraction Shooter"},
+    "genre_indie": {"Survivors-like", "Roguelike", "Roguelite", "Deckbuilder", "Cozy Game", "Social Deduction", "Immersive Sim"},
+}
+STARTER_TOPICS = set(TOPICS[::7])
+
+FRANCHISE_RANKS = ("Unknown", "Niche", "Recognized", "Established", "Popular", "Famous", "Legendary", "Iconic")
+FRANCHISE_RANK_THRESHOLDS = (10_000, 100_000, 500_000, 1_000_000, 2_500_000, 5_000_000, 10_000_000)
 
 MEDIA_VENTURES = (
     {"key": "merch", "name": "Merchandise line", "cost": 6_000, "weeks": 26, "rank": 1, "effect": "Steady weekly merch revenue from the fanbase"},
-    {"key": "convention", "name": "Fan convention", "cost": 25_000, "weeks": 3, "rank": 3, "effect": "Big awareness and hype surge for the whole IP"},
-    {"key": "film", "name": "Film adaptation", "cost": 120_000, "weeks": 40, "rank": 4, "effect": "Box-office release after production; quality decides the payoff"},
-    {"key": "series", "name": "Series adaptation", "cost": 220_000, "weeks": 52, "rank": 4, "effect": "Prestige streaming series; the largest transmedia payoff"},
+    {"key": "convention", "name": "Fan convention", "cost": 25_000, "weeks": 3, "rank": 4, "effect": "Big awareness and hype surge for the whole IP"},
+    {"key": "film", "name": "Film adaptation", "cost": 120_000, "weeks": 40, "rank": 5, "effect": "Box-office release after production; quality decides the payoff"},
+    {"key": "series", "name": "Series adaptation", "cost": 220_000, "weeks": 52, "rank": 5, "effect": "Prestige streaming series; the largest transmedia payoff"},
 )
 
 COMPETITOR_STUDIOS = (
@@ -286,6 +360,10 @@ class Employee:
     founder: bool = False
     training_skill: str = ""
     training_weeks_left: int = 0
+    vacation_weeks_left: int = 0
+    burnout_weeks_left: int = 0
+    career_level: int = 1
+    lifetime_experience: int = 0
     week_output: float = 0.0
 
     @property
@@ -469,6 +547,7 @@ class ReleasedGame:
     user_trend: float = 0.0
     sales_history: list[int] = field(default_factory=list)
     chart_peak: int = 0
+    support_level: str = "Active"
 
     @property
     def known_bug_count(self) -> int:
@@ -487,6 +566,7 @@ class UpdateJob:
     bugs_found: float
     work_done: float = 0.0
     bugs_fixed: float = 0.0
+    cost_paid: int = 0
 
     @property
     def phase(self) -> str:
@@ -558,7 +638,7 @@ class Franchise:
 
     @property
     def rank(self) -> int:
-        return sum(self.value >= threshold for threshold in FRANCHISE_RANK_THRESHOLDS)
+        return sum(self.total_units >= threshold for threshold in FRANCHISE_RANK_THRESHOLDS)
 
     @property
     def rank_name(self) -> str:
@@ -620,6 +700,18 @@ class Competitor:
 
 
 @dataclass
+class ResearchJob:
+    node_key: str
+    required_work: float
+    cost: int
+    work_done: float = 0.0
+
+    @property
+    def progress(self) -> float:
+        return min(1.0, self.work_done / max(1.0, self.required_work))
+
+
+@dataclass
 class Studio:
     cash: float = 75_000.0
     followers: int = 40
@@ -649,6 +741,11 @@ class Studio:
     media_ventures: list[MediaVenture] = field(default_factory=list)
     competitors: list[Competitor] = field(default_factory=list)
     upgrades: list[str] = field(default_factory=list)
+    completed_research: list[str] = field(default_factory=lambda: list(STARTER_RESEARCH))
+    active_research: ResearchJob | None = None
+    research_queue: list[ResearchJob] = field(default_factory=list)
+    work_priorities: dict[str, int] = field(default_factory=lambda: {"project": 3, "contract": 2, "update": 2, "promotion": 1, "research": 1})
+    auto_vacation: bool = False
     ledger: list[LedgerMonth] = field(default_factory=list)
     period_revenue: float = 0.0
     period_revenue_categories: dict[str, float] = field(default_factory=dict)
@@ -693,6 +790,7 @@ class GameState:
     selected_employee: int = 0
     selected_roster: int = 0
     selected_upgrade: int = 0
+    selected_research_branch: int = 0
     selected_contract: int = 0
     selected_game: int = 0
     selected_promotion: int = 0
@@ -896,7 +994,7 @@ def market_report(state: GameState) -> dict:
     research = team_research_skill(state.studio)
     # Early generalists can spot broad signals, but reliable forecasts require
     # deliberate research development rather than a second hire alone.
-    confidence = max(0.20, min(0.85, 0.12 + (research / 100) ** 3 * 0.72))
+    confidence = max(0.20, min(0.92, 0.12 + (research / 100) ** 3 * 0.72 + (0.10 if has_research(state.studio, "market_research") else 0)))
     uncertainty = 1 - confidence
     concept_seed = (
         state.studio.seed
@@ -972,11 +1070,97 @@ def plan_requirements(state: GameState) -> list[str]:
         requirements.append(f"reputation {required_rep} (have {studio.reputation:.0f})")
     if state.selected_release_strategy == 3 and state.selected_format == 0:
         requirements.append("an online game format")
+    unlock_requirements = (
+        research_requirement_for_scope(state.selected_scope),
+        research_requirement_for_format(state.selected_format),
+        research_requirement_for_genre(GENRES[state.selected_genre]),
+        research_requirement_for_topic(TOPICS[state.selected_topic]),
+        research_requirement_for_channel(state.selected_channel),
+        research_requirement_for_marketing(state.selected_marketing),
+        research_requirement_for_strategy(state.selected_release_strategy),
+    )
+    for node_key in unlock_requirements:
+        if node_key and not has_research(studio, node_key):
+            node = research_by_key(node_key)
+            label = node["name"] if node else node_key
+            requirements.append(f"research: {label}")
     return requirements
 
 
+def research_by_key(key: str) -> dict | None:
+    return RESEARCH_BY_KEY.get(key)
+
+
+def research_nodes_for_branch(branch: str) -> list[dict]:
+    return [node for node in RESEARCH_NODES if node["branch"] == branch]
+
+
+def has_research(studio: Studio, key: str) -> bool:
+    return key in studio.completed_research or key in studio.upgrades
+
+
+def completed_research_keys(studio: Studio) -> set[str]:
+    return set(studio.completed_research) | set(studio.upgrades) | set(STARTER_RESEARCH)
+
+
+def research_requirement_for_scope(index: int) -> str | None:
+    return (None, None, "small_production", "mid_production", "ambitious_production", "large_production", "blockbuster_production")[index]
+
+
+def research_requirement_for_format(index: int) -> str | None:
+    return (None, "online_coop", "competitive_online", "persistent_worlds", "mmo_technology")[index]
+
+
+def research_requirement_for_genre(genre: str) -> str | None:
+    if genre in STARTER_GENRES:
+        return None
+    return next((key for key, genres in GENRE_UNLOCKS.items() if genre in genres), None)
+
+
+def research_requirement_for_topic(topic: str) -> str | None:
+    index = TOPICS.index(topic)
+    if topic in STARTER_TOPICS:
+        return None
+    return f"theme_library_{index % 4 + 1}"
+
+
+def research_requirement_for_channel(index: int) -> str | None:
+    category = CHANNELS[index]["category"]
+    if index in (0, 1):
+        return None
+    if category == "Mobile":
+        return "mobile_distribution"
+    if category in ("Console", "Handheld"):
+        return "console_certification"
+    return "market_research"
+
+
+def research_requirement_for_marketing(index: int) -> str | None:
+    return (None, "promotion_basics", "targeted_marketing", "creator_relations", "creator_relations", "event_marketing")[index]
+
+
+def research_requirement_for_strategy(index: int) -> str | None:
+    return (None, "content_updates", "paid_dlc", "live_operations")[index]
+
+
+def research_requirement_for_update(size_name: str) -> str | None:
+    return {"Hotfix": None, "Patch": None, "Content": "content_updates", "Expansion": "expansion_pipeline", "Paid DLC": "paid_dlc"}.get(size_name)
+
+
+def research_requirement_for_promotion(key: str) -> str | None:
+    return {
+        "social": "promotion_basics",
+        "press": "targeted_marketing",
+        "creator": "creator_relations",
+        "streamer": "creator_relations",
+        "festival": "event_marketing",
+        "event": "event_marketing",
+        "showcase": "event_marketing",
+    }.get(key)
+
+
 def upgrade_by_key(key: str) -> dict:
-    return next(upgrade for upgrade in UPGRADES if upgrade["key"] == key)
+    return RESEARCH_BY_KEY.get(key, {"key": key, "name": key, "cost": 0, "monthly": 0, "effect": "Legacy capability"})
 
 
 def add_revenue(studio: Studio, amount: float, category: str = "Other revenue") -> None:
@@ -998,10 +1182,17 @@ def add_expense(studio: Studio, amount: float, category: str = "Other") -> None:
 def monthly_cost_breakdown(studio: Studio) -> dict[str, int]:
     salaries = sum(employee.monthly_salary for employee in studio.team)
     payroll_burden = round(sum(employee.monthly_salary for employee in studio.team if not employee.founder) * 0.13)
+    game_by_sale = {game.game_id: game for game in studio.catalog}
+    portfolio_operations = 0
+    for sale in studio.active_sales:
+        game = game_by_sale.get(sale.game_id)
+        if game is None or game.release_date == "Historical" or game.support_level == "Sunset":
+            continue
+        portfolio_operations += 50 if game.support_level == "Maintenance" else 150
     costs = {
         "Payroll": salaries,
         "Employer costs": payroll_burden,
-        "Operations": 250 + 310 + 85 * len(studio.team) + 150 * len(studio.active_sales),
+        "Operations": 250 + 310 + 85 * len(studio.team) + portfolio_operations,
     }
     for key in studio.upgrades:
         upgrade = upgrade_by_key(key)
@@ -1129,7 +1320,18 @@ def grant_employee_skill(state: GameState, employee: Employee, skill_name: str, 
 
 
 def grant_employee_experience(state: GameState, employee: Employee, skill_name: str, points: int, source: str) -> None:
-    employee.experience += round(points * employee_modifiers(employee)["learning"])
+    multiplier = employee_modifiers(employee)["learning"]
+    if has_research(state.studio, "academy"):
+        multiplier *= 1.35
+    elif has_research(state.studio, "mentorship"):
+        multiplier *= 1.25
+    gained = max(1, round(points * multiplier))
+    employee.experience += gained
+    employee.lifetime_experience += gained
+    new_level = min(5, 1 + employee.lifetime_experience // 500)
+    if new_level > employee.career_level:
+        employee.career_level = new_level
+        state.log(f"{employee.name} reached career level {new_level} through sustained studio work.")
     while employee.experience >= 100:
         employee.experience -= 100
         if skill_name not in EMPLOYEE_SKILLS:
@@ -1159,8 +1361,8 @@ def start_employee_training(state: GameState, skill_index: int | None = None) ->
         return False
     add_expense(state.studio, cost, "Training")
     employee.training_skill = skill_name
-    employee.training_weeks_left = 4
-    state.log(f"Sent {employee.name} to four weeks of {skill_name} training for ${cost:,}; they are unavailable during the course.")
+    employee.training_weeks_left = 2 if has_research(state.studio, "academy") else 3 if has_research(state.studio, "structured_training") else 4
+    state.log(f"Sent {employee.name} to {employee.training_weeks_left} weeks of {skill_name} training for ${cost:,}; they are unavailable during the course.")
     return True
 
 
@@ -1171,12 +1373,94 @@ def process_employee_training(state: GameState, week_end: bool = True) -> None:
         if employee.training_weeks_left <= 0:
             continue
         employee.training_weeks_left -= 1
-        employee.weeks_employed += 1
         if employee.training_weeks_left == 0:
             skill_name = employee.training_skill
-            grant_employee_skill(state, employee, skill_name, 4, "professional training")
+            gain = 6 if has_research(state.studio, "academy") else 4
+            grant_employee_skill(state, employee, skill_name, gain, "professional training")
             employee.training_skill = ""
             employee.fatigue = max(0, employee.fatigue - 5)
+
+
+def start_employee_vacation(state: GameState, employee: Employee | None = None) -> bool:
+    employee = employee or selected_roster_employee(state)
+    if employee is None:
+        return False
+    if employee.training_weeks_left or employee.vacation_weeks_left or employee.burnout_weeks_left:
+        state.log(f"{employee.name} is already unavailable.")
+        return False
+    employee.vacation_weeks_left = 1
+    state.log(f"Scheduled one week of vacation for {employee.name}; salary continues while they recover.")
+    return True
+
+
+def dominant_work_skill(studio: Studio) -> str:
+    allocations = activity_allocations(studio)
+    kind = max(("project", "contract", "update", "promotion", "research", "support"), key=lambda item: allocations[item])
+    if allocations[kind] <= 0:
+        return ""
+    if kind == "project" and studio.current_project:
+        return SKILLS[max(range(4), key=lambda index: studio.current_project.focus[index])]
+    if kind == "contract" and studio.contract:
+        return studio.contract.focus
+    if kind == "update" and studio.active_update:
+        return update_focus_by_name(studio.active_update.focus)["skill"] if studio.active_update.phase == "Development" else "Code"
+    if kind == "research":
+        return "Research"
+    if kind == "support":
+        return "Code"
+    return "Generalist"
+
+
+def process_employee_wellbeing(state: GameState, week_end: bool, workday: bool) -> None:
+    studio = state.studio
+    allocations = activity_allocations(studio)
+    workload = sum(allocations.values())
+    if workday and workload > 0:
+        for employee in studio.team:
+            if employee_available(employee):
+                gain = 0.50 * max(0.35, workload) * employee_modifiers(employee)["fatigue"]
+                if has_research(studio, "health"):
+                    gain *= 0.82
+                employee.fatigue = min(100, employee.fatigue + gain)
+    if not week_end:
+        return
+
+    work_skill = dominant_work_skill(studio)
+    for employee in studio.team:
+        employee.weeks_employed += 1
+        if employee.vacation_weeks_left:
+            employee.vacation_weeks_left -= 1
+            recovery = 38 if has_research(studio, "paid_leave") else 30
+            employee.fatigue = max(0, employee.fatigue - recovery)
+            employee.morale = min(100, employee.morale + (6 if has_research(studio, "paid_leave") else 3))
+            continue
+        if employee.burnout_weeks_left:
+            employee.burnout_weeks_left -= 1
+            employee.fatigue = max(55, employee.fatigue - 16)
+            continue
+        if employee.fatigue >= 100:
+            employee.burnout_weeks_left = 2
+            employee.fatigue = 88
+            employee.morale = max(0, employee.morale - 10)
+            state.log(f"{employee.name} burned out and will be unavailable for two weeks.")
+            continue
+        employee.fatigue = max(0, employee.fatigue - (2.5 if has_research(studio, "health") else 1.5))
+        if work_skill and employee_available(employee):
+            points = max(1, round(workload * 3 + employee.week_output / 30))
+            grant_employee_experience(state, employee, work_skill, points, f"{work_skill.lower()} work")
+        employee.week_output = 0.0
+
+    if has_research(studio, "auto_leave") and studio.auto_vacation:
+        vacation_limit = max(1, math.ceil(len(studio.team) * 0.25))
+        already_away = sum(bool(employee.vacation_weeks_left) for employee in studio.team)
+        candidates = sorted(
+            (employee for employee in studio.team if employee_available(employee) and employee.fatigue >= 72),
+            key=lambda employee: employee.fatigue,
+            reverse=True,
+        )
+        for employee in candidates[: max(0, vacation_limit - already_away)]:
+            employee.vacation_weeks_left = 1
+            state.log(f"Sustainable Scheduling placed {employee.name} on vacation at {employee.fatigue:.0f} fatigue.")
 
 
 def generate_candidate(studio: Studio, rng: random.Random) -> Employee:
@@ -1265,6 +1549,19 @@ def game_by_id(studio: Studio, game_id: int) -> ReleasedGame | None:
     return next((game for game in studio.catalog if game.game_id == game_id), None)
 
 
+def cycle_game_support(state: GameState, game_id: int) -> str | None:
+    game = game_by_id(state.studio, game_id)
+    if game is None:
+        return None
+    if not has_research(state.studio, "portfolio_management"):
+        state.log("Support levels require Portfolio Management research.")
+        return game.support_level
+    levels = ("Active", "Maintenance", "Sunset")
+    game.support_level = levels[(levels.index(game.support_level) + 1) % len(levels)]
+    state.log(f"{game.title} moved to {game.support_level.lower()} support.")
+    return game.support_level
+
+
 def infer_legacy_game_bugs(game: ReleasedGame) -> None:
     game.actual_bugs = max(1.0, (75 - game.score) * 0.22 + 1.5)
     exposure = min(0.92, 0.25 + math.log10(max(1, game.units_sold) + 1) * 0.13)
@@ -1284,33 +1581,109 @@ def update_size_by_name(name: str) -> dict:
     return next((size for size in UPDATE_SIZES if size["name"] == name), UPDATE_SIZES[1])
 
 
-def team_speed_factor(workers: int) -> float:
-    """Coordination overhead multiplier applied to a team's summed output.
+def employee_available(employee: Employee) -> bool:
+    return not (employee.training_weeks_left or employee.vacation_weeks_left or employee.burnout_weeks_left)
 
-    No studio finishes a game in weeks just because it has many developers:
-    total speed flattens toward a 2x cap, so fifteen people ship at most
-    twice as fast as one. What headcount really adds is content, quality —
-    and, through communication overhead, more defects (see develop_project).
+
+def employee_availability(employee: Employee) -> float:
+    morale = max(0.35, employee.morale / 100)
+    fatigue = 1.0 if employee.fatigue <= 50 else max(0.5, 1 - (employee.fatigue - 50) / 100)
+    return morale * fatigue
+
+
+def coordination_weights(studio: Studio, contributions: list[float]) -> list[float]:
+    """Declining but always-positive marginal contribution weights.
+
+    Sorting by contribution means adding a weaker employee cannot reduce the
+    established team's output. Management research improves later workers.
     """
-    if workers <= 1:
-        return 1.0
-    return min(2.0, workers ** 0.35) / workers
+    order = sorted(range(len(contributions)), key=lambda index: contributions[index], reverse=True)
+    weights = [0.0] * len(contributions)
+    for rank, index in enumerate(order):
+        if rank < 5:
+            weight = 1.0
+        elif rank < 12:
+            weight = 0.84 if has_research(studio, "production_pipeline") else 0.70
+        else:
+            weight = 0.72 if has_research(studio, "advanced_coordination") else 0.48
+        weights[index] = weight
+    return weights
+
+
+def team_speed_factor(workers: int) -> float:
+    """Compatibility helper: average marginal efficiency for equal workers."""
+    if workers <= 0:
+        return 0.0
+    first = min(5, workers)
+    middle = min(7, max(0, workers - 5)) * 0.70
+    later = max(0, workers - 12) * 0.48
+    return (first + middle + later) / workers
+
+
+def coordinated_team_output(studio: Studio, focus: str | list[int] | tuple[int, ...]) -> float:
+    contributions = []
+    for employee in studio.team:
+        if not employee_available(employee):
+            continue
+        if isinstance(focus, str):
+            skill_index = {"Design": 0, "Art": 1, "Audio": 2, "Code": 3}.get(focus)
+            skill = sum(employee.skills) / 4 if skill_index is None else employee.skills[skill_index]
+        else:
+            skill = sum(value * percent for value, percent in zip(employee.skills, focus)) / 100
+        contributions.append(skill * employee_availability(employee) * employee_modifiers(employee)["output"])
+    weights = coordination_weights(studio, contributions)
+    output = sum(value * weight for value, weight in zip(contributions, weights))
+    if has_research(studio, "hardware"):
+        output *= 1.10
+    return output
+
+
+def activity_allocations(studio: Studio, assume_project: bool = False) -> dict[str, float]:
+    support = live_support_load(studio)
+    available = max(0.0, 1.0 - support)
+    requests: dict[str, float] = {}
+    if studio.contract:
+        requests["contract"] = 0.42
+    if studio.active_update:
+        requests["update"] = update_size_by_name(studio.active_update.size)["team"]
+    if studio.active_promotions:
+        requests["promotion"] = marketing_team_load(studio)
+    if studio.active_research:
+        requests["research"] = 0.22
+
+    if has_research(studio, "department_leads"):
+        priority_multiplier = {0: 0.0, 1: 0.55, 2: 1.0, 3: 1.35}
+        for kind in list(requests):
+            requests[kind] *= priority_multiplier.get(studio.work_priorities.get(kind, 2), 1.0)
+
+    allocations = {kind: 0.0 for kind in ("project", "contract", "update", "promotion", "research", "support")}
+    allocations["support"] = support
+    total_requested = sum(requests.values())
+    if studio.current_project or assume_project:
+        project_priority = studio.work_priorities.get("project", 3) if has_research(studio, "department_leads") else 3
+        project_reserve = available * {0: 0.0, 1: 0.20, 2: 0.35, 3: 0.50}.get(project_priority, 0.35)
+        task_budget = max(0.0, available - project_reserve)
+        scale = min(1.0, task_budget / total_requested) if total_requested else 0.0
+        for kind, request in requests.items():
+            allocations[kind] = request * scale
+        allocations["project"] = max(0.0, available - sum(allocations[kind] for kind in requests))
+    elif total_requested:
+        for kind, request in requests.items():
+            allocations[kind] = available * request / total_requested
+    return allocations
 
 
 def update_weekly_output(studio: Studio, game_or_focus: ReleasedGame | str) -> float:
     focus_name = game_or_focus.update_focus if isinstance(game_or_focus, ReleasedGame) else game_or_focus
     focus = update_focus_by_name(focus_name)
-    skill_index = {"Design": 0, "Art": 1, "Audio": 2, "Code": 3}.get(focus["skill"])
-    output = 0.0
-    workers = 0
-    for employee in studio.team:
-        if employee.training_weeks_left:
-            continue
-        workers += 1
-        skill = sum(employee.skills) / 4 if skill_index is None else employee.skills[skill_index]
-        availability = max(0.35, employee.morale / 100) * max(0.35, 1 - employee.fatigue / 130)
-        output += skill * availability * employee_modifiers(employee)["output"] * 0.45
-    return max(1.0, output * team_speed_factor(workers))
+    share = activity_allocations(studio)["update"]
+    if share <= 0 and studio.active_update is None:
+        demand = update_size_by_name(game_or_focus.update_size)["team"] if isinstance(game_or_focus, ReleasedGame) else 0.20
+        share = min(demand, max(0.10, (1 - live_support_load(studio)) * (0.50 if studio.current_project else 1.0)))
+    output = coordinated_team_output(studio, focus["skill"]) * share
+    if has_research(studio, "automated_deployment"):
+        output *= 1.20
+    return max(0.0, output)
 
 
 def bump_version(version: str, size_name: str) -> str:
@@ -1338,16 +1711,16 @@ def planned_update_version(studio: Studio, game: ReleasedGame, size_name: str) -
 
 def estimated_update_weeks(studio: Studio, game: ReleasedGame) -> int:
     size = update_size_by_name(game.update_size)
-    build_weeks = math.ceil(size["work"] / update_weekly_output(studio, game.update_focus))
-    bug_weeks = math.ceil(size["bugs"] / update_weekly_output(studio, "Bug fixes"))
+    build_weeks = math.ceil(size["work"] / max(0.1, update_weekly_output(studio, game.update_focus)))
+    bug_weeks = math.ceil(size["bugs"] / max(0.1, update_weekly_output(studio, "Bug fixes")))
     return max(1, build_weeks + bug_weeks)
 
 
 def estimated_update_job_weeks(studio: Studio, job: UpdateJob) -> int:
     build_remaining = max(0, job.required_work - job.work_done)
     bugs_remaining = max(0, job.bugs_found - job.bugs_fixed)
-    build_weeks = math.ceil(build_remaining / update_weekly_output(studio, job.focus))
-    bug_weeks = math.ceil(bugs_remaining / update_weekly_output(studio, "Bug fixes"))
+    build_weeks = math.ceil(build_remaining / max(0.1, update_weekly_output(studio, job.focus)))
+    bug_weeks = math.ceil(bugs_remaining / max(0.1, update_weekly_output(studio, "Bug fixes")))
     return build_weeks + bug_weeks
 
 
@@ -1387,8 +1760,24 @@ def update_team_load(studio: Studio) -> float:
 def live_title_count(studio: Studio) -> int:
     """Live games that consume live-ops capacity; the pre-studio
     back-catalogue titles are maintenance-free and don't count."""
-    historical = {game.game_id for game in studio.catalog if game.release_date == "Historical"}
-    return sum(1 for sale in studio.active_sales if sale.game_id not in historical)
+    supported = {game.game_id for game in studio.catalog if game.release_date != "Historical" and game.support_level != "Sunset"}
+    known = {game.game_id for game in studio.catalog}
+    return sum(1 for sale in studio.active_sales if sale.game_id in supported or sale.game_id not in known)
+
+
+def live_support_load(studio: Studio) -> float:
+    load = 0.0
+    known = set()
+    for game in studio.catalog:
+        known.add(game.game_id)
+        if game.release_date == "Historical":
+            continue
+        if game.support_level == "Active":
+            load += 0.04
+        elif game.support_level == "Maintenance":
+            load += 0.015
+    load += sum(0.04 for sale in studio.active_sales if sale.game_id not in known)
+    return min(0.30, load)
 
 
 def capacity_drains(studio: Studio) -> list[str]:
@@ -1399,20 +1788,23 @@ def capacity_drains(studio: Studio) -> list[str]:
     reduced instead of just that it is.
     """
     drains = []
+    allocations = activity_allocations(studio)
     contract = studio.contract
     if contract:
         progress = 0 if contract.required_work <= 0 else contract.work_done / contract.required_work
-        drains.append(f"JOB {contract.client} -45% ({progress:.0%} done, due {contract.weeks_left}w)")
-    if marketing_team_load(studio) > 0:
-        drains.append(f"promotions {marketing_team_load(studio):.0%}")
-    if update_team_load(studio) > 0:
-        drains.append(f"updates {update_team_load(studio):.0%}")
-    training = sum(1 for employee in studio.team if employee.training_weeks_left)
-    if training:
-        drains.append(f"{training} in training")
+        drains.append(f"JOB {contract.client} {allocations['contract']:.0%} ({progress:.0%} done, due {contract.weeks_left}w)")
+    if allocations["promotion"] > 0:
+        drains.append(f"promotions {allocations['promotion']:.0%}")
+    if allocations["update"] > 0:
+        drains.append(f"updates {allocations['update']:.0%}")
+    if allocations["research"] > 0:
+        drains.append(f"R&D {allocations['research']:.0%}")
+    unavailable = sum(1 for employee in studio.team if not employee_available(employee))
+    if unavailable:
+        drains.append(f"{unavailable} unavailable")
     live_titles = live_title_count(studio)
     if live_titles:
-        support_load = min(0.30, 0.04 * live_titles)
+        support_load = allocations["support"]
         noun = "title" if live_titles == 1 else "titles"
         drains.append(f"supporting {live_titles} live {noun} -{support_load:.0%}")
     return drains
@@ -1489,7 +1881,8 @@ def recover_contractor_history(studio: Studio, logs: list[str]) -> None:
 def ensure_catalog_sales(studio: Studio) -> None:
     active_ids = {sale.game_id for sale in studio.active_sales}
     for game in studio.catalog:
-        evergreen = max(1, round((max(20, game.score) / 100) ** 4 * 10 + studio.genre_fans.get(game.genre, 0) / 800))
+        scope_market = next((item["market"] * 1.7 for item in SCOPES if item["name"] == game.scope), 1.0)
+        evergreen = max(1, round((max(20, game.score) / 100) ** 4 * scope_market * 240 + studio.genre_fans.get(game.genre, 0) / 800))
         existing = sale_for_game(studio, game.game_id)
         if existing:
             existing.evergreen_units = max(existing.evergreen_units, evergreen)
@@ -1516,23 +1909,8 @@ def ensure_catalog_sales(studio: Studio) -> None:
 
 
 def projected_weekly_output(studio: Studio, focus: list[int] | tuple[int, ...]) -> float:
-    output = 0.0
-    workers = 0
-    for employee in studio.team:
-        if employee.training_weeks_left:
-            continue
-        workers += 1
-        weighted_skill = sum(skill * percent for skill, percent in zip(employee.skills, focus)) / 100
-        availability = max(0.35, employee.morale / 100) * max(0.35, 1 - employee.fatigue / 130)
-        output += weighted_skill * availability * employee_modifiers(employee)["output"]
-    output *= team_speed_factor(workers)
-    if "hardware" in studio.upgrades:
-        output *= 1.10
-    if studio.contract:
-        output *= 0.55
-    output *= max(0.70, 1 - 0.04 * live_title_count(studio))
-    output *= max(0.25, 1 - marketing_team_load(studio) - update_team_load(studio))
-    return max(1.0, output)
+    output = coordinated_team_output(studio, focus) * activity_allocations(studio, assume_project=True)["project"]
+    return max(0.1, output)
 
 
 def adjust_focus(state: GameState, delta: int) -> None:
@@ -1693,19 +2071,154 @@ def dismiss_employee(state: GameState) -> bool:
     return True
 
 
-def buy_upgrade(state: GameState) -> bool:
-    upgrade = UPGRADES[state.selected_upgrade]
+def research_branch_counts(studio: Studio) -> dict[str, int]:
+    counts = {branch: 0 for branch in RESEARCH_BRANCHES}
+    for key in completed_research_keys(studio):
+        node = research_by_key(key)
+        if node and node["tier"] > 0:
+            counts[node["branch"]] += 1
+    return counts
+
+
+def research_work_requirement(studio: Studio, node: dict) -> float:
+    base = float(node["work"])
+    if base <= 0:
+        return 0.0
+    counts = research_branch_counts(studio)
+    own = counts[node["branch"]]
+    strongest = max(counts.values(), default=0)
+    discount = min(0.20, own * 0.035)
+    penalty = min(0.30, max(0, strongest - own - 1) * 0.07)
+    if has_research(studio, "executive_management"):
+        penalty *= 0.5
+    return max(1.0, round(base * (1 - discount + penalty), 1))
+
+
+def research_requirements(studio: Studio, node: dict) -> list[str]:
+    requirements = []
+    completed = completed_research_keys(studio)
+    missing = [key for key in node.get("prereq", ()) if key not in completed]
+    if missing:
+        names = [research_by_key(key)["name"] for key in missing if research_by_key(key)]
+        requirements.append("requires " + ", ".join(names))
+    tier = node.get("tier", 0)
+    team_required = (1, 1, 2, 4, 8, 18)[min(5, tier)]
+    reputation_required = (0, 0, 0, 4, 15, 35)[min(5, tier)]
+    if len(studio.team) < team_required:
+        requirements.append(f"team {team_required}")
+    if studio.reputation < reputation_required:
+        requirements.append(f"reputation {reputation_required}")
+    return requirements
+
+
+def queue_research(state: GameState, node_key: str) -> bool:
     studio = state.studio
-    if upgrade["key"] in studio.upgrades:
-        state.log(f"{upgrade['name']} is already active.")
+    node = research_by_key(node_key)
+    if node is None:
         return False
-    if studio.cash < upgrade["cost"] + monthly_fixed_cost(studio):
-        state.log(f"Cannot buy {upgrade['name']} without risking next month's bills.")
+    queued_keys = {job.node_key for job in ([studio.active_research] if studio.active_research else []) + studio.research_queue}
+    if has_research(studio, node_key):
+        state.log(f"{node['name']} is already completed.")
         return False
-    add_expense(studio, upgrade["cost"], "Equipment")
-    studio.upgrades.append(upgrade["key"])
-    state.log(f"Purchased {upgrade['name']} for ${upgrade['cost']:,}; recurring costs also increased.")
+    if node_key in queued_keys:
+        state.log(f"{node['name']} is already in the R&D queue.")
+        return False
+    requirements = research_requirements(studio, node)
+    if requirements:
+        state.log(f"Cannot start {node['name']}: {'; '.join(requirements)}.")
+        return False
+    if studio.cash < node["cost"] + monthly_fixed_cost(studio):
+        state.log(f"Cannot start {node['name']} without risking next month's bills.")
+        return False
+    add_expense(studio, node["cost"], "Research & development")
+    job = ResearchJob(node_key, research_work_requirement(studio, node), node["cost"])
+    if studio.active_research is None:
+        studio.active_research = job
+        status = "Started"
+    else:
+        studio.research_queue.append(job)
+        status = "Queued"
+    state.log(f"{status} R&D: {node['name']} for ${node['cost']:,} and {job.required_work:,.0f} research work.")
     return True
+
+
+def buy_upgrade(state: GameState) -> bool:
+    branch = RESEARCH_BRANCHES[state.selected_research_branch % len(RESEARCH_BRANCHES)]
+    nodes = research_nodes_for_branch(branch)
+    state.selected_upgrade = max(0, min(state.selected_upgrade, len(nodes) - 1))
+    return queue_research(state, nodes[state.selected_upgrade]["key"])
+
+
+def start_next_research(state: GameState) -> None:
+    if state.studio.active_research is None and state.studio.research_queue:
+        state.studio.active_research = state.studio.research_queue.pop(0)
+        node = research_by_key(state.studio.active_research.node_key)
+        if node:
+            state.log(f"Started queued R&D: {node['name']}.")
+
+
+def cancel_queued_research(state: GameState, index: int = 0) -> bool:
+    if not state.studio.research_queue:
+        state.log("There is no waiting research to cancel; active R&D can only be paused by lowering its priority.")
+        return False
+    index = max(0, min(index, len(state.studio.research_queue) - 1))
+    job = state.studio.research_queue.pop(index)
+    node = research_by_key(job.node_key)
+    refund = round(job.cost * 0.75)
+    add_revenue(state.studio, refund, "Research refunds")
+    state.log(f"Cancelled {node['name'] if node else job.node_key}; recovered ${refund:,} of the committed budget.")
+    return True
+
+
+def research_weekly_output(studio: Studio) -> float:
+    share = activity_allocations(studio)["research"]
+    output = coordinated_team_output(studio, "Research") * share
+    if has_research(studio, "research_lab"):
+        output *= 1.20
+    return max(0.0, output)
+
+
+def estimated_research_weeks(studio: Studio, node: dict) -> int:
+    job = studio.active_research if studio.active_research and studio.active_research.node_key == node["key"] else None
+    required = max(0.0, (job.required_work - job.work_done) if job else research_work_requirement(studio, node))
+    output = research_weekly_output(studio)
+    if output <= 0:
+        share = 0.22 if studio.current_project else 1.0
+        output = coordinated_team_output(studio, "Research") * share * (1.20 if has_research(studio, "research_lab") else 1.0)
+    return max(0, math.ceil(required / max(0.1, output)))
+
+
+def process_research(state: GameState, workday: bool = True) -> None:
+    start_next_research(state)
+    studio = state.studio
+    job = studio.active_research
+    if job is None or not workday:
+        return
+    output = research_weekly_output(studio) / 5
+    job.work_done = min(job.required_work, job.work_done + output)
+    if job.work_done < job.required_work:
+        return
+    node = research_by_key(job.node_key)
+    if job.node_key not in studio.completed_research:
+        studio.completed_research.append(job.node_key)
+    if job.node_key not in studio.upgrades:
+        studio.upgrades.append(job.node_key)
+    if job.node_key == "auto_leave":
+        studio.auto_vacation = True
+    studio.active_research = None
+    state.log(f"Completed R&D: {node['name'] if node else job.node_key}. {node['effect'] if node else ''}")
+    start_next_research(state)
+
+
+def cycle_work_priority(state: GameState, kind: str) -> int:
+    if not has_research(state.studio, "department_leads"):
+        state.log("Automatic work priorities require Department Leads research.")
+        return state.studio.work_priorities.get(kind, 2)
+    value = (state.studio.work_priorities.get(kind, 2) + 1) % 4
+    state.studio.work_priorities[kind] = value
+    labels = ("PAUSED", "LOW", "NORMAL", "HIGH")
+    state.log(f"{kind.title()} priority set to {labels[value]}.")
+    return value
 
 
 CONTRACT_TYPES = {
@@ -1719,33 +2232,26 @@ CONTRACT_CLIENTS = ("Northstar Media", "Copper Finch", "Atlas Learning", "Pixel 
 
 
 def contract_weekly_output(studio: Studio, focus: str) -> float:
-    skill_index = {"Design": 0, "Art": 1, "Audio": 2, "Code": 3}.get(focus)
-    output = 0.0
-    workers = 0
-    for employee in studio.team:
-        if employee.training_weeks_left:
-            continue
-        workers += 1
-        skill = sum(employee.skills) / 4 if skill_index is None else employee.skills[skill_index]
-        availability = max(0.35, employee.morale / 100) * max(0.35, 1 - employee.fatigue / 130)
-        output += skill * availability * employee_modifiers(employee)["output"] * 0.55
-    if "hardware" in studio.upgrades:
-        output *= 1.10
-    return max(1.0, output * team_speed_factor(workers))
+    share = activity_allocations(studio)["contract"]
+    if share <= 0 and studio.contract is None:
+        available = 1 - live_support_load(studio)
+        share = min(0.42, available * (0.50 if studio.current_project else 1.0))
+    output = coordinated_team_output(studio, focus) * share
+    return max(0.0, output)
 
 
 def estimated_contract_weeks(studio: Studio, contract: Contract) -> int:
     remaining = max(0, contract.required_work - contract.work_done)
     if contract.required_work <= 0:
         return max(1, contract.weeks_left)
-    return max(1, math.ceil(remaining / contract_weekly_output(studio, contract.focus)))
+    return max(1, math.ceil(remaining / max(0.1, contract_weekly_output(studio, contract.focus))))
 
 
 def generate_contract_offer(studio: Studio, rng: random.Random, difficulty: int) -> Contract:
     focus = rng.choice(tuple(CONTRACT_TYPES))
     required_work = 65 + difficulty * 55 + rng.randint(0, 45)
     reputation_required = max(0, (difficulty - 1) * 15)
-    rate = 38 + difficulty * 14 + studio.contractor_reputation * 1.15
+    rate = 50 + difficulty * 14 + studio.contractor_reputation * 1.15
     payout = round(required_work * rate / 500) * 500
     provisional = Contract(
         rng.choice(CONTRACT_TYPES[focus]),
@@ -1781,6 +2287,9 @@ def start_next_contract(state: GameState) -> None:
     studio = state.studio
     if studio.contract is None and studio.contract_queue:
         studio.contract = studio.contract_queue.pop(0)
+        contract = studio.contract
+        if contract.required_work > 0:
+            contract.weeks_left = estimated_contract_weeks(studio, contract) + 3 + contract.difficulty // 2
         state.log(f"Started {studio.contract.client}'s {studio.contract.title} ({studio.contract.focus}).")
 
 
@@ -1798,6 +2307,8 @@ def accept_contract_offer(state: GameState, index: int | None = None, automatic:
     studio.contract_offers.pop(selected)
     if studio.contract is None:
         studio.contract = contract
+        if contract.required_work > 0:
+            contract.weeks_left = estimated_contract_weeks(studio, contract) + 3 + contract.difficulty // 2
         state.log(f"Accepted {contract.client}'s {contract.title}: ${contract.payout:,}, {contract.focus}, due in {contract.weeks_left} weeks.")
     else:
         studio.contract_queue.append(contract)
@@ -1820,6 +2331,9 @@ def queue_all_contracts(state: GameState) -> int:
 
 def toggle_auto_contracts(state: GameState) -> bool:
     studio = state.studio
+    if not has_research(studio, "contract_automation"):
+        state.log("Automatic contracts require the Client Relations Office.")
+        return False
     studio.auto_contracts = not studio.auto_contracts
     if studio.auto_contracts:
         accepted = queue_all_contracts(state)
@@ -1884,9 +2398,9 @@ def finish_project(state: GameState) -> None:
     quality_multiplier = max(0.12, (score / 72) ** 3)
     scope_multiplier = scope_by_name(project.scope)["market"] * 1.7
     market_multiplier = max(0.4, project.market_score / 60) * max(0.55, 1 - project.competitors * 0.025) * max(0.6, 1 - genre_release_pressure(studio, project.genre) * 0.12)
-    units = max(12, round(discoverability * quality_multiplier * scope_multiplier * project.reach * market_multiplier))
+    units = max(12, round(discoverability * quality_multiplier * scope_multiplier * project.reach * market_multiplier * 25))
     units = min(max(12, round(project.addressable_audience * 0.18)), units) if project.addressable_audience else units
-    evergreen_units = max(1, round((score / 100) ** 4 * scope_multiplier * 10 + genre_audience / 800))
+    evergreen_units = max(1, round((score / 100) ** 4 * scope_multiplier * 240 + genre_audience / 800))
     game_id = studio.next_game_id
     studio.next_game_id += 1
     known_bugs = min(project.known_defects, max(0, project.defects - 0.01))
@@ -2008,14 +2522,6 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
     project.labor_cost += (weekly_salary + weekly_burden) / 7
     project.hype *= 0.985 ** (1 / 7)
     if not workday:
-        for employee in studio.team:
-            employee.fatigue = max(0, employee.fatigue - 3)
-            if week_end:
-                employee.weeks_employed += 1
-                if employee.week_output > 0:
-                    experience_gain = max(1, round(employee.week_output / 25))
-                    grant_employee_experience(state, employee, "Generalist", experience_gain, "project experience")
-                    employee.week_output = 0.0
         if week_end:
             project.weeks += 1
         return
@@ -2031,13 +2537,14 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
     quality = 0.0
     defect_factor = 1.0
     contributors = 0
+    personal_rows: list[tuple[Employee, float, float]] = []
     for employee in studio.team:
-        if employee.training_weeks_left:
+        if not employee_available(employee):
             continue
         contributors += 1
         modifiers = employee_modifiers(employee)
         weighted = sum(skill * percent for skill, percent in zip(employee.skills, project.focus)) / 100
-        availability = max(0.35, employee.morale / 100) * max(0.35, 1 - employee.fatigue / 130)
+        availability = employee_availability(employee)
         variance = rng.uniform(modifiers["variance_low"], modifiers["variance_high"])
         personal_output = weighted * availability * variance * modifiers["output"] / 5
         weighted += modifiers["quality"]
@@ -2046,30 +2553,18 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
             for teammate in studio.team:
                 if teammate is not employee:
                     teammate.morale = max(0, min(100, teammate.morale + modifiers["team_morale"] / 5))
-        total_output += personal_output
-        quality += personal_output * weighted
-        employee.week_output += personal_output
-        if week_end:
-            employee.weeks_employed += 1
-            experience_gain = max(1, round(employee.week_output / 25))
-            grant_employee_experience(state, employee, "Generalist", experience_gain, "project experience")
-            employee.week_output = 0.0
-        fatigue_gain = ((2.5 if studio.contract else 1.2) / 5) * modifiers["fatigue"]
-        employee.fatigue = min(100, employee.fatigue + fatigue_gain)
-    speed_factor = team_speed_factor(contributors)
-    total_output *= speed_factor
-    quality *= speed_factor
-    if "hardware" in studio.upgrades:
+        personal_rows.append((employee, personal_output, weighted))
+    weights = coordination_weights(studio, [row[1] for row in personal_rows])
+    for (employee, personal_output, weighted), weight in zip(personal_rows, weights):
+        contribution = personal_output * weight
+        total_output += contribution
+        quality += contribution * weighted
+        employee.week_output += contribution
+    if has_research(studio, "hardware"):
         total_output *= 1.10
-    if studio.contract:
-        total_output *= 0.55
-        quality *= 0.55
-    support_factor = max(0.70, 1 - 0.04 * live_title_count(studio))
-    total_output *= support_factor
-    quality *= support_factor
-    operations_factor = max(0.25, 1 - marketing_team_load(studio) - update_team_load(studio))
-    total_output *= operations_factor
-    quality *= operations_factor
+    project_share = activity_allocations(studio)["project"]
+    total_output *= project_share
+    quality *= project_share
     uncapped_output = total_output
     bug_fixing = project.bug_work > 0
     if bug_fixing:
@@ -2142,6 +2637,11 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
 def buy_promotion(state: GameState, game_id: int, promotion_index: int) -> bool:
     studio = state.studio
     promotion = PROMOTIONS[promotion_index]
+    required_research = research_requirement_for_promotion(promotion["key"])
+    if required_research and not has_research(studio, required_research):
+        node = research_by_key(required_research)
+        state.log(f"{promotion['name']} is locked; complete {node['name'] if node else required_research} first.")
+        return False
     target_title = ""
     if game_id == 0 and studio.current_project:
         target_title = studio.current_project.title
@@ -2210,6 +2710,8 @@ def cancel_queued_promotion(state: GameState, index: int | None = None) -> bool:
 def process_promotions(state: GameState, week_end: bool = True) -> None:
     if not state.studio.active_promotions:
         return
+    if activity_allocations(state.studio)["promotion"] <= 0:
+        return
     promotion = state.studio.active_promotions[0]
     weekly_hype = promotion.hype_total / promotion.total_weeks
     hype_gain = weekly_hype / 7
@@ -2248,8 +2750,9 @@ def cycle_game_update_size(state: GameState, game_id: int, delta: int = 1) -> st
     game = game_by_id(state.studio, game_id)
     if game is None:
         return None
-    index = next((index for index, size in enumerate(UPDATE_SIZES) if size["name"] == game.update_size), 0)
-    game.update_size = UPDATE_SIZES[(index + delta) % len(UPDATE_SIZES)]["name"]
+    available = [size for size in UPDATE_SIZES if not research_requirement_for_update(size["name"]) or has_research(state.studio, research_requirement_for_update(size["name"]))]
+    index = next((index for index, size in enumerate(available) if size["name"] == game.update_size), 0)
+    game.update_size = available[(index + delta) % len(available)]["name"]
     state.log(f"{game.title} planned update scope changed to {game.update_size}.")
     return game.update_size
 
@@ -2270,7 +2773,17 @@ def queue_game_update(state: GameState, game_id: int) -> bool:
     game = game_by_id(studio, game_id)
     if game is None:
         return False
+    required_research = research_requirement_for_update(game.update_size)
+    if required_research and not has_research(studio, required_research):
+        node = research_by_key(required_research)
+        state.log(f"{game.update_size} is locked; complete {node['name'] if node else required_research} first.")
+        return False
     size = update_size_by_name(game.update_size)
+    if studio.cash < size["cost"] + monthly_fixed_cost(studio):
+        state.log(f"Cannot fund {game.update_size} for {game.title} without risking next month's bills.")
+        return False
+    add_expense(studio, size["cost"], "Live operations")
+    game.post_launch_cost += size["cost"]
     job = UpdateJob(
         studio.next_update_id,
         game.game_id,
@@ -2280,6 +2793,7 @@ def queue_game_update(state: GameState, game_id: int) -> bool:
         planned_update_version(studio, game, game.update_size),
         float(size["work"]),
         float(size["bugs"]),
+        cost_paid=size["cost"],
     )
     studio.next_update_id += 1
     studio.update_queue.append(job)
@@ -2306,11 +2820,15 @@ def cancel_queued_update(state: GameState, index: int | None = None) -> bool:
     selected = min(state.selected_queue_cancellation if index is None else index, len(queue) - 1)
     job = queue.pop(selected)
     size = update_size_by_name(job.size)
-    fee = max(50, round(size["cost"] * 0.15))
-    add_expense(state.studio, fee, "Cancelled production")
+    refund = round(job.cost_paid * 0.75) if job.cost_paid else 0
+    fee = max(50, round(size["cost"] * 0.15)) if not job.cost_paid else job.cost_paid - refund
+    if refund:
+        add_revenue(state.studio, refund, "Production refunds")
+    elif fee:
+        add_expense(state.studio, fee, "Cancelled production")
     game = game_by_id(state.studio, job.game_id)
     if game:
-        game.post_launch_cost += fee
+        game.post_launch_cost = max(0, game.post_launch_cost - refund)
     rebuild_queued_update_versions(state.studio)
     state.selected_queue_cancellation = min(selected, max(0, len(queue) - 1))
     state.log(f"Cancelled queued {job.size} {job.focus} update for {job.game_title}; abandoned preparation cost ${fee:,}.")
@@ -2359,8 +2877,9 @@ def finish_game_update(state: GameState, job: UpdateJob, game: ReleasedGame) -> 
         game.dlc_revenue += dlc_net
         game.dlcs_released += 1
         state.log(f"{game.title}'s paid DLC sold {dlc_units:,} copies at launch and added ${dlc_net:,.0f} studio net.")
-    add_expense(state.studio, size["cost"], "Live operations")
-    game.post_launch_cost += size["cost"]
+    if not job.cost_paid:
+        add_expense(state.studio, size["cost"], "Live operations")
+        game.post_launch_cost += size["cost"]
     state.log(
         f"Released v{game.version} ({job.size} {job.focus}) for {game.title} after fixing "
         f"{job.bugs_found:.0f} update bugs"
@@ -2382,12 +2901,6 @@ def process_game_updates(state: GameState, week_end: bool = True, workday: bool 
         studio.active_update = None
         start_next_update(state)
         return
-    for employee in state.studio.team:
-        if not employee.training_weeks_left:
-            employee.fatigue = min(100, employee.fatigue + (0.5 / 5) * employee_modifiers(employee)["fatigue"])
-            if week_end:
-                update_skill = update_focus_by_name(job.focus)["skill"] if job.phase == "Development" else "Code"
-                grant_employee_experience(state, employee, update_skill, 1, "live-operations experience")
     if job.phase == "Development":
         job.work_done = min(job.required_work, job.work_done + update_weekly_output(studio, job.focus) / 5)
         if job.work_done >= job.required_work:
@@ -2415,7 +2928,11 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
         add_revenue(studio, net, "Game sales")
         game = next((item for item in studio.catalog if item.game_id == sale.game_id), None)
         hosting_rate = game.hosting_rate if game else 0.0
-        hosting_cost = max(10 / 7, units * (0.03 + hosting_rate) + (game.monthly_players * hosting_rate * 0.02 / 7 if game else 0))
+        if game and game.support_level == "Sunset":
+            hosting_cost = 0.0
+        else:
+            support_factor = 0.45 if game and game.support_level == "Maintenance" else 1.0
+            hosting_cost = max(10 / 7, (units * (0.03 + hosting_rate) + (game.monthly_players * hosting_rate * 0.02 / 7 if game else 0)) * support_factor)
         add_expense(studio, hosting_cost, "Hosting")
         sale.units_sold += round(units)
         sale.gross_revenue += gross
@@ -2439,9 +2956,12 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
             clamp_player_counts(game)
             franchise = franchise_by_id(studio, game.franchise_id)
             if franchise:
+                previous_rank = franchise.rank
                 franchise.total_units += round(units)
                 franchise.total_revenue += net
                 franchise.awareness = min(6_000, franchise.awareness + units / 60)
+                if franchise.rank > previous_rank:
+                    state.log(f"The {franchise.name} IP reached {franchise.rank_name} rank after {franchise.total_units:,} lifetime units.")
         if not week_end:
             continue
         week_units = sale.week_units
@@ -2473,7 +2993,12 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
         else:
             hype_lift = 0
         tail = min(0.91, 0.55 + sale.score * 0.0035 + (0.02 if "analytics" in studio.upgrades else 0))
-        sale.weekly_units = max(sale.evergreen_units, round(week_units * tail + hype_lift))
+        if game and game.support_level == "Sunset":
+            sale.weekly_units = max(0, round(week_units * 0.35))
+        elif game and game.support_level == "Maintenance":
+            sale.weekly_units = max(1, round(sale.evergreen_units * 0.5), round(week_units * tail + hype_lift))
+        else:
+            sale.weekly_units = max(sale.evergreen_units, round(week_units * tail + hype_lift))
         sale.weeks_left = -1
 
 
@@ -2515,9 +3040,9 @@ def begin_month(state: GameState, month: str) -> None:
         add_expense(studio, amount, category)
     state.log(f"Monthly operating costs paid: ${bill:,} including salaries, burden, tools, and admin.")
     for employee in list(studio.team):
-        recovery = 15 if "health" in studio.upgrades else 10
-        employee.fatigue = max(0, employee.fatigue - recovery)
-        morale_change = 5 if "coworking" in studio.upgrades else 0
+        if has_research(studio, "health"):
+            employee.fatigue = max(0, employee.fatigue - 2)
+        morale_change = 5 if has_research(studio, "coworking") else 0
         if employee.fatigue > 65:
             morale_change -= 8
         elif employee.fatigue < 25:
@@ -2544,18 +3069,10 @@ def process_contract(state: GameState, week_end: bool = True, workday: bool = Tr
     contract = studio.contract
     if contract is None:
         return
-    if not workday:
-        return
-    if contract.required_work <= 0:
-        for employee in studio.team:
-            if not employee.training_weeks_left:
-                employee.fatigue = min(100, employee.fatigue + (2 / 5) * employee_modifiers(employee)["fatigue"])
-                if week_end:
-                    grant_employee_experience(state, employee, "Generalist", 1, "contract experience")
-        if not week_end:
-            return
+    if week_end:
         contract.weeks_left -= 1
-        if contract.weeks_left <= 0:
+    if contract.required_work <= 0:
+        if week_end and contract.weeks_left <= 0:
             add_revenue(studio, contract.payout, "Contracts")
             studio.contractor_reputation = min(100, studio.contractor_reputation + 1)
             studio.contracts_completed += 1
@@ -2563,19 +3080,21 @@ def process_contract(state: GameState, week_end: bool = True, workday: bool = Tr
             studio.contract = None
             start_next_contract(state)
         return
+    if not workday:
+        if contract.weeks_left <= 0:
+            reputation_loss = max(2, contract.difficulty * 3)
+            studio.contractor_reputation = max(0, studio.contractor_reputation - reputation_loss)
+            studio.contracts_failed += 1
+            state.log(f"Missed {contract.client}'s {contract.title} deadline; no payment and contractor reputation -{reputation_loss}.")
+            studio.contract = None
+            start_next_contract(state)
+        return
 
     output = contract_weekly_output(studio, contract.focus) / 5
     contract.work_done = min(contract.required_work, contract.work_done + output)
-    for employee in studio.team:
-        if not employee.training_weeks_left:
-            employee.fatigue = min(100, employee.fatigue + (2 / 5) * employee_modifiers(employee)["fatigue"])
-            if week_end:
-                grant_employee_experience(state, employee, contract.focus, 1, "contract experience")
-    if week_end:
-        contract.weeks_left -= 1
     if contract.work_done >= contract.required_work:
         add_revenue(studio, contract.payout, "Contracts")
-        reputation_gain = contract.difficulty * 0.75 + max(0, contract.weeks_left) * 0.1
+        reputation_gain = contract.difficulty * 0.5 + min(0.75, max(0, contract.weeks_left) * 0.05)
         studio.contractor_reputation = min(100, studio.contractor_reputation + reputation_gain)
         studio.contracts_completed += 1
         state.log(f"Delivered {contract.client}'s {contract.title}; paid ${contract.payout:,}, contractor reputation +{reputation_gain:.1f}.")
@@ -2604,6 +3123,8 @@ def process_day(state: GameState, day_date: date) -> None:
     process_sales(state, week_end, day_number)
     process_contract(state, week_end, workday)
     develop_project(state, day_number, week_end, workday)
+    process_research(state, workday)
+    process_employee_wellbeing(state, week_end, workday)
     if week_end:
         process_franchises_week(state)
         process_media_ventures_week(state)
@@ -2829,6 +3350,7 @@ def seed_market(state: GameState) -> None:
                     awareness=rng.uniform(120, 900) * (0.5 + competitor.size / 6),
                     reputation=max(30.0, min(95.0, competitor.reputation + rng.uniform(-10, 8))),
                     entries=rng.randint(1, 5),
+                    total_units=round(competitor.fanbase * rng.uniform(1.5, 6.0)),
                 )
             )
         competitor.cooldown = rng.randint(1, 6)
@@ -2985,6 +3507,7 @@ def state_to_data(state: GameState) -> dict:
             "spinoff_franchise_id": state.spinoff_franchise_id,
             "new_game_kind": state.new_game_kind,
             "selected_venture": state.selected_venture,
+            "selected_research_branch": state.selected_research_branch,
         },
         "logs": state.logs,
     }
@@ -2992,6 +3515,7 @@ def state_to_data(state: GameState) -> dict:
 
 def studio_from_data(data: dict) -> Studio:
     values = dict(data)
+    legacy_research = "completed_research" not in values
     values["team"] = [employee_from_data(item) for item in values.get("team", [])]
     values["applicants"] = [employee_from_data(item) for item in values.get("applicants", [])]
     if values.get("current_project"):
@@ -3103,6 +3627,42 @@ def studio_from_data(data: dict) -> Studio:
         entry["recent_releases"] = [CompetitorGame(**game) for game in entry.get("recent_releases", [])]
         competitors.append(Competitor(**entry))
     values["competitors"] = competitors
+    if values.get("active_research"):
+        values["active_research"] = ResearchJob(**values["active_research"])
+    values["research_queue"] = [ResearchJob(**item) for item in values.get("research_queue", [])]
+    if legacy_research:
+        completed = set(STARTER_RESEARCH) | set(values.get("upgrades", []))
+
+        def grant_with_prerequisites(node_key: str | None) -> None:
+            if not node_key or node_key in completed:
+                return
+            node = research_by_key(node_key)
+            if node is None:
+                return
+            for prerequisite in node.get("prereq", ()):
+                grant_with_prerequisites(prerequisite)
+            completed.add(node_key)
+
+        projects = list(catalog)
+        if values.get("current_project"):
+            projects.append(values["current_project"])
+        for project in projects:
+            scope_index = next((index for index, item in enumerate(SCOPES) if item["name"] == getattr(project, "scope", "")), 0)
+            format_index = next((index for index, item in enumerate(GAME_FORMATS) if item["name"] == getattr(project, "game_format", "")), 0)
+            channel_index = next((index for index, item in enumerate(CHANNELS) if item["name"] == getattr(project, "channel", "")), 0)
+            strategy_index = next((index for index, item in enumerate(RELEASE_STRATEGIES) if item["name"] == getattr(project, "release_strategy", "")), 0)
+            for requirement in (
+                research_requirement_for_scope(scope_index),
+                research_requirement_for_format(format_index),
+                research_requirement_for_genre(getattr(project, "genre", GENRES[0])),
+                research_requirement_for_topic(getattr(project, "topic", TOPICS[0])),
+                research_requirement_for_channel(channel_index),
+                research_requirement_for_strategy(strategy_index),
+            ):
+                grant_with_prerequisites(requirement)
+        values["completed_research"] = sorted(completed)
+    else:
+        values["completed_research"] = list(dict.fromkeys((*STARTER_RESEARCH, *values.get("completed_research", []))))
     ledger = [LedgerMonth(**item) for item in values.get("ledger", [])]
     for entry in ledger:
         if entry.expenses and not entry.categories:
@@ -3171,7 +3731,7 @@ def migrate_legacy(data: dict, save_path: str) -> GameState:
 
 
 def state_from_data(data: dict, save_path: str) -> GameState:
-    if data.get("version") not in (2, 3, 4, SAVE_VERSION):
+    if data.get("version") not in (2, 3, 4, 5, SAVE_VERSION):
         return migrate_legacy(data, save_path)
     clock_data = data["clock"]
     clock = GameClock(date.fromisoformat(clock_data["current_date"]), clock_data["week"], clock_data.get("elapsed_seconds", 0.0), clock_data.get("day", clock_data["week"] * 7 - 6))
@@ -3202,14 +3762,15 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         marketing_tab=ui.get("marketing_tab", 0),
         games_tab=ui.get("games_tab", 0),
         focus=ui.get("focus", [30, 25, 15, 30]),
-        time_speed_index=ui.get("time_speed_index", 1),
-        resume_speed_index=ui.get("resume_speed_index", 1),
+        time_speed_index=min(ui.get("time_speed_index", 1), len(TIME_SPEEDS) - 1),
+        resume_speed_index=max(1, min(ui.get("resume_speed_index", 1), len(TIME_SPEEDS) - 1)),
         draft_title=ui.get("draft_title", ""),
         title_roll=ui.get("title_roll", 0),
         sequel_game_id=ui.get("sequel_game_id"),
         spinoff_franchise_id=ui.get("spinoff_franchise_id"),
         new_game_kind=ui.get("new_game_kind", ""),
         selected_venture=ui.get("selected_venture", 0),
+        selected_research_branch=ui.get("selected_research_branch", 0),
         save_path=save_path,
         logs=data.get("logs", []),
     )

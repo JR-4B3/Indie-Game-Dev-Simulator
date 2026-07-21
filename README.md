@@ -28,7 +28,7 @@ A positional filename implies `--load`. Use `--save-file` without `--load` when
 you want a new studio that will save under a custom filename.
 
 An old version-one save is migrated into a present-day studio, and version-two
-and version-three saves load into the current planning model. Legacy cash,
+through version-five saves load into the current planning model. Legacy cash,
 followers, reputation, and release count are retained where possible; obsolete
 1970s projects and fixed employees are not.
 
@@ -40,12 +40,14 @@ followers, reputation, and release count are retained where possible; obsolete
 - **Runway, not points:** the key studio metric is how many months remain at the
   currently committed burn. The game prevents a hire or purchase when it would
   leave less than one month for bills.
-- **Concept room:** a game can combine two genres and two themes, including
+- **Progressive concept room:** a game can combine two genres and two themes, including
   Battle Royale, Extraction Shooter, Survivors-like, Roguelike, Roguelite,
   Deckbuilder, Automation, Cozy, Social Deduction, Immersive Sim, Soulslike, and
   Metroidvania concepts. Instead of moving abstract focus percentages, choose a
   target audience, game format, lead and supporting creative bets, launch-life
-  strategy, scope, marketing level, and store. Every bet states its tradeoff.
+  strategy, scope, marketing level, and store. Starter choices are available
+  immediately; larger scopes, specialist genre/theme libraries, formats,
+  storefronts, marketing and live-service plans require studio research.
 - **Uncertain market validation:** the brief estimates ranges for addressable
   players, overlapping competing releases, market fit, workload, schedule, risk,
   and post-setup runway before greenlight. Genre/theme mix, audience, format,
@@ -56,8 +58,13 @@ followers, reputation, and release count are retained where possible; obsolete
   Blockbuster projects require increasingly serious teams, reputation, capital,
   and work. Completion time changes with team skill, morale, fatigue, hardware,
   creative commitments, online infrastructure, and time diverted to client work.
+  With the minimum qualified healthy team, the scope curve runs from roughly
+  3–6 months for Micro games through 6–7 years for Blockbusters; intermediate
+  scopes scale through 6–9 months, 9–12 months, 1–1.5 years, 2–3 years, and
+  4–5 years.
 - **Multiplayer ambition:** Offline Solo, Online Co-op, Competitive Online,
-  Persistent World, and MMO formats are visible from the beginning. Networking,
+  Persistent World, and MMO formats stay visible, but connected-game research,
+  networking,
   server setup, staffing, reputation gates, launch risk, retention, and recurring
   hosting costs make the biggest formats something a new studio can inspect but
   cannot responsibly greenlight.
@@ -71,12 +78,13 @@ followers, reputation, and release count are retained where possible; obsolete
   defect count, so the interface reports known bugs rather than perfect information.
 - **A developing small team:** six new applicants are generated each month with a
   role, seniority, salary expectation, four production skills, Research, morale,
-  fatigue, a work style, and a separate quirk. Every style and quirk combines an
+  fatigue, career level, a work style, and a separate quirk. Every style and quirk combines an
   advantage with a liability. Project, contract, and live-operations experience
   improves staff over time; stronger employees demand raises. The Team page can
-  send a selected employee to four weeks of paid Design, Art, Audio, Code, or
-  Research education. They are unavailable while studying and receive a skill
-  increase and salary review on completion.
+  send a selected employee to paid Design, Art, Audio, Code, or Research education,
+  or schedule a one-week vacation. Sustained work creates meaningful fatigue;
+  exhausted staff lose output and can burn out, while vacations trade capacity for
+  recovery and morale. People research improves training, learning and automatic leave.
 - **Studio statistics:** four switchable views provide a studio overview,
   solid-color revenue/expense breakdowns, vertical monthly cash-flow columns,
   statistics for every genre, and a permanent release catalog. Accounting keeps
@@ -88,7 +96,10 @@ followers, reputation, and release count are retained where possible; obsolete
   retain the complete concept brief, market position, scope, score, units, net
   revenue, genre/theme mix, production decisions, and sequel lineage. Genre and theme
   audiences grow from actual buyers, and established audiences improve sequel
-  discoverability without guaranteeing success. Starting a new game first opens
+  discoverability without guaranteeing success. IP rank follows combined lifetime
+  franchise sales: Niche at 10,000 units, Recognized at 100,000, then Established,
+  Popular, Famous and Legendary milestones before Iconic at 10,000,000 units.
+  Starting a new game first opens
   an Original Game / Sequel chooser populated by prior releases.
 - **Game portfolio:** the empty Game tab explains the concept loop; active
   production shows its market position and creative commitments; a mature
@@ -100,6 +111,9 @@ followers, reputation, and release count are retained where possible; obsolete
   still apply, so a bad game may sell one copy per week without being profitable.
   Buyers discover previously hidden bugs while playing and complain online; the
   catalogue bug column increases as those reports arrive.
+  Portfolio Management later lets the studio move old releases from Active to
+  Maintenance or Sunset support, trading sales and service for lower capacity,
+  hosting, and monthly operations costs.
 - **Rating versus hype:** rating and hype are independent. Hype controls exposure
   and can produce an enormous launch spike even for a bad game, but rating controls
   conversion, week-to-week sales retention, evergreen demand, player retention,
@@ -109,7 +123,8 @@ followers, reputation, and release count are retained where possible; obsolete
   decays. Launch investment ranges from organic promotion to a showcase launch.
   The separate Promotion Planning screen sells social pushes, press outreach,
   creator-key promotions, streamer placements, festival demos, games-event booths,
-  and premium showcase slots. Better opportunities require game reputation; promotions cost
+  and premium showcase slots. Community Marketing must be researched before the
+  first paid promotion; later opportunities require both capabilities and reputation. Promotions cost
   cash, enter a FIFO queue, and consume team time only while active. Waiting
   promotions can be cancelled for an 80% refund; the active campaign is committed.
 - **Live operations and DLC:** updates are planned and added to a studio-wide FIFO queue.
@@ -120,9 +135,11 @@ followers, reputation, and release count are retained where possible; obsolete
   cost more and consume more team capacity. Shipping restores hype, sales, and
   monthly players in proportion to the game's rating. Bug-fix-focused updates also
   remove existing defects, although a small number of new defects can escape QA.
-  Paid DLC has its own launch sales and net revenue; a DLC roadmap improves take-up
+  Content, Expansion and Paid DLC sizes require progressively deeper Live Ops
+  research. Paid DLC has its own launch sales and net revenue; a DLC roadmap improves take-up
   but does not remove its production cost or QA burden. Waiting updates can be
-  cancelled for 15% of their ship budget; active development cannot be cancelled.
+  funded when queued, reserving the real commitment. Cancelling waiting work
+  recovers 75% of that budget; active development cannot be cancelled.
 - **Monthly active players:** this is the estimated number of distinct people who
   played during the recent month, not copies sold. A game can continue selling
   while having almost no active players, which is a warning that another update
@@ -132,21 +149,29 @@ followers, reputation, and release count are retained where possible; obsolete
   update costs. The Game Catalogue statistics view shows revenue, total cost, profit, and the full cost
   breakdown. Older releases remain marked `n/a` where historical cost allocation
   did not exist instead of showing misleading zero expenses.
+- **Conserved studio capacity:** games, contracts, updates, promotion, support and
+  R&D draw from one capacity budget. Staff no longer produce full output for several
+  activities simultaneously. Department Leads unlock player-controlled priorities,
+  and coordination research keeps large teams useful without eliminating overhead.
 - **Contract business:** the monthly Contract Board offers Design, Art, Audio, Code,
   and Generalist work with different workloads, payouts, deadlines, difficulty,
   and contractor-reputation requirements. Relevant team skill determines speed.
   Successful delivery builds a separate contractor reputation; missed deadlines
   lose reputation and pay nothing. Active client work diverts production capacity
   and adds fatigue.
-- **Automatic contracting:** toggle automatic work to accept every currently
+- **Automatic contracting:** the late-game Client Relations Office can accept every currently
   eligible board offer and queue them sequentially. New eligible contracts are
   automatically queued when the board refreshes each month. Turning automation
   off stops future acceptance and cancels every unstarted automatically accepted
   contract. A contract already in progress finishes, and manually selected queued contracts are
   preserved.
-- **Meaningful upgrades:** workstations, professional tools, QA hardware,
-  coworking space, health coverage, and analytics have purchase prices, recurring
-  costs, and simulation effects.
+- **Studio Development tree:** Product, Operations, People, Business and Live Ops
+  branches contain timed R&D programs with cash costs, prerequisite capabilities,
+  staffing/reputation requirements and specialization-adjusted work. Product research
+  unlocks scopes, formats, genre/theme packages and eventual engine technology;
+  Operations and People research unlock coordination, priorities, faster learning,
+  wellbeing and automation. Every branch remains reachable, but concentrating in one
+  branch makes related research faster.
 - **Failure:** a negative bank balance starts an eight-week insolvency clock. If
   it is not recovered, the studio closes permanently. A blocking insolvency popup
   requires deleting that run's save before a fresh studio can begin.
@@ -157,7 +182,7 @@ followers, reputation, and release count are retained where possible; obsolete
 - `H` / `G` / `T` / `S`: jump directly to a top-level page; `T` also selects the Team roster
 - `J`: open Jobs from the Hub
 - `N`: plan a new game, sequel, or spin-off from the Hub or Game page
-- `U`: open Upgrades from the Hub or Update Planner from the Game Catalogue
+- `U`: open Studio Development from the Hub or Update Planner from the Game Catalogue
 - `P`: open Promotion Planning from the Game page
 - `C`: select waiting work to cancel in Promotion Planning or Update Planner
 - `Enter`: choose, advance New Game planning, greenlight, buy, hire, or queue the selected update
@@ -167,10 +192,13 @@ followers, reputation, and release count are retained where possible; obsolete
   field during concept planning; otherwise adjust simulation speed except in Statistics
 - `D`: dismiss the selected non-founder employee
 - `L`: open professional training for the selected Team-roster member, including the founder
+- `V`: schedule one week of vacation for the selected Team-roster member
 - `Up` / `Down`: select an item or planning field
 - `Backspace`: go back within the current page or workflow
 - `Esc`: open or close the centered Settings popup from anywhere
-- `<` / `>`: activate the bottom `</>` controls; these adjust speed normally, Production Plan values while planning, or Statistics views
+- `<` / `>`: activate the bottom `</>` controls; these adjust speed normally, Production Plan values while planning, Statistics views, or Studio Development branches
+- `1`–`5`: after Department Leads research, cycle Game, Job, Update, Promotion and R&D priorities on Studio Development
+- `A`: after Sustainable Scheduling research, toggle automatic fatigue-based vacations on Studio Development
 - `Space`: pause or resume
 - `Ctrl+S`: save
 - `Q`: quit
@@ -180,7 +208,7 @@ clickable when the terminal exposes curses mouse events, except queueing an upda
 which deliberately requires the `Enter` key. Settings stays at the top-right, with
 Save and Quit inside its popup. The bottom status strip is visible on every page:
 week progress, cash, runway, and — whenever they exist — live progress meters for
-the in-development game (`DEV`) and the active contract (`JOB`, a narrower bar),
+  the in-development game (`DEV`), active contract (`JOB`) and active research (`R&D`),
 plus fans and player/contractor trust (`PTrust`/`CTrust`) on wide terminals. Playback
 controls sit beside date/year/week and display `||`, `>`, `>>`, and so on. The Hub
 is a read-focused studio overview.
