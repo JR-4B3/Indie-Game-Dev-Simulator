@@ -34,6 +34,7 @@ from simulation import TIME_SPEEDS, GameState, advance_days, advance_game, load_
 from ui_chrome import (
     active_top_tab,
     bottom_time_layout,
+    draw_cancel_project_popup,
     draw_footer,
     draw_header,
     draw_insolvency_popup,
@@ -56,6 +57,7 @@ from ui_hub import draw_dashboard, draw_main_content
 from ui_input import CTRL_S, handle_key, handle_mouse, handle_new_game_key, open_new_game
 from ui_newgame import draw_new_game, new_game_panel_geometry
 from ui_stats import draw_analysis
+from ui_saves import draw_save_picker
 from ui_team import draw_team_screen, team_layout
 from ui_title import draw_title_screen
 from ui_upgrades import draw_upgrades
@@ -92,7 +94,9 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
         state.analysis_view,
         state.new_game_step,
         state.settings_open,
+        state.save_picker_open,
         state.training_open,
+        state.cancel_project_open,
         bool(state.studio.current_project),
         len(state.studio.team),
         len(state.studio.applicants),
@@ -115,6 +119,8 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
         draw_title_screen(screen, state, width, height)
         if state.settings_open:
             draw_settings_popup(screen, state, width, height)
+        if state.save_picker_open:
+            draw_save_picker(screen, state, width, height)
         return
     draw_header(screen, state, width)
     drawer = SCREEN_DRAWERS.get(state.modal)
@@ -129,6 +135,10 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
         draw_production_review(screen, state, width, height)
     if state.training_open:
         draw_training_popup(screen, state, width, height)
+    if state.cancel_project_open:
+        draw_cancel_project_popup(screen, state, width, height)
+    if state.save_picker_open:
+        draw_save_picker(screen, state, width, height)
     if state.settings_open:
         draw_settings_popup(screen, state, width, height)
     if state.studio.closed:

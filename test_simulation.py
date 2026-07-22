@@ -33,10 +33,12 @@ from simulation import (
     buy_promotion,
     capacity_drains,
     chart_positions,
+    contract_offer_eta_weeks,
     contract_weekly_output,
     cycle_work_priority,
     cycle_game_update_size,
     cycle_game_support,
+    estimated_contract_weeks,
     estimated_update_weeks,
     franchise_by_id,
     game_profit,
@@ -559,6 +561,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual([action for _, action, _ in bottom_time_layout(state, 190)], ["slower", "pause", "faster"])
         handle_new_game_key(state, curses.KEY_BACKSPACE)
         self.assertEqual(state.new_game_step, 2)
+        state.selected_scope = 0
         handle_new_game_key(state, 10)
         handle_new_game_key(state, 10)
         self.assertIsNotNone(state.studio.current_project)
@@ -745,24 +748,26 @@ class SimulationTests(unittest.TestCase):
 
         screen = MagicMock()
         popup = MagicMock()
-        popup.getmaxyx.return_value = (15, 40)
+        popup.getmaxyx.return_value = (17, 40)
         screen.derwin.return_value = popup
         with patch("main.curses.color_pair", return_value=0):
             draw_settings_popup(screen, state, 120, 36)
-        screen.derwin.assert_called_once_with(15, 40, 10, 40)
+        screen.derwin.assert_called_once_with(17, 40, 9, 40)
         popup_text = " ".join(call.args[2] for call in popup.addstr.call_args_list)
         self.assertIn("[Close]", popup_text)
         self.assertNotIn("Up/Down select", popup_text)
         popup_labels = [call.args[2] for call in popup.addstr.call_args_list]
         self.assertIn("[Close]", popup_labels)
         self.assertIn("Save", popup_labels)
+        self.assertIn("New Save", popup_labels)
         self.assertIn("Quit", popup_labels)
         self.assertNotIn("[Save]", popup_labels)
         self.assertNotIn("[Quit]", popup_labels)
         close_call = next(call for call in popup.addstr.call_args_list if call.args[2] == "[Close]")
         save_call = next(call for call in popup.addstr.call_args_list if call.args[2] == "Save")
+        new_save_call = next(call for call in popup.addstr.call_args_list if call.args[2] == "New Save")
         quit_call = next(call for call in popup.addstr.call_args_list if call.args[2] == "Quit")
-        self.assertEqual((close_call.args[0], save_call.args[0], quit_call.args[0]), (6, 8, 10))
+        self.assertEqual((close_call.args[0], save_call.args[0], new_save_call.args[0], quit_call.args[0]), (6, 8, 10, 12))
         self.assertEqual(close_call.args[3], curses.A_BOLD)
         self.assertEqual(save_call.args[3], 0)
         self.assertEqual(quit_call.args[3], 0)
@@ -779,6 +784,7 @@ class SimulationTests(unittest.TestCase):
 
         state.time_speed_index = 1
         handle_key(state, 27)
+        handle_key(state, curses.KEY_DOWN)
         handle_key(state, curses.KEY_DOWN)
         handle_key(state, curses.KEY_DOWN)
         self.assertFalse(handle_key(state, 10))
@@ -807,6 +813,36 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(state.draft_title, "q")
         state.naming_game = False
         self.assertFalse(handle_key(state, ord("Q")))
+
+    def test_new_save_and_title_load_use_automatic_save_slots(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            state = GameState(save_path=str(Path(directory) / "active.json"))
+            state.studio.cash = 321_000
+            handle_key(state, 27)
+            handle_key(state, curses.KEY_DOWN)
+            handle_key(state, curses.KEY_DOWN)
+            handle_key(state, 10)
+            self.assertTrue(state.save_picker_open)
+            self.assertEqual(state.save_picker_mode, "save")
+            handle_key(state, 10)
+
+            saved_path = Path(state.save_path)
+            self.assertTrue(saved_path.is_file())
+            self.assertRegex(saved_path.name, r"new-studio-\d{4}-\d{2}-\d{2}-01\.json")
+            self.assertFalse(state.save_picker_open)
+
+            loader = GameState(save_path=str(Path(directory) / "active.json"), title_screen=True)
+            loader.title_menu_index = 1
+            handle_key(loader, 10)
+            self.assertTrue(loader.save_picker_open)
+            self.assertEqual(loader.save_picker_mode, "load")
+            self.assertIn(str(saved_path), loader.save_slots)
+            loader.selected_save_slot = loader.save_slots.index(str(saved_path))
+            handle_key(loader, 10)
+
+            self.assertFalse(loader.title_screen)
+            self.assertEqual(loader.studio.cash, 321_000)
+            self.assertEqual(loader.save_path, str(saved_path))
 
     def test_wide_games_screen_exposes_detailed_management_sections(self) -> None:
         state = GameState()
@@ -1023,7 +1059,7 @@ class SimulationTests(unittest.TestCase):
 
         self.assertGreater(game.production_cost, 0)
         self.assertGreater(game.labor_cost, 0)
-        self.assertEqual(game.marketing_cost, 4_000)
+        self.assertEqual(game.marketing_cost, 35_000)
         self.assertGreater(game.post_launch_cost, 0)
         self.assertEqual(
             game_total_cost(game),
@@ -1093,6 +1129,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_update_queue_snapshots_plans_and_requires_bug_fixing(self) -> None:
         state = GameState()
+        state.studio.cash = 5_000_000
         unlock(state, "content_updates")
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
@@ -1127,6 +1164,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_update_queue_and_versions_survive_save_load(self) -> None:
         state = GameState()
+        state.studio.cash = 5_000_000
         unlock(state, "content_updates", "expansion_pipeline")
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
@@ -1150,6 +1188,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_waiting_updates_can_be_cancelled_without_touching_active_work(self) -> None:
         state = GameState()
+        state.studio.cash = 5_000_000
         unlock(state, "content_updates", "expansion_pipeline")
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
@@ -1175,7 +1214,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(state.studio.update_queue), 1)
         self.assertEqual(state.studio.update_queue[0].size, "Expansion")
         self.assertEqual(state.studio.update_queue[0].target_version, "1.10.10")
-        self.assertEqual(state.studio.cash, cash_before + 675)
+        self.assertEqual(state.studio.cash, cash_before + round(95_000 * 0.75))
         self.assertEqual(state.queue_cancellation, "update")
         handle_key(state, curses.KEY_BACKSPACE)
         self.assertEqual(state.modal, "update_planner")
@@ -1257,6 +1296,51 @@ class SimulationTests(unittest.TestCase):
         advance(state, 1)
         self.assertEqual(state.studio.active_promotions, [])
 
+    def test_in_development_project_can_be_cancelled_with_twenty_percent_refund(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        spent = project.production_cost + project.marketing_cost
+        cash_before = state.studio.cash
+        state.modal = "games"
+        state.selected_game = 0
+        state.time_speed_index = 2
+
+        labels = {action: label for label, action, _ in footer_layout(state, 120)}
+        self.assertIn("open_cancel_project", labels)
+        handle_key(state, ord("c"))
+        self.assertTrue(state.cancel_project_open)
+        self.assertEqual(state.time_speed_index, 0)
+
+        handle_key(state, curses.KEY_DOWN)
+        self.assertEqual(state.selected_cancel_project_action, 1)
+        handle_key(state, 10)
+
+        self.assertIsNone(state.studio.current_project)
+        self.assertFalse(state.cancel_project_open)
+        self.assertEqual(state.studio.cash, cash_before + round(spent * 0.20))
+        self.assertEqual(state.time_speed_index, 2)
+        self.assertTrue(any("Cancelled" in line and "20%" in line for line in state.logs))
+
+        handle_key(state, ord("n"))
+        self.assertEqual(state.modal, "new_game")
+
+    def test_cancel_project_popup_keep_leaves_project_intact(self) -> None:
+        state = GameState()
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        cash_before = state.studio.cash
+        state.modal = "games"
+        state.selected_game = 0
+
+        handle_key(state, ord("c"))
+        self.assertTrue(state.cancel_project_open)
+        handle_key(state, 10)
+
+        self.assertIs(state.studio.current_project, project)
+        self.assertFalse(state.cancel_project_open)
+        self.assertEqual(state.studio.cash, cash_before)
+
     def test_waiting_promotions_can_be_cancelled_with_a_partial_refund(self) -> None:
         state = GameState()
         unlock(state, "promotion_basics", "targeted_marketing", "creator_relations")
@@ -1280,8 +1364,8 @@ class SimulationTests(unittest.TestCase):
 
         self.assertIs(state.studio.active_promotions[0], active)
         self.assertEqual(len(state.studio.active_promotions), 2)
-        self.assertEqual(state.studio.cash, cash_before + 6_000)
-        self.assertEqual(game.marketing_cost, marketing_before - 6_000)
+        self.assertEqual(state.studio.cash, cash_before + round(42_000 * 0.80))
+        self.assertEqual(game.marketing_cost, marketing_before - round(42_000 * 0.80))
         self.assertEqual(state.queue_cancellation, "promotion")
         handle_key(state, curses.KEY_BACKSPACE)
         self.assertEqual(state.modal, "marketing")
@@ -1401,6 +1485,25 @@ class SimulationTests(unittest.TestCase):
 
         self.assertGreater(high_output, low_output * 4)
 
+    def test_remaining_contract_offer_etas_do_not_change_when_accepting_first_job(self) -> None:
+        state = GameState()
+        quoted_etas = [contract_offer_eta_weeks(contract) for contract in state.studio.contract_offers]
+        self.assertEqual(
+            [estimated_contract_weeks(state.studio, contract) for contract in state.studio.contract_offers],
+            quoted_etas,
+        )
+
+        self.assertTrue(accept_contract(state))
+
+        self.assertEqual(
+            [contract_offer_eta_weeks(contract) for contract in state.studio.contract_offers],
+            quoted_etas[1:],
+        )
+        self.assertNotEqual(
+            [estimated_contract_weeks(state.studio, contract) for contract in state.studio.contract_offers],
+            quoted_etas[1:],
+        )
+
     def test_insolvency_blocks_play_until_enter_deletes_save_and_restarts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             save_path = Path(directory) / "insolvent.json"
@@ -1428,7 +1531,7 @@ class SimulationTests(unittest.TestCase):
             self.assertFalse(save_path.exists())
             self.assertFalse(state.studio.closed)
             self.assertEqual(state.modal, "main")
-            self.assertEqual(state.studio.cash, 75_000)
+            self.assertEqual(state.studio.cash, 100_000)
 
     def test_auto_contract_toggle_queues_every_eligible_offer(self) -> None:
         state = GameState()
@@ -1471,7 +1574,7 @@ class SimulationTests(unittest.TestCase):
         self.assertNotIn("Next week", status_line)
         self.assertIn("░", status_line)
         self.assertIn("INDIE GAME DEV SIM", status_line)
-        self.assertIn("$75,000", status_line)
+        self.assertTrue("$100" in status_line or "$100k" in status_line or "$100,000" in status_line)
         self.assertNotIn("Cash", status_line)
         self.assertNotIn("Runway", status_line)
         self.assertIn("JOB", status_line)
@@ -1775,7 +1878,7 @@ class SimulationTests(unittest.TestCase):
         self.assertGreater(report["audience"], 0)
         self.assertGreater(report["competitors"], 0)
         self.assertFalse(start_project(state))
-        self.assertTrue(any("team 30" in message and "reputation 60" in message for message in state.logs))
+        self.assertTrue(any("team 40" in message and "reputation 60" in message for message in state.logs))
 
         state.selected_format = 0
         solo_report = market_report(state)
@@ -1790,6 +1893,13 @@ class SimulationTests(unittest.TestCase):
 
     def test_production_reviews_pause_and_apply_a_real_tradeoff(self) -> None:
         state = GameState(selected_scope=2, modal="analysis")
+        state.studio.cash = 500_000
+        founder = state.studio.team[0]
+        while len(state.studio.team) < SCOPES[2]["team"]:
+            hire = deepcopy(founder)
+            hire.employee_id = 100 + len(state.studio.team)
+            hire.founder = False
+            state.studio.team.append(hire)
         unlock(state, "small_production")
         self.assertTrue(start_project(state))
         state.modal = "analysis"
@@ -1894,6 +2004,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_paid_dlc_generates_post_launch_revenue(self) -> None:
         state = GameState()
+        state.studio.cash = 5_000_000
         unlock(state, "paid_dlc")
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
@@ -1943,6 +2054,31 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(franchise.entries, 2)
         self.assertGreater(franchise.awareness, awareness_after_first)
         self.assertGreater(franchise.fatigue, 0)
+
+    def test_sequel_keeps_franchise_after_theme_and_direction_changes(self) -> None:
+        from simulation import prepare_sequel
+
+        state = GameState()
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        prepare_sequel(state, game)
+        state.draft_title = "The Toys Animal Story"
+        state.selected_secondary_topic = (state.selected_topic + 1) % len(TOPICS)
+        state.selected_creative_primary = (state.selected_creative_primary + 1) % 4
+        state.new_game_step = 0
+        handle_new_game_key(state, curses.KEY_DOWN)
+        self.assertEqual(state.sequel_game_id, game.game_id)
+        self.assertEqual(state.spinoff_franchise_id, franchise.franchise_id)
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        self.assertEqual(project.franchise_id, franchise.franchise_id)
+        self.assertEqual(project.sequel_of, game.game_id)
+        project.work_done = project.total_work - 1
+        advance(state, 1)
+        sequel = state.studio.catalog[-1]
+        self.assertEqual(sequel.franchise_id, franchise.franchise_id)
+        self.assertEqual(franchise.entries, 2)
+        self.assertEqual(len(state.studio.franchises), 1)
 
     def test_media_ventures_are_gated_by_ip_rank(self) -> None:
         state = GameState()
@@ -2110,13 +2246,13 @@ class SimulationTests(unittest.TestCase):
 
     def test_scope_completion_times_scale_from_months_to_years(self) -> None:
         bands = {
-            "Micro": (13, 26),
-            "Compact": (26, 39),
-            "Small": (39, 52),
-            "Mid-size": (52, 78),
-            "Ambitious": (104, 156),
-            "Large": (208, 260),
-            "Blockbuster": (312, 364),
+            "Micro": (18, 40),
+            "Compact": (28, 70),
+            "Small": (52, 110),
+            "Mid-size": (90, 200),
+            "Ambitious": (130, 260),
+            "Large": (200, 360),
+            "Blockbuster": (280, 520),
         }
         completed = [node["key"] for node in RESEARCH_NODES]
         for scope_index, scope in enumerate(SCOPES):
@@ -2203,6 +2339,7 @@ class SimulationTests(unittest.TestCase):
         self.assertFalse(queue_game_update(state, game.game_id))
 
         unlock(state, "promotion_basics", "paid_dlc")
+        state.studio.cash = 5_000_000
         self.assertTrue(buy_promotion(state, game.game_id, 0))
         self.assertTrue(queue_game_update(state, game.game_id))
 

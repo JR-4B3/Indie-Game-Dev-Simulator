@@ -21,23 +21,25 @@ TIME_LABELS = ("||", "> 1x", ">> 2x", ">>> 4x")
 
 CHANNELS = (
     {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00},
-    {"name": "itch.io", "category": "PC", "fee": 0, "cut": 0.10, "reach": 0.16},
-    {"name": "Epic Games Store", "category": "PC", "fee": 100, "cut": 0.12, "reach": 0.28},
-    {"name": "App Store", "category": "Mobile", "fee": 99, "cut": 0.30, "reach": 0.65},
-    {"name": "Google Play", "category": "Mobile", "fee": 25, "cut": 0.30, "reach": 0.78},
-    {"name": "PlayStation 5", "category": "Console", "fee": 2_500, "cut": 0.30, "reach": 0.54},
-    {"name": "Xbox Series", "category": "Console", "fee": 1_800, "cut": 0.30, "reach": 0.39},
-    {"name": "Switch 2", "category": "Handheld", "fee": 2_200, "cut": 0.30, "reach": 0.48},
+    {"name": "itch.io", "category": "PC", "fee": 0, "cut": 0.10, "reach": 0.18},
+    {"name": "Epic Games Store", "category": "PC", "fee": 100, "cut": 0.12, "reach": 0.32},
+    {"name": "App Store", "category": "Mobile", "fee": 99, "cut": 0.30, "reach": 0.70},
+    {"name": "Google Play", "category": "Mobile", "fee": 25, "cut": 0.30, "reach": 0.82},
+    {"name": "PlayStation 5", "category": "Console", "fee": 12_500, "cut": 0.30, "reach": 0.58},
+    {"name": "Xbox Series", "category": "Console", "fee": 8_000, "cut": 0.30, "reach": 0.42},
+    {"name": "Switch 2", "category": "Handheld", "fee": 10_000, "cut": 0.30, "reach": 0.52},
 )
 
+# setup = cash outlay at greenlight (assets, middleware, outsourcing, tech). Payroll is separate.
+# sales = commercial scale used for audience and unit potential.
 SCOPES = (
-    {"name": "Micro", "work": 600, "setup": 1_800, "price": 9.99, "risk": 0, "team": 1, "rep": 0, "market": 0.55},
-    {"name": "Compact", "work": 1_000, "setup": 3_200, "price": 12.99, "risk": 1, "team": 1, "rep": 0, "market": 0.75},
-    {"name": "Small", "work": 1_900, "setup": 5_500, "price": 14.99, "risk": 4, "team": 1, "rep": 0, "market": 1.0},
-    {"name": "Mid-size", "work": 5_500, "setup": 9_000, "price": 19.99, "risk": 7, "team": 2, "rep": 0, "market": 1.35},
-    {"name": "Ambitious", "work": 13_000, "setup": 14_000, "price": 24.99, "risk": 10, "team": 3, "rep": 4, "market": 1.75},
-    {"name": "Large", "work": 60_000, "setup": 80_000, "price": 39.99, "risk": 17, "team": 7, "rep": 18, "market": 2.8},
-    {"name": "Blockbuster", "work": 190_000, "setup": 500_000, "price": 69.99, "risk": 28, "team": 18, "rep": 45, "market": 5.0},
+    {"name": "Micro", "work": 1_200, "setup": 6_500, "price": 7.99, "risk": 0, "team": 1, "rep": 0, "market": 0.55, "sales": 1.0},
+    {"name": "Compact", "work": 4_200, "setup": 24_000, "price": 11.99, "risk": 1, "team": 2, "rep": 0, "market": 0.75, "sales": 2.4},
+    {"name": "Small", "work": 14_000, "setup": 90_000, "price": 14.99, "risk": 4, "team": 4, "rep": 0, "market": 1.0, "sales": 6.0},
+    {"name": "Mid-size", "work": 55_000, "setup": 480_000, "price": 19.99, "risk": 7, "team": 10, "rep": 0, "market": 1.4, "sales": 18.0},
+    {"name": "Ambitious", "work": 125_000, "setup": 2_400_000, "price": 29.99, "risk": 10, "team": 20, "rep": 4, "market": 1.9, "sales": 55.0},
+    {"name": "Large", "work": 340_000, "setup": 14_000_000, "price": 49.99, "risk": 17, "team": 35, "rep": 18, "market": 3.2, "sales": 170.0},
+    {"name": "Blockbuster", "work": 800_000, "setup": 65_000_000, "price": 69.99, "risk": 28, "team": 55, "rep": 45, "market": 5.5, "sales": 450.0},
 )
 
 AUDIENCES = (
@@ -50,11 +52,11 @@ AUDIENCES = (
 )
 
 GAME_FORMATS = (
-    {"name": "Offline solo", "work": 1.0, "setup": 0, "risk": 0, "team": 1, "rep": 0, "market": 0.9, "hosting": 0.0},
-    {"name": "Online co-op", "work": 1.35, "setup": 12_000, "risk": 4, "team": 2, "rep": 0, "market": 1.15, "hosting": 0.04},
-    {"name": "Competitive online", "work": 1.8, "setup": 40_000, "risk": 9, "team": 4, "rep": 8, "market": 1.5, "hosting": 0.08},
-    {"name": "Persistent world", "work": 2.8, "setup": 180_000, "risk": 17, "team": 9, "rep": 25, "market": 2.2, "hosting": 0.16},
-    {"name": "MMO", "work": 7.0, "setup": 2_500_000, "risk": 32, "team": 30, "rep": 60, "market": 5.0, "hosting": 0.35},
+    {"name": "Offline solo", "work": 1.0, "setup": 0, "risk": 0, "team": 1, "rep": 0, "market": 0.9, "hosting": 0.0, "sales": 1.0},
+    {"name": "Online co-op", "work": 1.45, "setup": 160_000, "risk": 4, "team": 3, "rep": 0, "market": 1.15, "hosting": 0.04, "sales": 1.2},
+    {"name": "Competitive online", "work": 2.1, "setup": 1_250_000, "risk": 9, "team": 6, "rep": 8, "market": 1.55, "hosting": 0.09, "sales": 1.55},
+    {"name": "Persistent world", "work": 3.4, "setup": 5_200_000, "risk": 17, "team": 12, "rep": 25, "market": 2.3, "hosting": 0.18, "sales": 2.1},
+    {"name": "MMO", "work": 8.5, "setup": 26_000_000, "risk": 32, "team": 40, "rep": 60, "market": 5.0, "hosting": 0.38, "sales": 3.8},
 )
 
 CREATIVE_DIRECTIONS = (
@@ -68,10 +70,10 @@ CREATIVE_DIRECTIONS = (
 )
 
 RELEASE_STRATEGIES = (
-    {"name": "Complete package", "work": 1.0, "setup": 0, "risk": 0, "market": 0, "price": 1.0, "tradeoff": "Clear promise; short sales tail"},
-    {"name": "Free update roadmap", "work": 1.08, "setup": 1_500, "risk": 2, "market": 5, "price": 1.0, "tradeoff": "Better retention; ongoing cost"},
-    {"name": "DLC roadmap", "work": 1.05, "setup": 2_500, "risk": 3, "market": 2, "price": 1.05, "tradeoff": "Future revenue; fragments attention"},
-    {"name": "Live service", "work": 1.3, "setup": 18_000, "risk": 10, "market": 12, "price": 0.75, "tradeoff": "Large upside; permanent content pressure"},
+    {"name": "Complete package", "work": 1.0, "setup": 0, "risk": 0, "market": 0, "price": 1.0, "sales": 1.0, "tradeoff": "Clear promise; short sales tail"},
+    {"name": "Free update roadmap", "work": 1.12, "setup": 45_000, "risk": 2, "market": 6, "price": 1.0, "sales": 1.12, "tradeoff": "Better retention; ongoing cost"},
+    {"name": "DLC roadmap", "work": 1.10, "setup": 125_000, "risk": 3, "market": 3, "price": 1.05, "sales": 1.08, "tradeoff": "Future revenue; fragments attention"},
+    {"name": "Live service", "work": 1.45, "setup": 1_200_000, "risk": 10, "market": 14, "price": 0.72, "sales": 1.45, "tradeoff": "Large upside; permanent content pressure"},
 )
 
 PRODUCTION_DECISIONS = (
@@ -115,21 +117,21 @@ PRODUCTION_DECISIONS = (
 
 MARKETING = (
     {"name": "Organic", "cost": 0, "boost": 0},
-    {"name": "Community", "cost": 2_000, "boost": 120},
-    {"name": "Targeted", "cost": 4_000, "boost": 260},
-    {"name": "Creator push", "cost": 8_000, "boost": 520},
-    {"name": "Launch campaign", "cost": 15_000, "boost": 1_050},
-    {"name": "Showcase launch", "cost": 32_000, "boost": 2_000},
+    {"name": "Community", "cost": 8_000, "boost": 110},
+    {"name": "Targeted", "cost": 35_000, "boost": 250},
+    {"name": "Creator push", "cost": 95_000, "boost": 520},
+    {"name": "Launch campaign", "cost": 280_000, "boost": 1_100},
+    {"name": "Showcase launch", "cost": 750_000, "boost": 2_100},
 )
 
 PROMOTIONS = (
-    {"key": "social", "name": "Social media push", "cost": 1_200, "weeks": 1, "hype": 8, "team": 0.02, "rep": 0, "effect": "Small targeted awareness"},
-    {"key": "press", "name": "Press outreach", "cost": 3_500, "weeks": 2, "hype": 16, "team": 0.04, "rep": 2, "effect": "Reviews, previews, and interviews"},
-    {"key": "creator", "name": "Creator key campaign", "cost": 7_500, "weeks": 2, "hype": 25, "team": 0.05, "rep": 5, "effect": "Keys sent to relevant creators"},
-    {"key": "streamer", "name": "Streamer placement", "cost": 15_000, "weeks": 2, "hype": 42, "team": 0.03, "rep": 12, "effect": "Paid sponsored broadcast"},
-    {"key": "festival", "name": "Digital festival demo", "cost": 10_000, "weeks": 3, "hype": 34, "team": 0.12, "rep": 8, "effect": "Demo preparation consumes team time"},
-    {"key": "event", "name": "Attend a games event", "cost": 24_000, "weeks": 4, "hype": 58, "team": 0.18, "rep": 18, "effect": "Booth, travel, demo, and staff time"},
-    {"key": "showcase", "name": "Premium showcase slot", "cost": 55_000, "weeks": 4, "hype": 105, "team": 0.10, "rep": 35, "effect": "Large placement for established studios"},
+    {"key": "social", "name": "Social media push", "cost": 6_500, "weeks": 1, "hype": 8, "team": 0.02, "rep": 0, "effect": "Small targeted awareness"},
+    {"key": "press", "name": "Press outreach", "cost": 18_000, "weeks": 2, "hype": 16, "team": 0.04, "rep": 2, "effect": "Reviews, previews, and interviews"},
+    {"key": "creator", "name": "Creator key campaign", "cost": 42_000, "weeks": 2, "hype": 25, "team": 0.05, "rep": 5, "effect": "Keys sent to relevant creators"},
+    {"key": "streamer", "name": "Streamer placement", "cost": 85_000, "weeks": 2, "hype": 42, "team": 0.03, "rep": 12, "effect": "Paid sponsored broadcast"},
+    {"key": "festival", "name": "Digital festival demo", "cost": 55_000, "weeks": 3, "hype": 34, "team": 0.12, "rep": 8, "effect": "Demo preparation consumes team time"},
+    {"key": "event", "name": "Attend a games event", "cost": 175_000, "weeks": 4, "hype": 58, "team": 0.18, "rep": 18, "effect": "Booth, travel, demo, and staff time"},
+    {"key": "showcase", "name": "Premium showcase slot", "cost": 380_000, "weeks": 4, "hype": 105, "team": 0.10, "rep": 35, "effect": "Large placement for established studios"},
 )
 
 UPDATE_FOCUSES = (
@@ -141,11 +143,11 @@ UPDATE_FOCUSES = (
 )
 
 UPDATE_SIZES = (
-    {"name": "Hotfix", "work": 16, "bugs": 3, "fixes": 4, "escaped": 0.2, "cost": 75, "hype": 2, "sales": 1, "version": (0, 0, 1), "team": 0.06},
-    {"name": "Patch", "work": 45, "bugs": 8, "fixes": 10, "escaped": 0.8, "cost": 250, "hype": 7, "sales": 2, "version": (0, 0, 10), "team": 0.12},
-    {"name": "Content", "work": 110, "bugs": 20, "fixes": 25, "escaped": 2.5, "cost": 900, "hype": 18, "sales": 4, "version": (0, 1, 0), "team": 0.20},
-    {"name": "Expansion", "work": 240, "bugs": 45, "fixes": 55, "escaped": 6.0, "cost": 3_500, "hype": 42, "sales": 9, "version": (0, 10, 0), "team": 0.30},
-    {"name": "Paid DLC", "work": 380, "bugs": 65, "fixes": 70, "escaped": 8.0, "cost": 8_000, "hype": 58, "sales": 12, "version": (1, 0, 0), "team": 0.38, "price": 9.99},
+    {"name": "Hotfix", "work": 16, "bugs": 3, "fixes": 4, "escaped": 0.2, "cost": 3_500, "hype": 2, "sales": 1, "version": (0, 0, 1), "team": 0.06},
+    {"name": "Patch", "work": 45, "bugs": 8, "fixes": 10, "escaped": 0.8, "cost": 18_000, "hype": 7, "sales": 2, "version": (0, 0, 10), "team": 0.12},
+    {"name": "Content", "work": 110, "bugs": 20, "fixes": 25, "escaped": 2.5, "cost": 95_000, "hype": 18, "sales": 4, "version": (0, 1, 0), "team": 0.20},
+    {"name": "Expansion", "work": 240, "bugs": 45, "fixes": 55, "escaped": 6.0, "cost": 420_000, "hype": 42, "sales": 9, "version": (0, 10, 0), "team": 0.30},
+    {"name": "Paid DLC", "work": 380, "bugs": 65, "fixes": 70, "escaped": 8.0, "cost": 850_000, "hype": 58, "sales": 12, "version": (1, 0, 0), "team": 0.38, "price": 14.99},
 )
 
 STARTER_RESEARCH = ("product_foundations", "garage_workflow", "basic_rest", "contract_basics", "basic_support")
@@ -153,66 +155,66 @@ STARTER_RESEARCH = ("product_foundations", "garage_workflow", "basic_rest", "con
 RESEARCH_NODES = (
     # Product development
     {"key": "product_foundations", "branch": "Product", "tier": 0, "name": "Product Foundations", "cost": 0, "work": 0, "prereq": (), "effect": "Micro and Compact offline PC games"},
-    {"key": "small_production", "branch": "Product", "tier": 1, "name": "Small Production", "cost": 2_500, "work": 260, "prereq": ("product_foundations",), "effect": "Unlock Small games"},
-    {"key": "genre_story", "branch": "Product", "tier": 1, "name": "Story & Role-play Genres", "cost": 2_000, "work": 230, "prereq": ("product_foundations",), "effect": "Adventure, RPG, Visual Novel and related genres"},
-    {"key": "genre_systems", "branch": "Product", "tier": 1, "name": "Systems & Strategy Genres", "cost": 2_000, "work": 230, "prereq": ("product_foundations",), "effect": "Strategy, simulation and building genres"},
-    {"key": "theme_library_1", "branch": "Product", "tier": 1, "name": "Expanded Theme Library I", "cost": 1_500, "work": 180, "prereq": ("product_foundations",), "effect": "Unlock 25% of the extended theme catalogue"},
-    {"key": "mid_production", "branch": "Product", "tier": 2, "name": "Mid-size Production", "cost": 9_000, "work": 700, "prereq": ("small_production", "production_pipeline"), "effect": "Unlock Mid-size games"},
-    {"key": "online_coop", "branch": "Product", "tier": 2, "name": "Connected Games", "cost": 12_000, "work": 850, "prereq": ("small_production",), "effect": "Unlock online co-op"},
-    {"key": "genre_action", "branch": "Product", "tier": 2, "name": "Action & Competition Genres", "cost": 7_500, "work": 620, "prereq": ("small_production",), "effect": "Shooters, fighting, racing and sports genres"},
-    {"key": "genre_indie", "branch": "Product", "tier": 2, "name": "Modern Indie Genres", "cost": 7_500, "work": 620, "prereq": ("small_production",), "effect": "Roguelikes, deckbuilders, cozy and hybrid genres"},
-    {"key": "theme_library_2", "branch": "Product", "tier": 2, "name": "Expanded Theme Library II", "cost": 6_000, "work": 500, "prereq": ("theme_library_1",), "effect": "Unlock another 25% of themes"},
-    {"key": "ambitious_production", "branch": "Product", "tier": 3, "name": "Ambitious Production", "cost": 30_000, "work": 1_800, "prereq": ("mid_production", "department_leads"), "effect": "Unlock Ambitious games"},
-    {"key": "competitive_online", "branch": "Product", "tier": 3, "name": "Competitive Networking", "cost": 45_000, "work": 2_000, "prereq": ("online_coop", "qa"), "effect": "Unlock competitive online games"},
-    {"key": "theme_library_3", "branch": "Product", "tier": 3, "name": "Expanded Theme Library III", "cost": 20_000, "work": 1_400, "prereq": ("theme_library_2",), "effect": "Unlock another 25% of themes"},
-    {"key": "large_production", "branch": "Product", "tier": 4, "name": "Large-scale Production", "cost": 180_000, "work": 5_000, "prereq": ("ambitious_production", "advanced_coordination"), "effect": "Unlock Large games"},
-    {"key": "persistent_worlds", "branch": "Product", "tier": 4, "name": "Persistent Worlds", "cost": 250_000, "work": 6_000, "prereq": ("competitive_online", "live_operations"), "effect": "Unlock persistent-world games"},
-    {"key": "theme_library_4", "branch": "Product", "tier": 4, "name": "Complete Theme Archive", "cost": 80_000, "work": 3_500, "prereq": ("theme_library_3",), "effect": "Unlock every theme"},
-    {"key": "blockbuster_production", "branch": "Product", "tier": 5, "name": "Blockbuster Production", "cost": 1_200_000, "work": 12_000, "prereq": ("large_production", "executive_management"), "effect": "Unlock Blockbuster games"},
-    {"key": "mmo_technology", "branch": "Product", "tier": 5, "name": "Massive Online Technology", "cost": 2_500_000, "work": 15_000, "prereq": ("persistent_worlds", "blockbuster_production"), "effect": "Unlock MMO development"},
-    {"key": "internal_engine", "branch": "Product", "tier": 5, "name": "Internal Engine Program", "cost": 900_000, "work": 10_000, "prereq": ("large_production", "research_lab"), "effect": "Unlock engine projects (preview)"},
+    {"key": "small_production", "branch": "Product", "tier": 1, "name": "Small Production", "cost": 4_500, "work": 260, "prereq": ("product_foundations",), "effect": "Unlock Small games"},
+    {"key": "genre_story", "branch": "Product", "tier": 1, "name": "Story & Role-play Genres", "cost": 3_500, "work": 230, "prereq": ("product_foundations",), "effect": "Adventure, RPG, Visual Novel and related genres"},
+    {"key": "genre_systems", "branch": "Product", "tier": 1, "name": "Systems & Strategy Genres", "cost": 3_500, "work": 230, "prereq": ("product_foundations",), "effect": "Strategy, simulation and building genres"},
+    {"key": "theme_library_1", "branch": "Product", "tier": 1, "name": "Expanded Theme Library I", "cost": 2_500, "work": 180, "prereq": ("product_foundations",), "effect": "Unlock 25% of the extended theme catalogue"},
+    {"key": "mid_production", "branch": "Product", "tier": 2, "name": "Mid-size Production", "cost": 28_000, "work": 700, "prereq": ("small_production", "production_pipeline"), "effect": "Unlock Mid-size games"},
+    {"key": "online_coop", "branch": "Product", "tier": 2, "name": "Connected Games", "cost": 35_000, "work": 850, "prereq": ("small_production",), "effect": "Unlock online co-op"},
+    {"key": "genre_action", "branch": "Product", "tier": 2, "name": "Action & Competition Genres", "cost": 18_000, "work": 620, "prereq": ("small_production",), "effect": "Shooters, fighting, racing and sports genres"},
+    {"key": "genre_indie", "branch": "Product", "tier": 2, "name": "Modern Indie Genres", "cost": 18_000, "work": 620, "prereq": ("small_production",), "effect": "Roguelikes, deckbuilders, cozy and hybrid genres"},
+    {"key": "theme_library_2", "branch": "Product", "tier": 2, "name": "Expanded Theme Library II", "cost": 14_000, "work": 500, "prereq": ("theme_library_1",), "effect": "Unlock another 25% of themes"},
+    {"key": "ambitious_production", "branch": "Product", "tier": 3, "name": "Ambitious Production", "cost": 120_000, "work": 1_800, "prereq": ("mid_production", "department_leads"), "effect": "Unlock Ambitious games"},
+    {"key": "competitive_online", "branch": "Product", "tier": 3, "name": "Competitive Networking", "cost": 160_000, "work": 2_000, "prereq": ("online_coop", "qa"), "effect": "Unlock competitive online games"},
+    {"key": "theme_library_3", "branch": "Product", "tier": 3, "name": "Expanded Theme Library III", "cost": 55_000, "work": 1_400, "prereq": ("theme_library_2",), "effect": "Unlock another 25% of themes"},
+    {"key": "large_production", "branch": "Product", "tier": 4, "name": "Large-scale Production", "cost": 650_000, "work": 5_000, "prereq": ("ambitious_production", "advanced_coordination"), "effect": "Unlock Large games"},
+    {"key": "persistent_worlds", "branch": "Product", "tier": 4, "name": "Persistent Worlds", "cost": 850_000, "work": 6_000, "prereq": ("competitive_online", "live_operations"), "effect": "Unlock persistent-world games"},
+    {"key": "theme_library_4", "branch": "Product", "tier": 4, "name": "Complete Theme Archive", "cost": 220_000, "work": 3_500, "prereq": ("theme_library_3",), "effect": "Unlock every theme"},
+    {"key": "blockbuster_production", "branch": "Product", "tier": 5, "name": "Blockbuster Production", "cost": 4_500_000, "work": 12_000, "prereq": ("large_production", "executive_management"), "effect": "Unlock Blockbuster games"},
+    {"key": "mmo_technology", "branch": "Product", "tier": 5, "name": "Massive Online Technology", "cost": 8_000_000, "work": 15_000, "prereq": ("persistent_worlds", "blockbuster_production"), "effect": "Unlock MMO development"},
+    {"key": "internal_engine", "branch": "Product", "tier": 5, "name": "Internal Engine Program", "cost": 3_200_000, "work": 10_000, "prereq": ("large_production", "research_lab"), "effect": "Unlock engine projects (preview)"},
 
     # Studio operations
     {"key": "garage_workflow", "branch": "Operations", "tier": 0, "name": "Garage Workflow", "cost": 0, "work": 0, "prereq": (), "effect": "One project and manual management"},
-    {"key": "hardware", "branch": "Operations", "tier": 1, "name": "Current Workstations", "cost": 7_500, "work": 300, "monthly": 120, "prereq": ("garage_workflow",), "effect": "+10% work output"},
-    {"key": "tools", "branch": "Operations", "tier": 1, "name": "Professional Toolchain", "cost": 11_000, "work": 420, "monthly": 350, "prereq": ("garage_workflow",), "effect": "+4 release quality"},
-    {"key": "production_pipeline", "branch": "Operations", "tier": 2, "name": "Production Pipeline", "cost": 18_000, "work": 900, "prereq": ("hardware",), "effect": "Better coordination for teams above five"},
-    {"key": "qa", "branch": "Operations", "tier": 2, "name": "QA Device Library", "cost": 12_000, "work": 800, "monthly": 180, "prereq": ("tools",), "effect": "Fewer defects and faster discovery"},
-    {"key": "research_lab", "branch": "Operations", "tier": 2, "name": "Research Lab", "cost": 25_000, "work": 1_100, "monthly": 400, "prereq": ("production_pipeline",), "effect": "+20% research output"},
-    {"key": "department_leads", "branch": "Operations", "tier": 3, "name": "Department Leads", "cost": 55_000, "work": 2_200, "monthly": 800, "prereq": ("production_pipeline", "mentorship"), "effect": "Unlock automatic work priorities"},
-    {"key": "portfolio_management", "branch": "Operations", "tier": 3, "name": "Portfolio Management", "cost": 65_000, "work": 2_600, "monthly": 500, "prereq": ("department_leads", "content_updates"), "effect": "Set released games to active, maintenance or sunset support"},
-    {"key": "advanced_coordination", "branch": "Operations", "tier": 4, "name": "Advanced Coordination", "cost": 180_000, "work": 5_000, "monthly": 1_800, "prereq": ("department_leads",), "effect": "Large teams retain more marginal output"},
-    {"key": "executive_management", "branch": "Operations", "tier": 5, "name": "Executive Management", "cost": 650_000, "work": 9_000, "monthly": 5_000, "prereq": ("advanced_coordination",), "effect": "Late-game automation and lower off-branch penalty"},
+    {"key": "hardware", "branch": "Operations", "tier": 1, "name": "Current Workstations", "cost": 12_000, "work": 300, "monthly": 180, "prereq": ("garage_workflow",), "effect": "+10% work output"},
+    {"key": "tools", "branch": "Operations", "tier": 1, "name": "Professional Toolchain", "cost": 18_000, "work": 420, "monthly": 450, "prereq": ("garage_workflow",), "effect": "+4 release quality"},
+    {"key": "production_pipeline", "branch": "Operations", "tier": 2, "name": "Production Pipeline", "cost": 42_000, "work": 900, "prereq": ("hardware",), "effect": "Better coordination for teams above five"},
+    {"key": "qa", "branch": "Operations", "tier": 2, "name": "QA Device Library", "cost": 28_000, "work": 800, "monthly": 320, "prereq": ("tools",), "effect": "Fewer defects and faster discovery"},
+    {"key": "research_lab", "branch": "Operations", "tier": 2, "name": "Research Lab", "cost": 55_000, "work": 1_100, "monthly": 650, "prereq": ("production_pipeline",), "effect": "+20% research output"},
+    {"key": "department_leads", "branch": "Operations", "tier": 3, "name": "Department Leads", "cost": 140_000, "work": 2_200, "monthly": 1_400, "prereq": ("production_pipeline", "mentorship"), "effect": "Unlock automatic work priorities"},
+    {"key": "portfolio_management", "branch": "Operations", "tier": 3, "name": "Portfolio Management", "cost": 160_000, "work": 2_600, "monthly": 850, "prereq": ("department_leads", "content_updates"), "effect": "Set released games to active, maintenance or sunset support"},
+    {"key": "advanced_coordination", "branch": "Operations", "tier": 4, "name": "Advanced Coordination", "cost": 520_000, "work": 5_000, "monthly": 3_200, "prereq": ("department_leads",), "effect": "Large teams retain more marginal output"},
+    {"key": "executive_management", "branch": "Operations", "tier": 5, "name": "Executive Management", "cost": 2_200_000, "work": 9_000, "monthly": 9_000, "prereq": ("advanced_coordination",), "effect": "Late-game automation and lower off-branch penalty"},
 
     # People and culture
     {"key": "basic_rest", "branch": "People", "tier": 0, "name": "Basic Rest Policy", "cost": 0, "work": 0, "prereq": (), "effect": "Manual one-week vacations"},
-    {"key": "mentorship", "branch": "People", "tier": 1, "name": "Mentorship", "cost": 3_000, "work": 260, "prereq": ("basic_rest",), "effect": "+25% experience gain"},
-    {"key": "structured_training", "branch": "People", "tier": 1, "name": "Structured Training", "cost": 5_000, "work": 380, "prereq": ("basic_rest",), "effect": "Training takes three weeks"},
-    {"key": "paid_leave", "branch": "People", "tier": 2, "name": "Paid Leave Program", "cost": 8_000, "work": 650, "monthly": 120, "per_employee": 40, "prereq": ("structured_training",), "effect": "Vacations recover more fatigue and morale"},
-    {"key": "health", "branch": "People", "tier": 2, "name": "Health Plan", "cost": 12_000, "work": 850, "monthly": 650, "per_employee": 280, "prereq": ("paid_leave",), "effect": "Slower fatigue and burnout recovery"},
-    {"key": "coworking", "branch": "People", "tier": 2, "name": "Coworking Studio", "cost": 18_000, "work": 900, "monthly": 1_450, "prereq": ("paid_leave",), "effect": "+5 monthly morale"},
-    {"key": "auto_leave", "branch": "People", "tier": 3, "name": "Sustainable Scheduling", "cost": 35_000, "work": 1_800, "prereq": ("health", "department_leads"), "effect": "Automatically schedule vacation at high fatigue"},
-    {"key": "academy", "branch": "People", "tier": 4, "name": "Internal Academy", "cost": 150_000, "work": 4_500, "monthly": 2_500, "prereq": ("mentorship", "structured_training"), "effect": "+35% experience and stronger courses"},
+    {"key": "mentorship", "branch": "People", "tier": 1, "name": "Mentorship", "cost": 5_000, "work": 260, "prereq": ("basic_rest",), "effect": "+25% experience gain"},
+    {"key": "structured_training", "branch": "People", "tier": 1, "name": "Structured Training", "cost": 8_000, "work": 380, "prereq": ("basic_rest",), "effect": "Training takes three weeks"},
+    {"key": "paid_leave", "branch": "People", "tier": 2, "name": "Paid Leave Program", "cost": 16_000, "work": 650, "monthly": 180, "per_employee": 55, "prereq": ("structured_training",), "effect": "Vacations recover more fatigue and morale"},
+    {"key": "health", "branch": "People", "tier": 2, "name": "Health Plan", "cost": 28_000, "work": 850, "monthly": 900, "per_employee": 380, "prereq": ("paid_leave",), "effect": "Slower fatigue and burnout recovery"},
+    {"key": "coworking", "branch": "People", "tier": 2, "name": "Coworking Studio", "cost": 40_000, "work": 900, "monthly": 2_200, "prereq": ("paid_leave",), "effect": "+5 monthly morale"},
+    {"key": "auto_leave", "branch": "People", "tier": 3, "name": "Sustainable Scheduling", "cost": 85_000, "work": 1_800, "prereq": ("health", "department_leads"), "effect": "Automatically schedule vacation at high fatigue"},
+    {"key": "academy", "branch": "People", "tier": 4, "name": "Internal Academy", "cost": 420_000, "work": 4_500, "monthly": 4_500, "prereq": ("mentorship", "structured_training"), "effect": "+35% experience and stronger courses"},
 
     # Marketing and business
     {"key": "contract_basics", "branch": "Business", "tier": 0, "name": "Contract Basics", "cost": 0, "work": 0, "prereq": (), "effect": "Manual contract work"},
-    {"key": "promotion_basics", "branch": "Business", "tier": 1, "name": "Community Marketing", "cost": 4_000, "work": 350, "prereq": ("contract_basics",), "effect": "Unlock community launch plans and social promotion"},
-    {"key": "market_research", "branch": "Business", "tier": 1, "name": "Market Research", "cost": 5_000, "work": 420, "prereq": ("contract_basics",), "effect": "+10 forecast confidence"},
-    {"key": "targeted_marketing", "branch": "Business", "tier": 2, "name": "Targeted Marketing", "cost": 15_000, "work": 900, "prereq": ("promotion_basics",), "effect": "Unlock targeted campaigns and press outreach"},
-    {"key": "mobile_distribution", "branch": "Business", "tier": 2, "name": "Mobile Distribution", "cost": 20_000, "work": 1_000, "prereq": ("market_research",), "effect": "Unlock mobile storefronts"},
-    {"key": "creator_relations", "branch": "Business", "tier": 3, "name": "Creator Relations", "cost": 45_000, "work": 2_000, "prereq": ("targeted_marketing",), "effect": "Unlock creator and streamer campaigns"},
-    {"key": "console_certification", "branch": "Business", "tier": 3, "name": "Console Certification", "cost": 75_000, "work": 2_500, "prereq": ("mobile_distribution", "qa"), "effect": "Unlock console storefronts"},
-    {"key": "analytics", "branch": "Business", "tier": 3, "name": "Store Analytics", "cost": 30_000, "work": 1_600, "monthly": 190, "prereq": ("market_research",), "effect": "+2% weekly sales retention"},
-    {"key": "event_marketing", "branch": "Business", "tier": 4, "name": "Events & Showcases", "cost": 120_000, "work": 4_000, "prereq": ("creator_relations",), "effect": "Unlock events and premium showcases"},
-    {"key": "contract_automation", "branch": "Business", "tier": 4, "name": "Client Relations Office", "cost": 100_000, "work": 3_500, "prereq": ("department_leads",), "effect": "Unlock automatic contract policies"},
+    {"key": "promotion_basics", "branch": "Business", "tier": 1, "name": "Community Marketing", "cost": 6_500, "work": 350, "prereq": ("contract_basics",), "effect": "Unlock community launch plans and social promotion"},
+    {"key": "market_research", "branch": "Business", "tier": 1, "name": "Market Research", "cost": 8_000, "work": 420, "prereq": ("contract_basics",), "effect": "+10 forecast confidence"},
+    {"key": "targeted_marketing", "branch": "Business", "tier": 2, "name": "Targeted Marketing", "cost": 32_000, "work": 900, "prereq": ("promotion_basics",), "effect": "Unlock targeted campaigns and press outreach"},
+    {"key": "mobile_distribution", "branch": "Business", "tier": 2, "name": "Mobile Distribution", "cost": 45_000, "work": 1_000, "prereq": ("market_research",), "effect": "Unlock mobile storefronts"},
+    {"key": "creator_relations", "branch": "Business", "tier": 3, "name": "Creator Relations", "cost": 110_000, "work": 2_000, "prereq": ("targeted_marketing",), "effect": "Unlock creator and streamer campaigns"},
+    {"key": "console_certification", "branch": "Business", "tier": 3, "name": "Console Certification", "cost": 220_000, "work": 2_500, "prereq": ("mobile_distribution", "qa"), "effect": "Unlock console storefronts"},
+    {"key": "analytics", "branch": "Business", "tier": 3, "name": "Store Analytics", "cost": 75_000, "work": 1_600, "monthly": 350, "prereq": ("market_research",), "effect": "+2% weekly sales retention"},
+    {"key": "event_marketing", "branch": "Business", "tier": 4, "name": "Events & Showcases", "cost": 320_000, "work": 4_000, "prereq": ("creator_relations",), "effect": "Unlock events and premium showcases"},
+    {"key": "contract_automation", "branch": "Business", "tier": 4, "name": "Client Relations Office", "cost": 260_000, "work": 3_500, "prereq": ("department_leads",), "effect": "Unlock automatic contract policies"},
 
     # Live operations
     {"key": "basic_support", "branch": "Live Ops", "tier": 0, "name": "Basic Support", "cost": 0, "work": 0, "prereq": (), "effect": "Hotfixes and patches"},
-    {"key": "content_updates", "branch": "Live Ops", "tier": 1, "name": "Content Updates", "cost": 6_000, "work": 500, "prereq": ("basic_support",), "effect": "Unlock content updates"},
-    {"key": "expansion_pipeline", "branch": "Live Ops", "tier": 2, "name": "Expansion Pipeline", "cost": 22_000, "work": 1_300, "prereq": ("content_updates", "production_pipeline"), "effect": "Unlock expansions"},
-    {"key": "paid_dlc", "branch": "Live Ops", "tier": 3, "name": "Paid DLC Pipeline", "cost": 55_000, "work": 2_500, "prereq": ("expansion_pipeline", "targeted_marketing"), "effect": "Unlock Paid DLC and DLC roadmaps"},
-    {"key": "live_operations", "branch": "Live Ops", "tier": 4, "name": "Live Operations Department", "cost": 180_000, "work": 5_000, "monthly": 2_200, "prereq": ("paid_dlc", "department_leads"), "effect": "Unlock live-service plans"},
-    {"key": "automated_deployment", "branch": "Live Ops", "tier": 4, "name": "Automated Deployment", "cost": 110_000, "work": 3_800, "prereq": ("qa", "expansion_pipeline"), "effect": "+20% update and DLC output"},
+    {"key": "content_updates", "branch": "Live Ops", "tier": 1, "name": "Content Updates", "cost": 12_000, "work": 500, "prereq": ("basic_support",), "effect": "Unlock content updates"},
+    {"key": "expansion_pipeline", "branch": "Live Ops", "tier": 2, "name": "Expansion Pipeline", "cost": 55_000, "work": 1_300, "prereq": ("content_updates", "production_pipeline"), "effect": "Unlock expansions"},
+    {"key": "paid_dlc", "branch": "Live Ops", "tier": 3, "name": "Paid DLC Pipeline", "cost": 150_000, "work": 2_500, "prereq": ("expansion_pipeline", "targeted_marketing"), "effect": "Unlock Paid DLC and DLC roadmaps"},
+    {"key": "live_operations", "branch": "Live Ops", "tier": 4, "name": "Live Operations Department", "cost": 520_000, "work": 5_000, "monthly": 4_500, "prereq": ("paid_dlc", "department_leads"), "effect": "Unlock live-service plans"},
+    {"key": "automated_deployment", "branch": "Live Ops", "tier": 4, "name": "Automated Deployment", "cost": 280_000, "work": 3_800, "prereq": ("qa", "expansion_pipeline"), "effect": "+20% update and DLC output"},
 )
 
 # Kept as the public name used by the existing Upgrades page and tests.
@@ -235,10 +237,10 @@ FRANCHISE_RANKS = ("Unknown", "Niche", "Recognized", "Established", "Popular", "
 FRANCHISE_RANK_THRESHOLDS = (10_000, 100_000, 500_000, 1_000_000, 2_500_000, 5_000_000, 10_000_000)
 
 MEDIA_VENTURES = (
-    {"key": "merch", "name": "Merchandise line", "cost": 6_000, "weeks": 26, "rank": 1, "effect": "Steady weekly merch revenue from the fanbase"},
-    {"key": "convention", "name": "Fan convention", "cost": 25_000, "weeks": 3, "rank": 4, "effect": "Big awareness and hype surge for the whole IP"},
-    {"key": "film", "name": "Film adaptation", "cost": 120_000, "weeks": 40, "rank": 5, "effect": "Box-office release after production; quality decides the payoff"},
-    {"key": "series", "name": "Series adaptation", "cost": 220_000, "weeks": 52, "rank": 5, "effect": "Prestige streaming series; the largest transmedia payoff"},
+    {"key": "merch", "name": "Merchandise line", "cost": 28_000, "weeks": 26, "rank": 1, "effect": "Steady weekly merch revenue from the fanbase"},
+    {"key": "convention", "name": "Fan convention", "cost": 180_000, "weeks": 3, "rank": 4, "effect": "Big awareness and hype surge for the whole IP"},
+    {"key": "film", "name": "Film adaptation", "cost": 2_800_000, "weeks": 40, "rank": 5, "effect": "Box-office release after production; quality decides the payoff"},
+    {"key": "series", "name": "Series adaptation", "cost": 6_500_000, "weeks": 52, "rank": 5, "effect": "Prestige streaming series; the largest transmedia payoff"},
 )
 
 COMPETITOR_STUDIOS = (
@@ -705,7 +707,7 @@ class ResearchJob:
 
 @dataclass
 class Studio:
-    cash: float = 75_000.0
+    cash: float = 100_000.0
     followers: int = 40
     reputation: float = 0.0
     released_games: int = 0
@@ -798,9 +800,16 @@ class GameState:
     settings_open: bool = False
     settings_resume_on_close: bool = False
     selected_setting_action: int = 0
+    save_picker_open: bool = False
+    save_picker_mode: str = ""
+    selected_save_slot: int = 0
+    save_slots: list[str] = field(default_factory=list)
     training_open: bool = False
     training_resume_on_close: bool = False
     selected_training_skill: int = 0
+    cancel_project_open: bool = False
+    cancel_project_resume_on_close: bool = False
+    selected_cancel_project_action: int = 0
     new_game_step: int = 0
     team_tab: int = 0
     analysis_view: int = 0
@@ -834,7 +843,7 @@ class GameState:
             seed_market(self)
         if not self.logs:
             self.logs = [
-                f"{self.clock.current_date:%d %b %Y}: you open a bootstrapped indie studio with $75,000.",
+                f"{self.clock.current_date:%d %b %Y}: you open a bootstrapped indie studio with $100,000.",
                 "Cash is runway. Payroll, software, insurance, tax, refunds, and store cuts are real.",
                 "Start in the Hub for an overview. Tab cycles pages; G opens Game, J opens Jobs, and T opens Team.",
             ]
@@ -939,11 +948,11 @@ def market_truth(state: GameState) -> dict:
     score = max(8, min(96, score))
     competitors = max(1, round(2 + demand * 3 + (3 if genre in modern else 0) + max(0, trend) / 4 + rng.uniform(-2, 2)))
     audience_size = round(
-        42_000
+        48_000
         * demand
         * audience["market"]
         * game_format["market"]
-        * scope["market"]
+        * scope.get("sales", scope["market"])
         * (0.65 + score / 100)
     )
     opportunity = max(1, round(audience_size / competitors))
@@ -1799,6 +1808,7 @@ def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
     state.selected_creative_secondary = next((index for index, item in enumerate(CREATIVE_DIRECTIONS) if item["name"] == game.creative_secondary), 3)
     state.selected_release_strategy = next((index for index, item in enumerate(RELEASE_STRATEGIES) if item["name"] == game.release_strategy), 0)
     state.sequel_game_id = game.game_id
+    state.spinoff_franchise_id = game.franchise_id
     base_title = game.title
     if game.generation > 1:
         current_suffix = f" {roman_number(game.generation)}"
@@ -2148,16 +2158,21 @@ def estimated_contract_weeks(studio: Studio, contract: Contract) -> int:
     return max(1, math.ceil(remaining / max(0.1, contract_weekly_output(studio, contract.focus))))
 
 
+def contract_offer_eta_weeks(contract: Contract) -> int:
+    """Return the workload estimate quoted when this offer was generated."""
+    return max(1, contract.weeks_left - 2 - contract.difficulty // 2)
+
+
 def generate_contract_offer(studio: Studio, rng: random.Random, difficulty: int) -> Contract:
     focus = rng.choice(tuple(CONTRACT_TYPES))
     required_work = 65 + difficulty * 55 + rng.randint(0, 45)
     reputation_required = max(0, (difficulty - 1) * 15)
-    rate = 50 + difficulty * 14 + studio.contractor_reputation * 1.15
+    rate = 85 + difficulty * 28 + studio.contractor_reputation * 2.0
     payout = round(required_work * rate / 500) * 500
     provisional = Contract(
         rng.choice(CONTRACT_TYPES[focus]),
         1,
-        max(3_000, payout),
+        max(5_000, payout),
         studio.next_contract_id,
         rng.choice(CONTRACT_CLIENTS),
         focus,
@@ -2295,13 +2310,20 @@ def finish_project(state: GameState) -> None:
     marketing = marketing_by_name(project.marketing_name)
     genre_audience = studio.genre_fans.get(project.genre, 0)
     sequel_audience = genre_audience * 0.45 if project.sequel_of else genre_audience * 0.10
-    discoverability = 75 + marketing["boost"] + project.hype * 8 + studio.followers * 0.12 + studio.reputation * 3 + sequel_audience
+    discoverability = 80 + marketing["boost"] + project.hype * 8 + studio.followers * 0.12 + studio.reputation * 3 + sequel_audience
     quality_multiplier = max(0.12, (score / 72) ** 3)
-    scope_multiplier = scope_by_name(project.scope)["market"] * 1.7
+    scope_data = scope_by_name(project.scope)
+    format_data = format_by_name(project.game_format)
+    strategy_data = release_strategy_by_name(project.release_strategy)
+    scope_multiplier = (
+        scope_data.get("sales", scope_data["market"])
+        * format_data.get("sales", 1.0)
+        * strategy_data.get("sales", 1.0)
+    )
     market_multiplier = max(0.4, project.market_score / 60) * max(0.55, 1 - project.competitors * 0.025) * max(0.6, 1 - genre_release_pressure(studio, project.genre) * 0.12)
-    units = max(12, round(discoverability * quality_multiplier * scope_multiplier * project.reach * market_multiplier * 25))
-    units = min(max(12, round(project.addressable_audience * 0.18)), units) if project.addressable_audience else units
-    evergreen_units = max(1, round((score / 100) ** 4 * scope_multiplier * 240 + genre_audience / 800))
+    units = max(18, round(discoverability * quality_multiplier * scope_multiplier * project.reach * market_multiplier * 16))
+    units = min(max(18, round(project.addressable_audience * 0.20)), units) if project.addressable_audience else units
+    evergreen_units = max(2, round((score / 100) ** 3.4 * scope_multiplier * 160 + genre_audience / 650))
     game_id = studio.next_game_id
     studio.next_game_id += 1
     known_bugs = min(project.known_defects, max(0, project.defects - 0.01))
@@ -2581,6 +2603,30 @@ def buy_promotion(state: GameState, game_id: int, promotion_index: int) -> bool:
     studio.next_promotion_id += 1
     status = "Started" if was_idle else "Queued"
     state.log(f"{status} {promotion['name']} for {target_title}: ${promotion['cost']:,}, {promotion['weeks']} weeks, +{promotion['hype']} potential hype.")
+    return True
+
+
+def project_cash_spent(project: Project) -> float:
+    """Cash charged to the project (setup, fees, marketing). Labor is payroll, not a project debit."""
+    return project.production_cost + project.marketing_cost
+
+
+def cancel_current_project(state: GameState) -> bool:
+    project = state.studio.current_project
+    if project is None:
+        state.log("There is no project in development to cancel.")
+        return False
+    spent = project_cash_spent(project)
+    refund = round(spent * 0.20)
+    state.studio.active_promotions = [item for item in state.studio.active_promotions if item.game_id != 0]
+    if refund:
+        add_revenue(state.studio, refund, "Production refunds")
+    title = project.title
+    state.studio.current_project = None
+    catalogue_count = len(state.studio.catalog)
+    state.selected_game = min(state.selected_game, max(0, catalogue_count - 1)) if catalogue_count else 0
+    loss = spent - refund
+    state.log(f"Cancelled {title}; recovered ${refund:,.0f} (20%) and wrote off ${loss:,.0f}.")
     return True
 
 

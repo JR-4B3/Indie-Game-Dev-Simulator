@@ -48,19 +48,24 @@ from simulation import (
     toggle_auto_contracts,
 )
 from ui_chrome import (
+    CANCEL_PROJECT_ACTION_ROWS,
     SETTINGS_ACTION_ROWS,
     TOP_TABS,
     activate_settings_action,
     activate_top_tab,
     active_top_tab,
     bottom_time_layout,
+    cancel_project_popup_geometry,
+    close_cancel_project,
     close_settings,
     close_training,
+    confirm_cancel_project,
     confirm_training,
     cycle_top_tab,
     delete_save_and_restart,
     footer_button_ranges,
     horizontal_actions,
+    open_cancel_project,
     open_settings,
     open_training,
     production_review_geometry,
@@ -77,6 +82,7 @@ from ui_newgame import PLAN_FIELDS, available_genre_indices, base_game_choices, 
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
 from ui_title import TITLE_MENU, title_layout
+from ui_saves import close_save_picker, confirm_save_slot, open_save_picker
 
 
 CTRL_S = 19
@@ -101,6 +107,8 @@ def open_new_game(state: GameState) -> None:
     state.selected_focus = 0
     state.selected_sequel_choice = 0
     state.new_game_kind = ""
+    state.sequel_game_id = None
+    state.spinoff_franchise_id = None
     state.mix_blend = False
 
 
@@ -238,6 +246,14 @@ def perform_footer_action(state: GameState, action: str) -> bool:
             state.selected_queue_cancellation = (state.selected_queue_cancellation + 1) % count
     elif action == "cancel_selected_queue_item":
         cancel_selected_queue_item(state)
+    elif action == "open_cancel_project":
+        open_cancel_project(state)
+    elif action == "close_cancel_project":
+        close_cancel_project(state)
+    elif action == "cancel_project_option":
+        state.selected_cancel_project_action = (state.selected_cancel_project_action + 1) % 2
+    elif action == "confirm_cancel_project":
+        confirm_cancel_project(state)
     elif action == "buy_promotion":
         targets = promotion_targets(state)
         if state.marketing_tab == 2 and targets:
@@ -384,6 +400,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
             if kind == "new":
                 state.new_game_kind = ""
                 state.sequel_game_id = None
+                state.spinoff_franchise_id = None
                 state.selected_secondary_genre = state.selected_genre
                 state.selected_secondary_topic = state.selected_topic
                 state.new_game_step = 0
@@ -506,9 +523,10 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         attribute, count = fields[state.selected_focus]
         setattr(state, attribute, (getattr(state, attribute) + delta) % count)
     if previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic):
-        state.sequel_game_id = None
-        state.title_roll += 1
-        refresh_draft_title(state)
+        # Sequels/spin-offs keep their IP link even if genre/theme is remixed.
+        if not state.sequel_game_id and not state.spinoff_franchise_id:
+            state.title_roll += 1
+            refresh_draft_title(state)
 
 
 def handle_team_key(state: GameState, key: int) -> None:
@@ -550,6 +568,10 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
     wheel_down = bool(buttons & getattr(curses, "BUTTON5_PRESSED", 0))
     if wheel_up or wheel_down:
         if state.settings_open:
+            return
+        if state.cancel_project_open:
+            delta = -1 if wheel_up else 1
+            state.selected_cancel_project_action = (state.selected_cancel_project_action + delta) % 2
             return
         if state.queue_cancellation:
             count = queue_cancellation_count(state)
@@ -606,6 +628,9 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
     if right_click and state.settings_open:
         close_settings(state)
         return
+    if right_click and state.cancel_project_open:
+        close_cancel_project(state)
+        return
     project = state.studio.current_project
     if right_click and (state.training_open or (project and project.pending_decision is not None)):
         return
@@ -638,6 +663,16 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                 state.selected_training_skill = y - start_row
                 if double_click:
                     confirm_training(state)
+        return
+    if state.cancel_project_open:
+        _, popup_width, popup_y, popup_x = cancel_project_popup_geometry(width, height)
+        if popup_x <= x < popup_x + popup_width:
+            for action_index, row in enumerate(CANCEL_PROJECT_ACTION_ROWS):
+                if y == popup_y + row:
+                    state.selected_cancel_project_action = action_index
+                    if double_click:
+                        confirm_cancel_project(state)
+                    break
         return
     if project and project.pending_decision is not None and not state.settings_open:
         _, popup_width, popup_y, popup_x = production_review_geometry(width, height)
@@ -841,6 +876,7 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         if 4 <= y < 2 + top_height - 1:
             visible = top_height - 3
             row = y - 4
+            previous_concept = (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
             target_step = 0 if x < genre_width else 1 if genre_width < x < plan_x else 2
             if state.mix_blend and target_step != state.new_game_step:
                 close_blend(state, confirm=False)
@@ -900,8 +936,12 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     state.selected_focus = field
                     if double_click:
                         handle_new_game_key(state, 10)
-            if state.new_game_step in (0, 1):
-                state.sequel_game_id = None
+            if (
+                state.new_game_step in (0, 1)
+                and previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
+                and not state.sequel_game_id
+                and not state.spinoff_franchise_id
+            ):
                 state.title_roll += 1
                 refresh_draft_title(state)
         else:
@@ -925,14 +965,7 @@ def activate_title_choice(state: GameState) -> bool:
         state.log("Started a new studio from the title screen.")
         return True
     if choice == "Load Game":
-        try:
-            loaded_state = load_game(state.save_path)
-        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as error:
-            state.title_message = f"Could not load save: {error}"
-            return True
-        state.__dict__.clear()
-        state.__dict__.update(loaded_state.__dict__)
-        state.log(f"Loaded studio from {state.save_path}.")
+        open_save_picker(state, "load")
         return True
     if choice == "Settings":
         open_settings(state)
@@ -983,17 +1016,40 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
     if key == CTRL_S:
         save_state(state)
         return True
+    if state.save_picker_open:
+        count = len(state.save_slots) + (1 if state.save_picker_mode == "save" else 0)
+        if key in ESCAPE_KEYS or key in (8, 127, curses.KEY_BACKSPACE):
+            close_save_picker(state)
+        elif key == curses.KEY_UP and count:
+            state.selected_save_slot = (state.selected_save_slot - 1) % count
+        elif key == curses.KEY_DOWN and count:
+            state.selected_save_slot = (state.selected_save_slot + 1) % count
+        elif key in (10, 13, curses.KEY_ENTER):
+            confirm_save_slot(state)
+        return True
     if state.settings_open:
         if key in ESCAPE_KEYS:
             close_settings(state)
         elif key in (ord("q"), ord("Q")):
             return False
         elif key == curses.KEY_UP:
-            state.selected_setting_action = (state.selected_setting_action - 1) % 3
+            state.selected_setting_action = (state.selected_setting_action - 1) % 4
         elif key == curses.KEY_DOWN:
-            state.selected_setting_action = (state.selected_setting_action + 1) % 3
+            state.selected_setting_action = (state.selected_setting_action + 1) % 4
         elif key in (10, 13, curses.KEY_ENTER):
             return activate_settings_action(state)
+        elif key == curses.KEY_MOUSE and dimensions is not None:
+            return handle_mouse(state, dimensions) is not False
+        return True
+    if state.cancel_project_open:
+        if key in ESCAPE_KEYS or key in (8, 127, curses.KEY_BACKSPACE):
+            close_cancel_project(state)
+        elif key == curses.KEY_UP:
+            state.selected_cancel_project_action = (state.selected_cancel_project_action - 1) % 2
+        elif key == curses.KEY_DOWN:
+            state.selected_cancel_project_action = (state.selected_cancel_project_action + 1) % 2
+        elif key in (10, 13, curses.KEY_ENTER):
+            confirm_cancel_project(state)
         elif key == curses.KEY_MOUSE and dimensions is not None:
             return handle_mouse(state, dimensions) is not False
         return True
@@ -1108,6 +1164,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.selected_game = (state.selected_game + 1) % entry_count
         elif key in (ord("p"), ord("P")):
             perform_footer_action(state, "game_marketing")
+        elif key in (ord("c"), ord("C")) and project and state.selected_game == 0:
+            open_cancel_project(state)
         elif key in (ord("x"), ord("X")) and games:
             perform_footer_action(state, "cycle_support")
     elif state.modal == "update_planner":

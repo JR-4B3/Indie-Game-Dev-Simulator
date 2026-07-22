@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import curses
 
-from simulation import GameState, estimated_contract_weeks
+from simulation import GameState, contract_offer_eta_weeks, estimated_contract_weeks
 from ui_common import add_text, draw_box, draw_selectable_list, money
 
 
@@ -38,7 +38,7 @@ def draw_contract_screen(screen: curses.window, state: GameState, width: int, he
     add_text(board, 1, 2, board_header, board_inner, curses.A_BOLD)
     offer_rows = []
     for contract in studio.contract_offers[: panel_height - 3]:
-        estimate = estimated_contract_weeks(studio, contract)
+        estimate = contract_offer_eta_weeks(contract)
         locked = studio.contractor_reputation < contract.reputation_required
         if board_expanded:
             text = f"{contract.client[:client_width]:<{client_width}} {contract.title[:job_width]:<{job_width}} {contract.focus[:focus_width]:<{focus_width}} {contract.difficulty:>5} {money(contract.payout):>10} {estimate:>4}w {contract.weeks_left:>4}w {contract.reputation_required:>7}"

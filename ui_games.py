@@ -307,8 +307,8 @@ def draw_compact_detail(overview, updates, promotion, state: GameState, game, sa
 
 def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel_width: int, detail_height: int) -> None:
     """The single-panel overview of a released game: identity, condition,
-    ratings, audience, franchise IP, and economics — with meters and bars
-    instead of plain numbers wherever a comparison helps."""
+    ratings, audience, and economics — with meters and bars instead of plain
+    numbers wherever a comparison helps. Franchise IP lives in Promotion."""
     inner = panel_width - 4
     rating_attr = curses.color_pair(4) if game.score >= 70 else curses.color_pair(5) if game.score < 45 else 0
     add_text(panel, 1, 2, game_title(game), inner, curses.A_BOLD)
@@ -346,25 +346,8 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     add_text(panel, 15, 2, "AUDIENCE HEALTH", inner, curses.A_BOLD)
     add_text(panel, 16, 2, f"{audience_status:<8} Demand {weekly_sales:,}/w | {demand_multiple:.1f}x floor", inner, audience_attr)
     add_text(panel, 17, 2, f"RET [{meter(retention, 1, meter_width)}] {retention:>5.0%} | {game.monthly_players:,}/{game.peak_monthly_players:,} peak", inner)
-    add_text(panel, 19, 2, "FRANCHISE IP", inner, curses.A_BOLD)
-    franchise = franchise_for_game(state.studio, game)
-    if franchise:
-        rank = franchise.rank
-        if rank < len(FRANCHISE_RANK_THRESHOLDS):
-            target = FRANCHISE_RANK_THRESHOLDS[rank]
-            add_text(panel, 20, 2, f"{franchise.name[:20]} [{meter(franchise.total_units, target, meter_width)}] {franchise.total_units:,}/{target:,} units", inner, curses.color_pair(3))
-            add_text(panel, 21, 2, f"{franchise.rank_name} -> {FRANCHISE_RANKS[rank + 1]} | gen {game.generation} | {franchise.entries} releases", inner)
-        else:
-            add_text(panel, 20, 2, f"{franchise.name[:20]} [{'█' * meter_width}] {franchise.rank_name}", inner, curses.color_pair(3) | curses.A_BOLD)
-            add_text(panel, 21, 2, f"gen {game.generation} | {franchise.entries} releases", inner)
-        add_text(panel, 22, 2, f"FAT [{meter(franchise.fatigue, 120, meter_width)}] {franchise.fatigue:.0f} fatigue | {franchise.total_units:,} IP units", inner, curses.color_pair(5) if franchise.fatigue >= 90 else 0)
-        genre_fans = state.studio.genre_fans.get(game.genre, 0)
-        topic_fans = state.studio.topic_fans.get(game.topic, 0)
-        add_text(panel, 23, 2, f"{game.genre} fans {genre_fans:,} | Theme affinity {topic_fans:,}", inner)
-    else:
-        add_text(panel, 20, 2, f"Generation {game.generation} | no IP record", inner)
-    next_row = 25
-    if detail_height >= 34:
+    next_row = 19
+    if detail_height >= 28:
         add_text(panel, next_row, 2, "UNIT ECONOMICS", inner, curses.A_BOLD)
         total_cost = game_total_cost(game)
         cash_peak = max(game.net_revenue, total_cost, 1)
@@ -396,9 +379,32 @@ def project_recommendation(state: GameState, project) -> tuple[str, int]:
     return "On track. Keep capacity focused on production until release.", 4
 
 
-def draw_promotion_panel(panel: curses.window, state: GameState, game_id: int, inner: int, detail_height: int, campaign_load: float, recommendation: str | None = None, recommendation_color: int = 0, prelaunch_hype: float | None = None) -> None:
-    """The Promotion panel: recommendation, capacity, the running campaign
-    with its progress bar, and the numbered promotion queue."""
+def draw_franchise_ip_block(panel: curses.window, state: GameState, game, row: int, inner: int) -> int:
+    """Franchise IP summary for the selected released game. Returns next free row."""
+    meter_width = max(10, min(18, inner - 26))
+    add_text(panel, row, 2, "FRANCHISE IP", inner, curses.A_BOLD)
+    franchise = franchise_for_game(state.studio, game)
+    if franchise:
+        rank = franchise.rank
+        if rank < len(FRANCHISE_RANK_THRESHOLDS):
+            target = FRANCHISE_RANK_THRESHOLDS[rank]
+            add_text(panel, row + 1, 2, f"{franchise.name[:20]} [{meter(franchise.total_units, target, meter_width)}] {franchise.total_units:,}/{target:,} units", inner, curses.color_pair(3))
+            add_text(panel, row + 2, 2, f"{franchise.rank_name} -> {FRANCHISE_RANKS[rank + 1]} | gen {game.generation} | {franchise.entries} releases", inner)
+        else:
+            add_text(panel, row + 1, 2, f"{franchise.name[:20]} [{'█' * meter_width}] {franchise.rank_name}", inner, curses.color_pair(3) | curses.A_BOLD)
+            add_text(panel, row + 2, 2, f"gen {game.generation} | {franchise.entries} releases", inner)
+        add_text(panel, row + 3, 2, f"FAT [{meter(franchise.fatigue, 120, meter_width)}] {franchise.fatigue:.0f} fatigue | {franchise.total_units:,} IP units", inner, curses.color_pair(5) if franchise.fatigue >= 90 else 0)
+        genre_fans = state.studio.genre_fans.get(game.genre, 0)
+        topic_fans = state.studio.topic_fans.get(game.topic, 0)
+        add_text(panel, row + 4, 2, f"{game.genre} fans {genre_fans:,} | Theme affinity {topic_fans:,}", inner)
+        return row + 6
+    add_text(panel, row + 1, 2, f"Generation {game.generation} | no IP record", inner)
+    return row + 3
+
+
+def draw_promotion_panel(panel: curses.window, state: GameState, game_id: int, inner: int, detail_height: int, campaign_load: float, recommendation: str | None = None, recommendation_color: int = 0, prelaunch_hype: float | None = None, game=None) -> None:
+    """The Promotion panel: recommendation, franchise IP, capacity, the running
+    campaign with its progress bar, and the numbered promotion queue."""
     row = 1
     if recommendation is not None:
         recommendation_attr = curses.color_pair(recommendation_color) if recommendation_color in (4, 5) else 0
@@ -406,6 +412,8 @@ def draw_promotion_panel(panel: curses.window, state: GameState, game_id: int, i
         for offset, wrap_line in enumerate(wrap_text(recommendation, inner)[:3], 1):
             add_text(panel, row + offset, 2, wrap_line, inner, recommendation_attr)
         row += 5
+    if game is not None and getattr(game, "game_id", 0):
+        row = draw_franchise_ip_block(panel, state, game, row, inner)
     promotion_queue = state.studio.active_promotions
     active_promotion = promotion_queue[0] if promotion_queue else None
     promotions = [item for item in promotion_queue if item.game_id == game_id]
@@ -781,7 +789,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         add_text(updates, history_row, 2, f"Release history: {game.updates_released} updates | {game.dlcs_released} DLC", updates_inner)
 
     recommendation, recommendation_color = game_recommendation(game)
-    draw_promotion_panel(promotion, state, game.game_id, promotion_width - 4, detail_height, campaign_load, recommendation=recommendation, recommendation_color=recommendation_color)
+    draw_promotion_panel(promotion, state, game.game_id, promotion_width - 4, detail_height, campaign_load, recommendation=recommendation, recommendation_color=recommendation_color, game=game)
 
     if summary_height >= 5:
         draw_economics_strip(screen, state, game.title, bottom_y + detail_height, summary_height, width, positions, campaign_load)

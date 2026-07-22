@@ -26,7 +26,9 @@ from simulation import (
     PRODUCTION_DECISIONS,
     TIME_LABELS,
     GameState,
+    cancel_current_project,
     has_research,
+    project_cash_spent,
     runway_months,
     save_game,
     selected_roster_employee,
@@ -36,8 +38,8 @@ from simulation import (
 from ui_common import add_text, draw_box, live_games, meter, money
 
 
-SETTINGS_ACTIONS = ("Close", "Save", "Quit")
-SETTINGS_ACTION_ROWS = (6, 8, 10)
+SETTINGS_ACTIONS = ("Close", "Save", "New Save", "Quit")
+SETTINGS_ACTION_ROWS = (6, 8, 10, 12)
 TOP_TABS = (
     ("Hub", "H", "main"),
     ("Game", "G", "games"),
@@ -192,12 +194,20 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
         return [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Enter]" if compact else control_label("Enter", "Accept"), "accept_contract"), (control_label("C", "Auto") if compact else control_label("C", f"Auto {auto}"), "toggle_contracts")]
     if state.modal == "games":
         project = state.studio.current_project
+        if state.cancel_project_open:
+            return [
+                ("[Up/Dn]" if compact else control_label("Up/Down", "Option"), "cancel_project_option"),
+                ("[Enter]" if compact else control_label("Enter", "Confirm"), "confirm_cancel_project"),
+                ("[Bksp]" if compact else control_label("Backspace", "Keep project"), "close_cancel_project"),
+            ]
         if project and project.pending_decision is not None:
             return [
                 ("[Up/Dn]" if compact else control_label("Up/Down", "Option"), "production_option"),
                 ("[Enter]" if compact else control_label("Enter", "Commit Decision"), "resolve_decision"),
             ]
         actions = [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
+        if project and state.selected_game == 0:
+            actions.append(("[C]" if compact else control_label("C", "Cancel project"), "open_cancel_project"))
         if live_games(state) and has_research(state.studio, "portfolio_management"):
             actions.append(("[X]" if compact else control_label("X", "Support level"), "cycle_support"))
         return actions
@@ -385,7 +395,7 @@ def draw_footer(screen: curses.window, state: GameState, height: int, width: int
 
 def settings_popup_geometry(width: int, height: int) -> tuple[int, int, int, int]:
     popup_width = min(52, max(40, width // 3))
-    popup_height = 15
+    popup_height = 17
     popup_y = max(2, (height - popup_height) // 2)
     popup_x = max(1, (width - popup_width) // 2)
     return popup_height, popup_width, popup_y, popup_x
@@ -469,6 +479,47 @@ def draw_production_review(screen: curses.window, state: GameState, width: int, 
     add_text(panel, popup_height - 2, 3, "Up/Down chooses. Enter commits. Other controls are locked.", popup_width - 6, curses.color_pair(4))
 
 
+CANCEL_PROJECT_ACTIONS = ("Keep Project", "Cancel Project")
+CANCEL_PROJECT_ACTION_ROWS = (9, 11)
+
+
+def cancel_project_popup_geometry(width: int, height: int) -> tuple[int, int, int, int]:
+    popup_width = min(64, max(48, width // 2))
+    popup_height = 15
+    popup_y = max(2, (height - popup_height) // 2)
+    popup_x = max(1, (width - popup_width) // 2)
+    return popup_height, popup_width, popup_y, popup_x
+
+
+def draw_cancel_project_popup(screen: curses.window, state: GameState, width: int, height: int) -> None:
+    project = state.studio.current_project
+    if project is None:
+        return
+    spent = project_cash_spent(project)
+    refund = round(spent * 0.20)
+    loss = spent - refund
+    popup_height, popup_width, popup_y, popup_x = cancel_project_popup_geometry(width, height)
+    panel = screen.derwin(popup_height, popup_width, popup_y, popup_x)
+    panel.erase()
+    draw_box(panel, "Cancel Project")
+    add_text(panel, 1, 2, project.title, popup_width - 4, curses.A_BOLD)
+    add_text(panel, 3, 2, "Cancel this project in development?", popup_width - 4, curses.color_pair(5) | curses.A_BOLD)
+    add_text(panel, 4, 2, "You will lose most of the money spent on it.", popup_width - 4)
+    add_text(panel, 6, 2, f"Spent on project   {money(spent)}", popup_width - 4)
+    add_text(panel, 7, 2, f"Refund (20%)       {money(refund)}", popup_width - 4, curses.color_pair(4))
+    add_text(panel, 8, 2, f"Write-off          {money(loss)}", popup_width - 4, curses.color_pair(5))
+    for index, (row, name) in enumerate(zip(CANCEL_PROJECT_ACTION_ROWS, CANCEL_PROJECT_ACTIONS)):
+        selected = index == state.selected_cancel_project_action
+        label = f"[{name}]" if selected else name
+        x = max(2, (popup_width - len(label)) // 2)
+        if selected:
+            attr = curses.color_pair(4) | curses.A_BOLD if index == 0 else curses.color_pair(5) | curses.A_BOLD
+        else:
+            attr = 0
+        add_text(panel, row, x, label, len(label), attr)
+    add_text(panel, popup_height - 2, 2, "Up/Down chooses | Enter confirms | Backspace keeps project", popup_width - 4, curses.color_pair(4))
+
+
 def draw_insolvency_popup(screen: curses.window, state: GameState, width: int, height: int) -> None:
     popup_width = min(62, max(46, width - 24))
     popup_height = 11
@@ -531,6 +582,47 @@ def close_settings(state: GameState) -> None:
     state.settings_resume_on_close = False
 
 
+def open_cancel_project(state: GameState) -> None:
+    if state.cancel_project_open or state.studio.current_project is None:
+        if state.studio.current_project is None:
+            state.log("There is no project in development to cancel.")
+        return
+    if state.modal != "games" or state.selected_game != 0:
+        state.log("Select the in-development project in the catalogue first.")
+        return
+    state.cancel_project_resume_on_close = state.time_speed_index != 0
+    if state.cancel_project_resume_on_close:
+        state.resume_speed_index = state.time_speed_index
+        state.time_speed_index = 0
+    state.selected_cancel_project_action = 0
+    state.cancel_project_open = True
+
+
+def close_cancel_project(state: GameState) -> None:
+    if not state.cancel_project_open:
+        return
+    state.cancel_project_open = False
+    if state.cancel_project_resume_on_close and not state.studio.closed and state.studio.current_project is not None:
+        state.time_speed_index = max(1, state.resume_speed_index)
+    state.cancel_project_resume_on_close = False
+
+
+def confirm_cancel_project(state: GameState) -> bool:
+    if not state.cancel_project_open:
+        return False
+    if state.selected_cancel_project_action == 0:
+        close_cancel_project(state)
+        return True
+    resume = state.cancel_project_resume_on_close
+    resume_speed = state.resume_speed_index
+    cancelled = cancel_current_project(state)
+    state.cancel_project_open = False
+    state.cancel_project_resume_on_close = False
+    if cancelled and resume and not state.studio.closed:
+        state.time_speed_index = max(1, resume_speed)
+    return cancelled
+
+
 def open_training(state: GameState) -> None:
     if state.training_open or selected_roster_employee(state) is None:
         if selected_roster_employee(state) is None:
@@ -566,5 +658,10 @@ def activate_settings_action(state: GameState) -> bool:
         return True
     if state.selected_setting_action == 1:
         save_state(state)
+        return True
+    if state.selected_setting_action == 2:
+        from ui_saves import open_save_picker
+
+        open_save_picker(state, "save")
         return True
     return False
