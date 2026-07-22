@@ -347,6 +347,27 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     add_text(panel, 16, 2, f"{audience_status:<8} Demand {weekly_sales:,}/w | {demand_multiple:.1f}x floor", inner, audience_attr)
     add_text(panel, 17, 2, f"RET [{meter(retention, 1, meter_width)}] {retention:>5.0%} | {game.monthly_players:,}/{game.peak_monthly_players:,} peak", inner)
     next_row = 19
+    segments = [segment for segment in getattr(game, "segments", []) if segment.weight > 0]
+    if segments:
+        from simulation import SEGMENT_NAMES, community_insight
+        insight = community_insight(state.studio)
+        mood_colors = {"Euphoric": 4, "Content": 4, "Skeptical": 3, "Angry": 5, "Leaving": 5}
+        if insight == 0:
+            average = sum(segment.satisfaction * segment.weight for segment in segments) / sum(segment.weight for segment in segments)
+            mood = "Euphoric" if average >= 85 else "Content" if average >= 65 else "Skeptical" if average >= 45 else "Angry" if average >= 25 else "Leaving"
+            add_text(panel, next_row, 2, f"Community mood: {mood}", inner, curses.color_pair(mood_colors[mood]))
+            add_text(panel, next_row + 1, 2, "Research Market Research to read your audience.", inner, curses.color_pair(4))
+            next_row += 3
+        else:
+            for segment in segments[: 4 if insight >= 2 else 3]:
+                name = SEGMENT_NAMES.get(segment.key, segment.key)
+                color = mood_colors.get(segment.mood, 0)
+                if insight >= 2 and segment.note:
+                    add_text(panel, next_row, 2, f"{name}: {segment.mood} {segment.note}", inner, curses.color_pair(color))
+                else:
+                    add_text(panel, next_row, 2, f"{name}: {segment.mood}", inner, curses.color_pair(color))
+                next_row += 1
+            next_row += 1
     if detail_height >= 28:
         add_text(panel, next_row, 2, "UNIT ECONOMICS", inner, curses.A_BOLD)
         total_cost = game_total_cost(game)
@@ -520,7 +541,13 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         add_text(overview, 11, right_x, f"{project.forecast_audience_low:,}-{project.forecast_audience_high:,} interested", right_inner)
         add_text(overview, 12, right_x, f"{project.forecast_competitors_low}-{project.forecast_competitors_high} rival launches", right_inner)
         add_text(overview, 14, right_x, "MARKET POSITION", right_inner, curses.A_BOLD)
-        add_text(overview, 15, right_x, f"Market fit {project.market_score}/100 | {project.competitors} rivals", right_inner)
+        market_shift = project.market_score - project.market_score_start
+        shift_hint = ""
+        shift_attr = 0
+        if abs(market_shift) >= 8:
+            shift_hint = f" | {'cooling' if market_shift < 0 else 'heating'} since greenlight"
+            shift_attr = curses.color_pair(5) if market_shift < 0 else curses.color_pair(4)
+        add_text(overview, 15, right_x, f"Market fit {project.market_score}/100 | {project.competitors} rivals{shift_hint}", right_inner, shift_attr)
         add_text(overview, 16, right_x, f"Genre pressure {genre_release_pressure(state.studio, project.genre):.1f}/3.0", right_inner, curses.color_pair(5) if genre_release_pressure(state.studio, project.genre) >= 1.5 else 0)
 
         draw_promotion_panel(promotion, state, 0, promotion_width - 4, detail_height, campaign_load, prelaunch_hype=project.hype)

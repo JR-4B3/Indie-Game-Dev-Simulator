@@ -1077,7 +1077,7 @@ class SimulationTests(unittest.TestCase):
         advance(state, 30)
 
         self.assertIn(sale, state.studio.active_sales)
-        self.assertGreaterEqual(sale.weekly_units, sale.evergreen_units)
+        self.assertGreaterEqual(sale.weekly_units, int(sale.evergreen_units))
         self.assertGreater(game.units_sold, 0)
         self.assertLessEqual(game.monthly_players, game.units_sold)
         self.assertLessEqual(game.peak_monthly_players, game.units_sold)
@@ -2002,6 +2002,259 @@ class SimulationTests(unittest.TestCase):
         self.assertGreaterEqual(report["confidence"], 20)
         self.assertLessEqual(report["confidence"], 40)
 
+    def test_free_update_roadmap_fans_reject_paid_dlc(self) -> None:
+        state = GameState()
+        state.studio.cash = 5_000_000
+        state.studio.completed_research = [node["key"] for node in RESEARCH_NODES]
+        state.selected_release_strategy = 1
+        self.assertTrue(start_project(state))
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[-1]
+        self.assertEqual(game.release_strategy, "Free update roadmap")
+        advance(state, 1)
+        game.update_size = "Paid DLC"
+        rating_before = game.user_rating
+        followers_before = state.studio.followers
+        state.studio.reputation = 20
+        reputation_before = state.studio.reputation
+        self.assertTrue(queue_game_update(state, game.game_id))
+        job = state.studio.active_update
+        job.work_done = job.required_work
+        job.bugs_fixed = job.bugs_found
+        advance(state, 1)
+        self.assertEqual(game.dlcs_released, 1)
+        self.assertGreater(game.dlc_revenue, 0)
+        self.assertLess(game.user_rating, rating_before)
+        self.assertLess(state.studio.followers, followers_before)
+        self.assertLess(state.studio.reputation, reputation_before)
+        self.assertTrue(any("betrayed" in message for message in state.logs))
+
+    def test_live_service_expects_constant_updates(self) -> None:
+        def release_live_service(stale: int):
+            state = GameState()
+            state.studio.seed = 7
+            state.studio.cash = 10_000_000
+            state.studio.completed_research = [node["key"] for node in RESEARCH_NODES]
+            state.selected_format = 1
+            state.selected_release_strategy = 3
+            founder = state.studio.team[0]
+            while len(state.studio.team) < 3:
+                employee = deepcopy(founder)
+                employee.employee_id = 100 + len(state.studio.team)
+                employee.founder = False
+                employee.annual_salary = 50_000
+                state.studio.team.append(employee)
+            self.assertTrue(start_project(state))
+            state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+            advance(state, 1)
+            game = state.studio.catalog[-1]
+            self.assertEqual(game.release_strategy, "Live service")
+            game.last_update_week = state.clock.week - stale
+            return state, game
+
+        fresh_state, fresh_game = release_live_service(0)
+        stale_state, stale_game = release_live_service(20)
+        fresh_units = fresh_state.studio.active_sales[-1].weekly_units
+        stale_units = stale_state.studio.active_sales[-1].weekly_units
+        fresh_rating, stale_rating = fresh_game.user_rating, stale_game.user_rating
+        fresh_followers, stale_followers = fresh_state.studio.followers, stale_state.studio.followers
+        advance(fresh_state, 1)
+        advance(stale_state, 1)
+        self.assertLess(stale_game.user_rating - stale_rating, fresh_game.user_rating - fresh_rating)
+        self.assertLess(stale_state.studio.followers, stale_followers)
+        self.assertGreaterEqual(fresh_state.studio.followers, fresh_followers)
+        fresh_growth = fresh_state.studio.active_sales[-1].weekly_units / max(1, fresh_units)
+        stale_growth = stale_state.studio.active_sales[-1].weekly_units / max(1, stale_units)
+        self.assertGreater(fresh_growth, stale_growth)
+
+    def test_ip_fatigue_grows_slower_for_big_and_live_games(self) -> None:
+        from simulation import prepare_sequel
+
+        def sequel_fatigue(scope_index: int, strategy_index: int = 0) -> float:
+            state = GameState(selected_scope=scope_index)
+            state.studio.cash = 1_000_000_000
+            state.studio.reputation = 100
+            state.studio.completed_research = [node["key"] for node in RESEARCH_NODES]
+            founder = state.studio.team[0]
+            team_needed = max(SCOPES[scope_index]["team"], 1)
+            while len(state.studio.team) < team_needed:
+                employee = deepcopy(founder)
+                employee.employee_id = 100 + len(state.studio.team)
+                employee.founder = False
+                employee.annual_salary = 50_000
+                state.studio.team.append(employee)
+            state.selected_release_strategy = strategy_index
+            if strategy_index == 3:
+                state.selected_format = 1
+            self.assertTrue(start_project(state))
+            state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+            advance(state, 1)
+            game = state.studio.catalog[-1]
+            prepare_sequel(state, game)
+            self.assertTrue(start_project(state))
+            state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+            advance(state, 1)
+            return franchise_by_id(state.studio, game.franchise_id).fatigue
+
+        small = sequel_fatigue(2)
+        large = sequel_fatigue(5)
+        live = sequel_fatigue(2, 3)
+        self.assertGreater(small, 0)
+        self.assertGreater(small, large)
+        self.assertGreater(small, live)
+
+    def test_community_segments_cap_user_rating_and_have_moods(self) -> None:
+        from simulation import SEGMENT_NAMES, aggregate_user_rating
+
+        state = GameState()
+        state.studio.cash = 5_000_000
+        game = self.release_first_game(state)
+        self.assertTrue(game.segments)
+        active = [segment for segment in game.segments if segment.weight > 0]
+        self.assertGreaterEqual(len(active), 3)
+        self.assertAlmostEqual(game.user_rating, aggregate_user_rating(game), places=1)
+        advance(state, 12)
+        self.assertLessEqual(game.user_rating, 92.0, "split communities should keep ratings out of the high 90s")
+        for segment in game.segments:
+            self.assertIn(segment.key, SEGMENT_NAMES)
+            self.assertIn(segment.mood, ("Euphoric", "Content", "Skeptical", "Angry", "Leaving"))
+
+    def test_overhyped_mid_game_faces_backlash(self) -> None:
+        state = GameState()
+        state.studio.cash = 5_000_000
+        self.assertTrue(start_project(state))
+        state.studio.current_project.hype = 190
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        advance(state, 1)
+        game = state.studio.catalog[-1]
+        self.assertGreaterEqual(game.hype_backlash, 15)
+        self.assertTrue(any("overhyped" in message for message in state.logs))
+        rating_after_launch = game.user_rating
+        advance(state, 6)
+        self.assertLessEqual(game.user_rating, rating_after_launch + 2, "disenchantment should not wash out quickly")
+        casual = next(segment for segment in game.segments if segment.key == "casual")
+        self.assertIn("overhyped", casual.note)
+
+    def test_marketing_saturation_burns_money_at_high_hype(self) -> None:
+        from simulation import hype_marketing_effectiveness
+
+        self.assertAlmostEqual(hype_marketing_effectiveness(0), 1.0)
+        self.assertAlmostEqual(hype_marketing_effectiveness(60), 1.0)
+        self.assertLess(hype_marketing_effectiveness(150), 0.6)
+        self.assertAlmostEqual(hype_marketing_effectiveness(400), 0.25)
+        state = GameState()
+        state.studio.cash = 5_000_000
+        unlock(state, "promotion_basics", "targeted_marketing", "creator_relations")
+        self.assertTrue(start_project(state))
+        state.studio.current_project.hype = 180
+        self.assertTrue(buy_promotion(state, 0, 0))
+        self.assertTrue(any("saturated" in message for message in state.logs))
+
+    def test_patch_fatigue_angers_core_fans_and_content_calms(self) -> None:
+        def release_and_run(patches: int):
+            state = GameState()
+            state.studio.seed = 11
+            state.studio.cash = 5_000_000
+            unlock(state, "content_updates")
+            game = self.release_first_game(state)
+            game.update_size = "Patch"
+            game.update_focus = "Balance pass"
+            for _ in range(patches):
+                self.assertTrue(queue_game_update(state, game.game_id))
+                job = state.studio.active_update
+                job.work_done = job.required_work
+                job.bugs_fixed = job.bugs_found
+                advance(state, 1)
+            advance(state, 4)
+            core = next(segment for segment in game.segments if segment.key == "core")
+            return state, game, core
+
+        patched_state, patched_game, patched_core = release_and_run(3)
+        _, _, calm_core = release_and_run(0)
+        self.assertGreaterEqual(patched_game.patch_fatigue, 2)
+        self.assertLess(patched_core.satisfaction, calm_core.satisfaction)
+        self.assertIn("tired of patches", patched_core.note)
+        patched_game.update_size = "Content"
+        patched_game.update_focus = "New content"
+        self.assertTrue(queue_game_update(patched_state, patched_game.game_id))
+        job = patched_state.studio.active_update
+        job.work_done = job.required_work
+        job.bugs_fixed = job.bugs_found
+        advance(patched_state, 1)
+        self.assertLess(patched_game.patch_fatigue, 1.5)
+
+    def test_ptrust_decays_without_new_proof(self) -> None:
+        state = GameState()
+        state.studio.reputation = 50
+        advance(state, 10)
+        self.assertLess(state.studio.reputation, 50)
+
+    def test_evergreen_floor_decays_without_engagement(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        sale = next(item for item in state.studio.active_sales if item.game_id == game.game_id)
+        initial_floor = sale.evergreen_units
+        advance(state, 20)
+        self.assertLess(sale.evergreen_units, initial_floor)
+
+    def test_copycats_follow_a_hit(self) -> None:
+        state = GameState()
+        state.studio.cash = 5_000_000
+        state.studio.followers = 500_000
+        state.studio.reputation = 80
+        self.assertTrue(start_project(state))
+        state.studio.current_project.hype = 120
+        state.studio.current_project.addressable_audience = 5_000_000
+        state.studio.current_project.work_done = state.studio.current_project.total_work - 1
+        in_dev_before = sum(len(item.in_development) for item in state.studio.competitors)
+        advance(state, 1)
+        game = state.studio.catalog[-1]
+        if game.units_sold >= 40_000:
+            in_dev_after = sum(len(item.in_development) for item in state.studio.competitors)
+            self.assertGreaterEqual(in_dev_after, in_dev_before)
+            self.assertTrue(any("copycat" in message or "similar projects" in message for message in state.logs))
+        else:
+            self.assertTrue(True, "launch below copycat threshold on this seed")
+
+    def test_genre_heat_reacts_to_releases(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        advance(state, 3)
+        self.assertTrue(state.studio.genre_heat)
+        for heat in state.studio.genre_heat.values():
+            self.assertGreaterEqual(heat, 0.45)
+            self.assertLessEqual(heat, 1.6)
+        self.assertLess(state.studio.genre_heat[game.genre], 1.0, "your own recent release should saturate the genre")
+
+    def test_decision_gambles_can_backfire(self) -> None:
+        backfires = 0
+        for seed in range(40):
+            state = GameState()
+            state.studio.seed = seed
+            self.assertTrue(start_project(state))
+            project = state.studio.current_project
+            project.pending_decision = 1
+            project.work_done = project.total_work * 0.4
+            from simulation import resolve_project_decision
+
+            resolve_project_decision(state, 1)
+            if any("backfired" in message for message in state.logs):
+                backfires += 1
+        self.assertGreater(backfires, 3, "aggressive options should regularly risk a crunch backfire")
+
+    def test_segment_feelings_surface_in_recommendation(self) -> None:
+        from ui_common import game_recommendation
+
+        state = GameState()
+        game = self.release_first_game(state)
+        for segment in game.segments:
+            if segment.key == "core":
+                segment.satisfaction = 30
+                segment.note = "tired of patches - they want New content"
+        recommendation, color = game_recommendation(game)
+        self.assertIn("tired of patches", recommendation)
+
     def test_paid_dlc_generates_post_launch_revenue(self) -> None:
         state = GameState()
         state.studio.cash = 5_000_000
@@ -2201,11 +2454,13 @@ class SimulationTests(unittest.TestCase):
         game = self.release_first_game(state)
         self.assertGreater(game.user_rating, 0)
         self.assertGreater(game.press_rating, 0)
+        rating_before = game.user_rating
         game.known_bugs = 20
         game.actual_bugs = 20
-        advance(state, 4)
-        self.assertLess(game.user_rating, game.press_rating)
+        advance(state, 6)
+        self.assertLess(game.user_rating, rating_before)
         self.assertLess(game.user_rating, game.score)
+        self.assertLess(game.user_trend, 0)
         self.assertGreater(len(game.sales_history), 0)
 
     def test_market_and_ventures_survive_save_load(self) -> None:

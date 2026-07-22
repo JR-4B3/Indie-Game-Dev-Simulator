@@ -10,7 +10,7 @@ from pathlib import Path
 from game_data import GENRES, GENRE_PROFILES, GOOD_MATCHES, TOPICS
 
 
-SAVE_VERSION = 7
+SAVE_VERSION = 8
 START_DATE = date.today()
 SECONDS_PER_WEEK = 120.0
 SECONDS_PER_DAY = SECONDS_PER_WEEK / 7
@@ -70,10 +70,10 @@ CREATIVE_DIRECTIONS = (
 )
 
 RELEASE_STRATEGIES = (
-    {"name": "Complete package", "work": 1.0, "setup": 0, "risk": 0, "market": 0, "price": 1.0, "sales": 1.0, "tradeoff": "Clear promise; short sales tail"},
-    {"name": "Free update roadmap", "work": 1.12, "setup": 45_000, "risk": 2, "market": 6, "price": 1.0, "sales": 1.12, "tradeoff": "Better retention; ongoing cost"},
-    {"name": "DLC roadmap", "work": 1.10, "setup": 125_000, "risk": 3, "market": 3, "price": 1.05, "sales": 1.08, "tradeoff": "Future revenue; fragments attention"},
-    {"name": "Live service", "work": 1.45, "setup": 1_200_000, "risk": 10, "market": 14, "price": 0.72, "sales": 1.45, "tradeoff": "Large upside; permanent content pressure"},
+    {"name": "Complete package", "work": 1.0, "setup": 0, "risk": 0, "market": 0, "price": 1.0, "sales": 1.0, "tail": -0.03, "expect_weeks": 0, "dlc_reception": 0.55, "tradeoff": "Clear promise; short tail, paid DLC feels like a cash grab"},
+    {"name": "Free update roadmap", "work": 1.12, "setup": 45_000, "risk": 2, "market": 6, "price": 1.0, "sales": 1.12, "tail": 0.03, "expect_weeks": 14, "dlc_reception": 0.35, "tradeoff": "Fans expect steady free updates; paid DLC will enrage them"},
+    {"name": "DLC roadmap", "work": 1.10, "setup": 125_000, "risk": 3, "market": 3, "price": 1.05, "sales": 1.08, "tail": 0.01, "expect_weeks": 0, "dlc_reception": 1.25, "tradeoff": "Future paid content; fragments attention"},
+    {"name": "Live service", "work": 1.45, "setup": 1_200_000, "risk": 10, "market": 14, "price": 0.72, "sales": 1.45, "tail": 0.02, "expect_weeks": 9, "dlc_reception": 0.85, "tradeoff": "Large upside; players expect constant updates"},
 )
 
 PRODUCTION_DECISIONS = (
@@ -260,6 +260,14 @@ COMPETITOR_STUDIOS = (
     {"name": "Tiny Anvil", "tier": "indie", "size": 0.7, "genres": ("Platformer", "Puzzle Game", "Metroidvania"), "fanbase": 22_000, "reputation": 65},
     {"name": "Ghost Lantern", "tier": "indie", "size": 0.9, "genres": ("Survival Game", "Adventure", "Visual Novel"), "fanbase": 28_000, "reputation": 70},
     {"name": "Hyperbolt", "tier": "indie", "size": 1.1, "genres": ("Action", "Roguelike", "Skill Game"), "fanbase": 60_000, "reputation": 78},
+    {"name": "Nocturne Labs", "tier": "studio", "size": 2.6, "genres": ("Horror Game", "Adventure", "Immersive Sim", "Visual Novel"), "fanbase": 210_000, "reputation": 74},
+    {"name": "Quantum Quill", "tier": "studio", "size": 3.4, "genres": ("Strategy", "Deckbuilder", "Economic Simulation"), "fanbase": 380_000, "reputation": 79},
+    {"name": "Vantage Point", "tier": "publisher", "size": 5.8, "genres": ("First-Person Shooter", "Extraction Shooter", "Battle Royale"), "fanbase": 1_100_000, "reputation": 66},
+    {"name": "Lumen Works", "tier": "indie", "size": 1.4, "genres": ("Puzzle Game", "Cozy Game", "Automation"), "fanbase": 85_000, "reputation": 81},
+    {"name": "Driftwood Games", "tier": "indie", "size": 1.2, "genres": ("Survival Game", "Building Game", "Simulation"), "fanbase": 95_000, "reputation": 71},
+    {"name": "Redwood Arcade", "tier": "studio", "size": 2.2, "genres": ("Racing", "Sports Game", "Fighting Game"), "fanbase": 260_000, "reputation": 69},
+    {"name": "Heliosoft", "tier": "publisher", "size": 6.8, "genres": ("MMO", "Persistent world", "Role-Playing Game", "Battle Royale"), "fanbase": 1_500_000, "reputation": 73},
+    {"name": "Papercut Studio", "tier": "indie", "size": 0.9, "genres": ("Visual Novel", "Interactive Movie", "Cozy Game"), "fanbase": 40_000, "reputation": 76},
 )
 
 COMPETITOR_IP_NAMES = (
@@ -267,7 +275,13 @@ COMPETITOR_IP_NAMES = (
     "Gravball", "Night Circuit", "Deep Hollow", "Skybound Odyssey", "Crimson Pact", "Hollowlight",
     "Turbo Dynasty", "Whisker Works", "Astral Siege", "Frostline", "Byte Raiders", "Dune Runners",
     "Silent Grove", "Mecha Bloom", "Void Cartel", "Paper Kingdoms", "Thunder Vale", "Neon Harvest",
+    "Ashen Circuit", "Briar Ritual", "Chrome Divide", "Dusk Harbor", "Echowild", "Flux Garden",
 )
+
+SEGMENT_KEYS = ("core", "casual", "enthusiast", "live")
+SEGMENT_NAMES = {"core": "Core fans", "casual": "Casual players", "enthusiast": "Enthusiasts", "live": "Live players"}
+SEGMENT_MOODS = ((85, "Euphoric"), (65, "Content"), (45, "Skeptical"), (25, "Angry"), (0, "Leaving"))
+SCOPE_HYPE_CEILING = {"Micro": 45, "Compact": 60, "Small": 80, "Mid-size": 105, "Ambitious": 130, "Large": 165, "Blockbuster": 215}
 
 FIRST_NAMES = (
     "Avery", "Maya", "Noah", "Priya", "Mateo", "Lena", "Sam", "Iris", "Owen", "Zara",
@@ -407,6 +421,7 @@ class Project:
     addressable_audience: int = 0
     competitors: int = 0
     market_score: int = 50
+    market_score_start: int = 50
     forecast_score_low: int = 1
     forecast_score_high: int = 99
     forecast_audience_low: int = 0
@@ -481,12 +496,23 @@ class ActiveSale:
     net_revenue: float = 0.0
     game_id: int = 0
     genre: str = ""
-    evergreen_units: int = 1
+    evergreen_units: float = 1.0
     week_units: float = 0.0
 
     @property
     def week_to_date(self) -> int:
         return round(self.week_units)
+
+
+@dataclass
+class Segment:
+    key: str
+    satisfaction: float = 70.0
+    weight: float = 0.25
+    expectation: float = 60.0
+    mood: str = "Content"
+    trend: float = 0.0
+    note: str = ""
 
 
 @dataclass
@@ -542,6 +568,11 @@ class ReleasedGame:
     sales_history: list[int] = field(default_factory=list)
     chart_peak: int = 0
     support_level: str = "Active"
+    last_update_week: int = 0
+    segments: list[Segment] = field(default_factory=list)
+    patch_fatigue: float = 0.0
+    hype_backlash: float = 0.0
+    fans_betrayed: bool = False
 
     @property
     def known_bug_count(self) -> int:
@@ -724,6 +755,7 @@ class Studio:
     contract_offers: list[Contract] = field(default_factory=list)
     contract_queue: list[Contract] = field(default_factory=list)
     auto_contracts: bool = False
+    genre_heat: dict[str, float] = field(default_factory=dict)
     contractor_reputation: float = 0.0
     contracts_completed: int = 0
     contracts_failed: int = 0
@@ -877,6 +909,162 @@ def release_strategy_by_name(name: str) -> dict:
     return next((item for item in RELEASE_STRATEGIES if item["name"] == name), RELEASE_STRATEGIES[0])
 
 
+def segment_weights_for(game_format: str, target_audience: str) -> dict[str, float]:
+    if game_format == "Offline solo":
+        weights = {"core": 0.35, "casual": 0.40, "enthusiast": 0.25, "live": 0.0}
+    else:
+        weights = {"core": 0.30, "casual": 0.25, "enthusiast": 0.15, "live": 0.30}
+    if target_audience in ("Cozy & casual", "Kids & families", "Social groups"):
+        weights["casual"] += 0.10
+        weights["core"] = max(0.10, weights["core"] - 0.10)
+    elif target_audience in ("Core players", "Strategy enthusiasts"):
+        weights["core"] += 0.10
+        weights["casual"] = max(0.10, weights["casual"] - 0.10)
+    return weights
+
+
+def segment_mood(satisfaction: float) -> str:
+    for threshold, mood in SEGMENT_MOODS:
+        if satisfaction >= threshold:
+            return mood
+    return "Leaving"
+
+
+def community_insight(studio: Studio) -> int:
+    if has_research(studio, "analytics"):
+        return 2
+    if has_research(studio, "market_research"):
+        return 1
+    return 0
+
+
+def aggregate_user_rating(game: ReleasedGame) -> float:
+    active = [segment for segment in game.segments if segment.weight > 0]
+    total_weight = sum(segment.weight for segment in active)
+    if not active or total_weight <= 0:
+        return game.user_rating
+    return sum(segment.satisfaction * segment.weight for segment in active) / total_weight
+
+
+def community_factor(game: ReleasedGame) -> float:
+    return max(0.55, min(1.15, aggregate_user_rating(game) / 75))
+
+
+def build_segments(studio: Studio, project: Project, score: int, known_bugs: float, sequel_quality: int, sequel_fatigue: int, rating_rng: random.Random) -> list[Segment]:
+    weights = segment_weights_for(project.game_format, project.target_audience)
+    franchise = franchise_by_id(studio, project.franchise_id)
+    marketing = marketing_by_name(project.marketing_name)
+    expectation_base = 55 + studio.reputation * 0.25 + (franchise.rank * 2 if franchise else 0) + marketing["boost"] / 140
+    fatigue = franchise.fatigue if franchise else 0.0
+    backlash = max(0.0, project.hype - (SCOPE_HYPE_CEILING.get(project.scope, 100) + max(0, project.market_score - 55)))
+    novelty = max(-8.0, min(8.0, (project.market_score - 60) / 5))
+    segments = []
+    for key in SEGMENT_KEYS:
+        weight = weights[key]
+        expectation = expectation_base + {"core": 4, "casual": -8, "enthusiast": 10, "live": 6}[key]
+        adjustment = {
+            "core": sequel_quality * 1.5,
+            "casual": -min(25.0, known_bugs * 1.0),
+            "enthusiast": novelty - fatigue * 0.1 - sequel_fatigue * 2,
+            "live": -min(15.0, known_bugs * 0.6),
+        }[key]
+        if key in ("casual", "enthusiast"):
+            adjustment -= min(15.0, backlash * 0.5)
+        satisfaction = max(5.0, min(92.0, score - (expectation - 60) * 0.6 + adjustment + rating_rng.uniform(-6, 6)))
+        segments.append(Segment(key, round(satisfaction, 1), weight, round(expectation, 1), segment_mood(satisfaction)))
+    return segments
+
+
+def segment_target(state: GameState, game: ReleasedGame, segment: Segment, franchise: Franchise | None, stale_weeks: int, years_old: float) -> tuple[float, str]:
+    score = game.score
+    bug_drag = min(28.0, game.known_bugs * 1.6)
+    service = min(8.0, game.updates_released * 1.5)
+    fatigue = franchise.fatigue if franchise else 0.0
+    target = score - (segment.expectation - 60) * 0.6
+    note = ""
+    if segment.key == "core":
+        target += min(6.0, service * 0.75) - game.patch_fatigue * 2.0 - min(12.0, stale_weeks * 0.8) - bug_drag * 0.35
+        if game.fans_betrayed:
+            target -= 10
+        if game.patch_fatigue >= 2.5:
+            note = "tired of patches - they want New content"
+        elif game.fans_betrayed:
+            note = "still angry about the paid DLC"
+        elif stale_weeks > 0:
+            note = "waiting for the promised update"
+        else:
+            note = "loves the support" if segment.satisfaction >= 72 else "watching the roadmap"
+    elif segment.key == "casual":
+        target -= bug_drag * 0.9
+        target += min(4.0, service * 0.5)
+        target -= min(18.0, game.hype_backlash * 0.35)
+        if game.hype_backlash >= 15:
+            note = "feels the game was overhyped"
+        elif game.known_bug_count >= 6:
+            note = "complaining about bugs"
+        else:
+            note = "happy with the polish" if segment.satisfaction >= 72 else "mildly entertained"
+    elif segment.key == "enthusiast":
+        target -= fatigue * 0.12 + max(0, game.generation - 2) * 3 + years_old * 1.5
+        target -= min(18.0, game.hype_backlash * 0.35)
+        if game.hype_backlash >= 15:
+            note = "calls it all marketing, no substance"
+        elif fatigue >= 60:
+            note = "bored of the IP - wants a fresh concept"
+        elif years_old >= 2:
+            note = "wants something new"
+        else:
+            note = "intrigued by the direction"
+    else:
+        target -= stale_weeks * 1.5
+        if stale_weeks <= 0 and game.game_format != "Offline solo":
+            target += 4
+        note = "feels abandoned - update cadence too slow" if stale_weeks > 0 else "engaged this season"
+    return max(5.0, min(92.0, target)), note
+
+
+def update_community_segments(state: GameState, game: ReleasedGame, franchise: Franchise | None, stale_weeks: int) -> None:
+    if not game.segments:
+        return
+    years_old = max(0.0, (state.clock.week - game.release_week) / 52)
+    previous = game.user_rating
+    for segment in game.segments:
+        if segment.weight <= 0:
+            continue
+        target, note = segment_target(state, game, segment, franchise, stale_weeks, years_old)
+        old = segment.satisfaction
+        segment.satisfaction += (target - segment.satisfaction) * 0.12
+        segment.trend = segment.satisfaction - old
+        segment.mood = segment_mood(segment.satisfaction)
+        segment.note = note
+    game.user_rating = round(aggregate_user_rating(game), 1)
+    game.user_trend = game.user_rating - previous
+
+
+def hype_marketing_effectiveness(current_hype: float) -> float:
+    return max(0.25, 1.0 - max(0.0, current_hype - 60) / 140 * 0.75)
+
+
+def update_genre_heat(state: GameState) -> None:
+    studio = state.studio
+    for index, genre in enumerate(GENRES):
+        saturation = 0.0
+        for competitor in studio.competitors:
+            for release in competitor.recent_releases:
+                if release.genre == genre and 0 <= state.clock.week - release.released_week <= 30:
+                    saturation += 0.05 + release.quality / 800
+        for game in studio.catalog:
+            if game.genre == genre and 0 <= state.clock.week - game.release_week <= 30:
+                saturation += 0.10
+        baseline = 1.0 + 0.18 * math.sin((state.clock.week + index * 37) / 31)
+        target = max(0.45, min(1.6, baseline - saturation))
+        studio.genre_heat[genre] = studio.genre_heat.get(genre, 1.0) * 0.85 + target * 0.15
+
+
+def genre_heat(studio: Studio, genre: str) -> float:
+    return studio.genre_heat.get(genre, 1.0)
+
+
 def concept_focus(state: GameState) -> tuple[int, int, int, int]:
     primary = CREATIVE_DIRECTIONS[state.selected_creative_primary]["focus"]
     secondary = CREATIVE_DIRECTIONS[state.selected_creative_secondary]["focus"]
@@ -908,7 +1096,8 @@ def market_truth(state: GameState) -> dict:
     channel = CHANNELS[state.selected_channel]
 
     modern = {"Battle Royale", "Extraction Shooter", "Survivors-like", "Roguelike", "Roguelite", "Deckbuilder", "Automation", "Cozy Game", "Social Deduction", "Immersive Sim", "Soulslike", "Metroidvania"}
-    demand = 1.12 if genre in modern else 1.0
+    heat = genre_heat(state.studio, genre)
+    demand = (1.12 if genre in modern else 1.0) * max(0.5, min(1.6, heat))
     if secondary_genre != genre:
         demand += 0.08
     topic_hits = sum(
@@ -945,7 +1134,7 @@ def market_truth(state: GameState) -> dict:
         + format_fit
         + trend
     )
-    score = max(8, min(96, score))
+    score = max(8, min(96, score + round((heat - 1.0) * 24)))
     competitors = max(1, round(2 + demand * 3 + (3 if genre in modern else 0) + max(0, trend) / 4 + rng.uniform(-2, 2)))
     audience_size = round(
         48_000
@@ -1908,6 +2097,7 @@ def start_project(state: GameState) -> bool:
         addressable_audience=truth["audience"],
         competitors=truth["competitors"],
         market_score=truth["score"],
+        market_score_start=truth["score"],
         forecast_score_low=report["score_low"],
         forecast_score_high=report["score_high"],
         forecast_audience_low=report["audience_low"],
@@ -2299,8 +2489,8 @@ def finish_project(state: GameState) -> None:
     defect_penalty = min(24, round(defect_rate * 170))
     scope_risk = scope_by_name(project.scope)["risk"] + format_by_name(project.game_format)["risk"]
     direction_bonus = round((creative_by_name(project.creative_primary)["quality"] + creative_by_name(project.creative_secondary)["quality"]) / 2)
-    tools_bonus = 4 if "tools" in studio.upgrades else 0
-    content_bonus = min(12, max(0, len(studio.team) - 1))
+    tools_bonus = 2 if "tools" in studio.upgrades else 0
+    content_bonus = min(14, round(4 * math.sqrt(max(0, len(studio.team) - 1))))
     previous_game = next((game for game in studio.catalog if game.game_id == project.sequel_of), None)
     sequel_quality = 0 if previous_game is None else round((previous_game.score - 50) / 8)
     sequel_fatigue = max(0, project.generation - 3) * 2
@@ -2309,7 +2499,9 @@ def finish_project(state: GameState) -> None:
     refund_rate = max(0.03, min(0.24, 0.16 - score / 1_000 + defect_rate * 0.35))
     marketing = marketing_by_name(project.marketing_name)
     genre_audience = studio.genre_fans.get(project.genre, 0)
-    sequel_audience = genre_audience * 0.45 if project.sequel_of else genre_audience * 0.10
+    franchise = franchise_by_id(studio, project.franchise_id)
+    freshness = 1 - min(0.6, franchise.fatigue / 150) if franchise else 1.0
+    sequel_audience = (genre_audience * 0.45 if project.sequel_of else genre_audience * 0.10) * freshness
     discoverability = 80 + marketing["boost"] + project.hype * 8 + studio.followers * 0.12 + studio.reputation * 3 + sequel_audience
     quality_multiplier = max(0.12, (score / 72) ** 3)
     scope_data = scope_by_name(project.scope)
@@ -2320,7 +2512,7 @@ def finish_project(state: GameState) -> None:
         * format_data.get("sales", 1.0)
         * strategy_data.get("sales", 1.0)
     )
-    market_multiplier = max(0.4, project.market_score / 60) * max(0.55, 1 - project.competitors * 0.025) * max(0.6, 1 - genre_release_pressure(studio, project.genre) * 0.12)
+    market_multiplier = max(0.4, project.market_score / 60) * max(0.55, 1 - project.competitors * 0.025) * max(0.6, 1 - genre_release_pressure(studio, project.genre) * 0.12) * max(0.5, min(1.4, genre_heat(studio, project.genre)))
     units = max(18, round(discoverability * quality_multiplier * scope_multiplier * project.reach * market_multiplier * 16))
     units = min(max(18, round(project.addressable_audience * 0.20)), units) if project.addressable_audience else units
     evergreen_units = max(2, round((score / 100) ** 3.4 * scope_multiplier * 160 + genre_audience / 650))
@@ -2329,7 +2521,10 @@ def finish_project(state: GameState) -> None:
     known_bugs = min(project.known_defects, max(0, project.defects - 0.01))
     rating_rng = random.Random(studio.seed + game_id * 37 + state.clock.week)
     press_rating = max(20.0, min(98.0, score + rating_rng.uniform(-5, 4)))
-    user_rating = max(15.0, min(99.0, score + rating_rng.uniform(-4, 6) - math.floor(known_bugs) * 0.8))
+    segments = build_segments(studio, project, score, known_bugs, sequel_quality, sequel_fatigue, rating_rng)
+    segment_weight = sum(segment.weight for segment in segments if segment.weight > 0)
+    user_rating = max(15.0, min(99.0, sum(segment.satisfaction * segment.weight for segment in segments if segment.weight > 0) / segment_weight if segment_weight else float(score)))
+    hype_backlash = max(0.0, project.hype - (SCOPE_HYPE_CEILING.get(project.scope, 100) + max(0, project.market_score - 55)))
     game = ReleasedGame(
         game_id,
         project.title,
@@ -2367,8 +2562,22 @@ def finish_project(state: GameState) -> None:
         production_decisions=list(project.decisions_made),
         user_rating=round(user_rating, 1),
         press_rating=round(press_rating, 1),
+        last_update_week=state.clock.week,
+        segments=segments,
+        hype_backlash=round(hype_backlash, 1),
     )
     studio.catalog.append(game)
+    if hype_backlash >= 15:
+        state.log(f"Players feel {project.title} was overhyped: a {project.scope} game with a familiar pitch cannot carry {project.hype:.0f} hype. Expect reviews to cool and retention to fade.")
+    if score < 45:
+        lost_followers = round(studio.followers * 0.15)
+        studio.followers = max(0, studio.followers - lost_followers)
+        studio.reputation = max(0, studio.reputation - 4)
+        state.log(f"Players turn on the studio: {game.title} shipped underdeveloped (score {score}); {lost_followers:,} followers left.")
+    elif defect_rate > 0.08:
+        lost_followers = round(studio.followers * 0.05)
+        studio.followers = max(0, studio.followers - lost_followers)
+        state.log(f"Fans complain that {game.title} needed more time in QA; {lost_followers:,} followers left.")
     ensure_franchise_for_release(state, project, game, units, score)
     for promotion in studio.active_promotions:
         if promotion.game_id == 0:
@@ -2400,6 +2609,16 @@ def finish_project(state: GameState) -> None:
         studio.topic_fans[project.secondary_topic] = studio.topic_fans.get(project.secondary_topic, 0) + launch_followers // 2
     state.log(f"Released {project.title} after {project.weeks} weeks: {score}/100, {refund_rate:.0%} expected refunds, {math.floor(known_bugs)} known bugs.")
     state.log(f"The store predicts {units:,} first-week units. You keep {(1 - project.platform_cut):.0%} before refunds.")
+    if units >= 40_000:
+        copycat_rng = random.Random(studio.seed + state.clock.week * 911)
+        candidates = [item for item in studio.competitors if item.size >= 4 and len(item.in_development) < 2]
+        for copycat in copycat_rng.sample(candidates, min(2, len(candidates))):
+            quality = max(25, min(96, round(copycat.reputation + copycat_rng.uniform(-10, 8))))
+            weeks = max(10, round(copycat_rng.uniform(14, 30) / (0.5 + copycat.size / 6)))
+            title = generate_game_title(project.genre, copycat_rng.choice(TOPICS), studio.seed + state.clock.week + copycat.competitor_id)
+            copycat.in_development.append(CompetitorGame(title, "", project.genre, quality, round(copycat_rng.uniform(60, 120), 1), weeks, copycat.size))
+        if candidates:
+            state.log(f"Competitors noticed {project.title}; similar projects are already in production.")
 
 
 def resolve_project_decision(state: GameState, option_index: int, automatic: bool = False) -> bool:
@@ -2422,6 +2641,16 @@ def resolve_project_decision(state: GameState, option_index: int, automatic: boo
     project.next_decision += 1
     project.pending_decision = None
     state.selected_project_decision = 0
+    roll_rng = random.Random(state.studio.seed + state.clock.week * 17 + project.next_decision * 31 + len(project.decisions_made))
+    if not automatic and option_index == 1 and roll_rng.random() < 0.35:
+        extra_defects = round(remaining / 400) + 3
+        project.defects += extra_defects
+        for employee in state.studio.team:
+            employee.fatigue = min(100, employee.fatigue + 4)
+        state.log(f"The gamble backfired: crunch produced {extra_defects} extra defects and left the team exhausted.")
+    elif not automatic and option_index == 0 and project.market_score >= 62 and roll_rng.random() < 0.30:
+        project.market_score = max(10, project.market_score - 5)
+        state.log("Commentators call the safe choice predictable; market interest cools.")
     if not automatic and project.decision_resume_on_close and state.time_speed_index == 0:
         state.time_speed_index = max(1, state.resume_speed_index)
     project.decision_resume_on_close = False
@@ -2442,7 +2671,10 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
     weekly_salary = sum(employee.annual_salary / 52 for employee in studio.team)
     weekly_burden = sum(employee.annual_salary / 52 for employee in studio.team if not employee.founder) * 0.13
     project.labor_cost += (weekly_salary + weekly_burden) / 7
-    project.hype *= 0.985 ** (1 / 7)
+    project.hype *= 0.98 ** (1 / 7)
+    if week_end:
+        heat_score = max(10, min(100, project.market_score_start + (genre_heat(studio, project.genre) - 1.0) * 80))
+        project.market_score = round(max(10, min(100, project.market_score + (heat_score - project.market_score) * 0.02)))
     if not workday:
         if week_end:
             project.weeks += 1
@@ -2603,6 +2835,10 @@ def buy_promotion(state: GameState, game_id: int, promotion_index: int) -> bool:
     studio.next_promotion_id += 1
     status = "Started" if was_idle else "Queued"
     state.log(f"{status} {promotion['name']} for {target_title}: ${promotion['cost']:,}, {promotion['weeks']} weeks, +{promotion['hype']} potential hype.")
+    current_hype = studio.current_project.hype if game_id == 0 and studio.current_project else (game_by_id(studio, game_id).hype if game_by_id(studio, game_id) else 0)
+    effectiveness = hype_marketing_effectiveness(current_hype)
+    if effectiveness < 0.6:
+        state.log(f"Hype around {target_title} is already saturated; only {effectiveness:.0%} of this campaign will convert - the rest is money burned.")
     return True
 
 
@@ -2616,6 +2852,9 @@ def cancel_current_project(state: GameState) -> bool:
     if project is None:
         state.log("There is no project in development to cancel.")
         return False
+    franchise = franchise_by_id(state.studio, project.franchise_id)
+    if franchise:
+        franchise.fatigue = min(120, franchise.fatigue + 6)
     spent = project_cash_spent(project)
     refund = round(spent * 0.20)
     state.studio.active_promotions = [item for item in state.studio.active_promotions if item.game_id != 0]
@@ -2660,17 +2899,19 @@ def process_promotions(state: GameState, week_end: bool = True) -> None:
         return
     promotion = state.studio.active_promotions[0]
     weekly_hype = promotion.hype_total / promotion.total_weeks
-    hype_gain = weekly_hype / 7
     if promotion.game_id == 0 and state.studio.current_project:
-        state.studio.current_project.hype = min(200, state.studio.current_project.hype + hype_gain)
+        project = state.studio.current_project
+        hype_gain = weekly_hype / 7 * hype_marketing_effectiveness(project.hype)
+        project.hype = min(200, project.hype + hype_gain)
     else:
         game = game_by_id(state.studio, promotion.game_id)
         if game:
+            hype_gain = weekly_hype / 7 * hype_marketing_effectiveness(game.hype)
             game.hype = min(200, game.hype + hype_gain)
             if week_end:
                 sale = sale_for_game(state.studio, game.game_id)
                 if sale:
-                    sale.weekly_units += max(1, round(weekly_hype / 4))
+                    sale.weekly_units += max(1, round(weekly_hype / 4 * hype_marketing_effectiveness(game.hype)))
     if not week_end:
         return
     promotion.weeks_left -= 1
@@ -2785,6 +3026,7 @@ def finish_game_update(state: GameState, job: UpdateJob, game: ReleasedGame) -> 
     size = update_size_by_name(job.size)
     focus = update_focus_by_name(job.focus)
     game.updates_released += 1
+    game.last_update_week = state.clock.week
     game.version = job.target_version
     game.update_progress = 0
     fixed_existing = 0.0
@@ -2801,28 +3043,56 @@ def finish_game_update(state: GameState, job: UpdateJob, game: ReleasedGame) -> 
         game.known_bugs = min(game.known_bugs, game.actual_bugs * 0.98)
     game.reported_bug_count = min(game.reported_bug_count, game.known_bug_count)
     rating_factor = max(0.10, (game.score / 100) ** 2)
-    hype_gain = size["hype"] * focus["hype"] * rating_factor
+    if job.focus == "New content":
+        game.patch_fatigue = max(0.0, game.patch_fatigue - 3)
+    else:
+        game.patch_fatigue += {"Hotfix": 0.7, "Patch": 1.5, "Content": 0.5, "Expansion": 0.2, "Paid DLC": 0.3}.get(job.size, 0.5)
+    engagement = max(0.3, 1 - game.patch_fatigue * 0.15)
+    hype_gain = size["hype"] * focus["hype"] * rating_factor * engagement
     game.hype = min(200, game.hype + hype_gain)
     returning_players = round(
         (game.monthly_players * 0.20 + game.units_sold * 0.012)
         * size["sales"]
         * focus["players"]
         * rating_factor
+        * engagement
     )
     game.active_players += returning_players / 3
     clamp_player_counts(game)
     sale = sale_for_game(state.studio, game.game_id)
     if sale:
-        sale.weekly_units += max(1, round(sale.evergreen_units * size["sales"] * rating_factor))
+        sale.weekly_units += max(1, round(sale.evergreen_units * size["sales"] * rating_factor * engagement))
+    franchise = franchise_by_id(state.studio, game.franchise_id)
+    if franchise:
+        if job.focus == "New content" or job.size in ("Expansion", "Paid DLC"):
+            franchise.fatigue = max(0, franchise.fatigue - 4)
+        elif game.patch_fatigue >= 4:
+            franchise.fatigue = min(120, franchise.fatigue + 1)
     if job.size == "Paid DLC":
-        roadmap_bonus = 1.25 if game.release_strategy == "DLC roadmap" else 0.8
-        dlc_units = min(game.units_sold, round(game.units_sold * (0.05 + game.score / 500) * roadmap_bonus))
+        studio = state.studio
+        strategy = release_strategy_by_name(game.release_strategy)
+        reception = strategy.get("dlc_reception", 1.0)
+        dlc_units = min(game.units_sold, round(game.units_sold * (0.05 + game.score / 500) * reception))
         dlc_net = dlc_units * size["price"] * 0.70
-        add_revenue(state.studio, dlc_net, "DLC sales")
+        add_revenue(studio, dlc_net, "DLC sales")
         game.net_revenue += dlc_net
         game.dlc_revenue += dlc_net
         game.dlcs_released += 1
         state.log(f"{game.title}'s paid DLC sold {dlc_units:,} copies at launch and added ${dlc_net:,.0f} studio net.")
+        if game.release_strategy == "Free update roadmap":
+            game.fans_betrayed = True
+            game.user_rating = max(5.0, game.user_rating - 10)
+            game.hype = max(0, game.hype - 25)
+            lost_followers = round(studio.followers * 0.10)
+            studio.followers = max(0, studio.followers - lost_followers)
+            studio.reputation = max(0, studio.reputation - 3)
+            franchise = franchise_by_id(studio, game.franchise_id)
+            if franchise:
+                franchise.fatigue = min(120, franchise.fatigue + 12)
+            state.log(f"Fans feel betrayed by the paid DLC for {game.title} after the free-update promise; {lost_followers:,} followers left.")
+        elif game.release_strategy == "Complete package":
+            game.user_rating = max(5.0, game.user_rating - 2)
+            state.log(f"Some players call the paid DLC for {game.title} a cash grab.")
     if not job.cost_paid:
         add_expense(state.studio, size["cost"], "Live operations")
         game.post_launch_cost += size["cost"]
@@ -2893,9 +3163,10 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
             game.post_launch_cost += hosting_cost
             studio.topic_fans[game.topic] = studio.topic_fans.get(game.topic, 0) + gained
             game.hype *= 0.965 ** (1 / 7)
+            community = community_factor(game)
             strategy_retention = {"Complete package": 0.0, "Free update roadmap": 0.025, "DLC roadmap": 0.015, "Live service": 0.06}.get(game.release_strategy, 0)
             format_retention = 0.03 if game.game_format != "Offline solo" else 0
-            retention = min(0.95, 0.58 + game.score * 0.0037 + strategy_retention + format_retention)
+            retention = min(0.95, max(0.35, 0.58 + game.score * 0.0037 + strategy_retention + format_retention - min(0.08, game.hype_backlash * 0.001) - max(0.0, 0.8 - community) * 0.25))
             game.active_players = game.active_players * retention ** (1 / 7) + units * 0.70
             game.monthly_players = max(0, round(game.active_players * 3.2))
             game.peak_monthly_players = max(game.peak_monthly_players, game.monthly_players)
@@ -2911,8 +3182,15 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
         if not week_end:
             continue
         week_units = sale.week_units
+        stale_weeks = 0
+        strategy_tail = 0.0
         if game:
             hype_lift = game.hype / 14
+            strategy = release_strategy_by_name(game.release_strategy)
+            expect_weeks = strategy.get("expect_weeks", 0)
+            if expect_weeks:
+                stale_weeks = max(0, state.clock.week - game.last_update_week - expect_weeks)
+            strategy_tail = strategy.get("tail", 0.0)
             undiscovered = max(0, game.actual_bugs - game.known_bugs)
             if undiscovered > 0:
                 discovery_rate = min(0.35, 0.015 + week_units / 10_000 + game.monthly_players / 100_000)
@@ -2927,24 +3205,33 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
             franchise = franchise_by_id(studio, game.franchise_id)
             if franchise:
                 franchise.reputation += (game.score - franchise.reputation) * 0.05
-            service = min(8.0, game.updates_released * 1.5)
-            bug_drag = min(28.0, game.known_bugs * 1.6)
-            user_target = max(5.0, min(99.0, game.score + service - bug_drag))
-            previous_user = game.user_rating
-            game.user_rating += (user_target - game.user_rating) * 0.12
-            game.user_trend = game.user_rating - previous_user
+            update_community_segments(state, game, franchise, stale_weeks)
+            if stale_weeks > 0:
+                game.hype *= max(0.85, 1 - min(0.12, stale_weeks * 0.01))
+                if game.release_strategy == "Live service":
+                    studio.followers = max(0, studio.followers - max(3, round(studio.followers * 0.02)))
+                if stale_weeks in (1, 5, 9):
+                    state.log(f"Players are losing patience with {game.title}: the {game.release_strategy.lower()} promise needs new content.")
+            game.patch_fatigue *= 0.92
             game.press_rating += (game.score - game.press_rating) * 0.03
             game.sales_history.append(round(week_units))
             del game.sales_history[:-16]
+            engaged = game.last_update_week >= state.clock.week - 12 or any(item.game_id == game.game_id for item in studio.active_promotions)
+            if not engaged and game.support_level != "Sunset":
+                decay = 0.992 if game.support_level == "Active" else 0.985
+                sale.evergreen_units = max(1.0, sale.evergreen_units * decay)
         else:
             hype_lift = 0
-        tail = min(0.91, 0.55 + sale.score * 0.0035 + (0.02 if "analytics" in studio.upgrades else 0))
+        stale_tail = min(0.10, stale_weeks * 0.006)
+        tail = min(0.91, max(0.30, 0.55 + sale.score * 0.0035 + strategy_tail - stale_tail + (0.01 if "analytics" in studio.upgrades else 0)))
+        demand_heat = 1 + (genre_heat(studio, sale.genre) - 1) * 0.10 if sale.genre else 1.0
+        community = community_factor(game) if game else 1.0
         if game and game.support_level == "Sunset":
             sale.weekly_units = max(0, round(week_units * 0.35))
         elif game and game.support_level == "Maintenance":
-            sale.weekly_units = max(1, round(sale.evergreen_units * 0.5), round(week_units * tail + hype_lift))
+            sale.weekly_units = max(1, round(sale.evergreen_units * 0.5), round(week_units * tail * community * demand_heat + hype_lift))
         else:
-            sale.weekly_units = max(sale.evergreen_units, round(week_units * tail + hype_lift))
+            sale.weekly_units = max(round(sale.evergreen_units), round(week_units * tail * community * demand_heat + hype_lift))
         sale.weeks_left = -1
 
 
@@ -3147,7 +3434,10 @@ def ensure_franchise_for_release(state: GameState, project: Project, game: Relea
     else:
         franchise.reputation += (score - franchise.reputation) * 0.35
     if project.sequel_of or project.franchise_id:
-        franchise.fatigue = min(120, franchise.fatigue + max(0, 14 - franchise.entries * 2))
+        scope_scale = {"Micro": 1.3, "Compact": 1.15, "Small": 1.0, "Mid-size": 0.75, "Ambitious": 0.6, "Large": 0.45, "Blockbuster": 0.35}.get(project.scope, 1.0)
+        if project.release_strategy == "Live service":
+            scope_scale *= 0.5
+        franchise.fatigue = min(120, franchise.fatigue + max(0, 14 - franchise.entries * 2) * scope_scale)
     game.franchise_id = franchise.franchise_id
     rank = franchise.rank_name
     state.log(f"The {franchise.name} IP now stands at {rank} rank ({franchise.entries} release{'s' if franchise.entries != 1 else ''}).")
@@ -3170,6 +3460,7 @@ def prepare_spinoff(state: GameState, game: ReleasedGame) -> bool:
 
 
 def process_franchises_week(state: GameState) -> None:
+    state.studio.reputation *= 0.997
     for franchise in state.studio.franchises:
         franchise.awareness *= 0.997
         franchise.fatigue *= 0.95
@@ -3374,6 +3665,7 @@ def process_market_week(state: GameState) -> None:
                 game.weekly_units *= tail
                 game.units_sold += round(game.weekly_units)
     positions = chart_positions(state)
+    update_genre_heat(state)
     for game in studio.catalog:
         position = positions.get(game.game_id)
         if position is None:
@@ -3470,8 +3762,12 @@ def studio_from_data(data: dict) -> Studio:
         sale.units_sold = round(sale.units_sold)
     catalog = []
     for item in values.get("catalog", []):
+        item = dict(item)
+        item["segments"] = [Segment(**segment) for segment in item.get("segments", [])]
         game = ReleasedGame(**item)
         game.units_sold = round(game.units_sold)
+        if not game.last_update_week:
+            game.last_update_week = game.release_week
         clamp_player_counts(game)
         catalog.append(game)
     values["catalog"] = catalog
