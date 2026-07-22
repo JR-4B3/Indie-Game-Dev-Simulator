@@ -107,6 +107,13 @@ def rating_text(game) -> str:
 
 
 def game_recommendation(game) -> tuple[str, int]:
+    segments = [segment for segment in getattr(game, "segments", []) if segment.weight > 0]
+    if segments:
+        unhappiest = min(segments, key=lambda segment: segment.satisfaction)
+        if unhappiest.satisfaction < 45 and unhappiest.note:
+            return f"Players feel: {unhappiest.note}.", 5
+        if unhappiest.satisfaction < 60 and unhappiest.note:
+            return f"Community whisper: {unhappiest.note}.", 3
     if game.score < 45:
         return "Low rating: updates have weak returns. Invest in the next game instead.", 5
     if game.monthly_players < 10 and game.score >= 70:
