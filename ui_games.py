@@ -23,6 +23,7 @@ from simulation import (
     genre_release_pressure,
     has_research,
     market_chart,
+    market_share_multiplier,
     media_venture_available,
     monthly_fixed_cost,
     planned_update_version,
@@ -111,7 +112,8 @@ def draw_sales_trend_panel(panel: curses.window, selected, x: int, height: int, 
     bar_height = max(2, height - 4)
     stat_row = draw_trend_bars(panel, history, 2, inner, height=bar_height, x=x + 2)
     if history:
-        add_text(panel, stat_row, x + 2, f"peak {max(history):,}/w | latest {history[-1]:,}/w", inner, curses.color_pair(2))
+        all_time_peak = max(getattr(selected, "peak_weekly_sales", 0), max(history))
+        add_text(panel, stat_row, x + 2, f"peak {all_time_peak:,}/w | latest {history[-1]:,}/w", inner, curses.color_pair(2))
 
 
 # Layout geometry shared with the mouse handler in ui_input; hit-testing
@@ -547,8 +549,10 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         if abs(market_shift) >= 8:
             shift_hint = f" | {'cooling' if market_shift < 0 else 'heating'} since greenlight"
             shift_attr = curses.color_pair(5) if market_shift < 0 else curses.color_pair(4)
+        open_market = market_share_multiplier(state, project.genre, project.channel)
         add_text(overview, 15, right_x, f"Market fit {project.market_score}/100 | {project.competitors} rivals{shift_hint}", right_inner, shift_attr)
         add_text(overview, 16, right_x, f"Genre pressure {genre_release_pressure(state.studio, project.genre):.1f}/3.0", right_inner, curses.color_pair(5) if genre_release_pressure(state.studio, project.genre) >= 1.5 else 0)
+        add_text(overview, 17, right_x, f"Store demand {open_market:.0%} open on {project.channel}", right_inner, curses.color_pair(5) if open_market < 0.55 else 0)
 
         draw_promotion_panel(promotion, state, 0, promotion_width - 4, detail_height, campaign_load, prelaunch_hype=project.hype)
     if summary_height >= 5:
@@ -911,8 +915,8 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
     option_inner = option_width - 4
     option_expanded = option_inner >= 80
     promotion_name_width = 24 if option_expanded else max(12, option_inner - 22)
-    effect_width = max(10, option_inner - promotion_name_width - 51)
-    option_header = f"  {'PROMOTION':<{promotion_name_width}} {'COST':>10} {'WEEKS':>5} {'HYPE':>6} {'TEAM':>6} {'REQ REP':>7} {'EFFECT':<{effect_width}}" if option_expanded else f"  {'PROMOTION':<{promotion_name_width}} {'COST':>9} {'STATUS':>10}"
+    effect_width = max(10, option_inner - promotion_name_width - 55)
+    option_header = f"  {'PROMOTION':<{promotion_name_width}} {'COST':>10} {'WEEKS':>5} {'HYPE CAP':>9} {'TEAM':>6} {'REQ REP':>7} {'EFFECT':<{effect_width}}" if option_expanded else f"  {'PROMOTION':<{promotion_name_width}} {'COST':>9} {'STATUS':>10}"
     add_text(options_panel, 1, 2, option_header, option_inner, curses.A_BOLD)
     option_rows = []
     for promotion in PROMOTIONS:
@@ -920,7 +924,7 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
         research_locked = bool(research_key and not has_research(state.studio, research_key))
         locked = state.studio.reputation < promotion["rep"] or research_locked
         if option_expanded:
-            text = f"{promotion['name'][:promotion_name_width]:<{promotion_name_width}} {money(promotion['cost']):>10} {promotion['weeks']:>5} {promotion['hype']:>6} {promotion['team']:>6.0%} {promotion['rep']:>7} {promotion['effect'][:effect_width]:<{effect_width}}"
+            text = f"{promotion['name'][:promotion_name_width]:<{promotion_name_width}} {money(promotion['cost']):>10} {promotion['weeks']:>5} +{promotion['hype']:<3}/{promotion['ceiling']:<3} {promotion['team']:>6.0%} {promotion['rep']:>7} {promotion['effect'][:effect_width]:<{effect_width}}"
         else:
             status = "RESEARCH" if research_locked else f"REP {promotion['rep']}" if locked else "AVAILABLE"
             text = f"{promotion['name'][:promotion_name_width]:<{promotion_name_width}} {money(promotion['cost']):>9} {status:>10}"

@@ -10,6 +10,7 @@ from simulation import (
     activity_allocations,
     chart_positions,
     game_profit,
+    loan_weekly_obligation,
     market_chart,
     monthly_fixed_cost,
     projected_weekly_output,
@@ -69,6 +70,11 @@ def draw_dashboard(screen: curses.window, state: GameState, width: int) -> int:
     add_text(finance, 5, 2, f"Tax reserve        {money(studio.tax_reserve)}", left_width - 4, curses.color_pair(4))
     lifetime_net = studio.lifetime_revenue - studio.lifetime_expenses
     add_text(finance, 6, 2, f"Lifetime result    {money(lifetime_net)}", left_width - 4, curses.color_pair(4) if lifetime_net >= 0 else curses.color_pair(5))
+    debt = sum(loan.balance for loan in studio.loans)
+    if debt:
+        add_text(finance, 7, 2, f"Bank debt          {money(debt)} | {money(loan_weekly_obligation(studio))}/week", left_width - 4, curses.color_pair(5))
+    else:
+        add_text(finance, 7, 2, "[B] Finance desk   Loans and publisher deals", left_width - 4, curses.color_pair(2))
     if width >= 120:
         add_text(finance, 8, 2, "RECENT ACTIVITY", left_width - 4, curses.A_BOLD)
         if not studio.ledger:

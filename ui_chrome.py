@@ -50,6 +50,7 @@ MODAL_TAB_INDEX = {
     "main": 0,
     "contracts": 0,
     "upgrades": 0,
+    "finance": 0,
     "settings": 0,
     "games": 1,
     "update_planner": 1,
@@ -150,6 +151,8 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
     dense = width is not None and width < 150
     if state.modal == "main":
         return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[J]" if compact else control_label("J", "Jobs"), "contracts"), ("[U]" if compact else control_label("U", "Upgrades"), "upgrades")]
+    if state.modal == "finance":
+        return [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Offer"), "finance_selection"), ("[Enter]" if compact else control_label("Enter", "Accept"), "finance_accept")]
     if state.modal == "new_game":
         if state.naming_game:
             return [("[Enter]" if compact else control_label("Enter", "Accept title"), "accept_title")]

@@ -574,6 +574,18 @@ class SimulationTests(unittest.TestCase):
         handle_new_game_key(chooser, curses.KEY_BACKSPACE)
         self.assertEqual(chooser.modal, "games")
 
+    def test_locked_planning_options_are_skipped(self) -> None:
+        state = GameState(modal="new_game", new_game_step=2)
+        state.selected_focus = 1  # Game format
+        selected_format = state.selected_format
+        handle_new_game_key(state, curses.KEY_RIGHT)
+        self.assertEqual(state.selected_format, selected_format)
+
+        state.selected_focus = 6  # Marketing
+        selected_marketing = state.selected_marketing
+        handle_new_game_key(state, curses.KEY_RIGHT)
+        self.assertEqual(state.selected_marketing, selected_marketing)
+
     def test_blend_mode_switches_list_to_secondary_selection(self) -> None:
         state = GameState(modal="new_game", new_game_step=0)
         state.selected_genre = 0
@@ -1296,6 +1308,24 @@ class SimulationTests(unittest.TestCase):
         advance(state, 1)
         self.assertEqual(state.studio.active_promotions, [])
 
+    def test_development_hype_does_not_decay_and_social_caps_at_thirty(self) -> None:
+        state = GameState()
+        unlock(state, "promotion_basics")
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        project.hype = 30
+        advance(state, 1)
+        self.assertEqual(project.hype, 30)
+        self.assertTrue(buy_promotion(state, 0, 0))
+        advance(state, 1)
+        self.assertEqual(project.hype, 30)
+
+        project.hype = 25
+        self.assertTrue(buy_promotion(state, 0, 0))
+        advance(state, 1)
+        self.assertGreater(project.hype, 25)
+        self.assertLessEqual(project.hype, 30)
+
     def test_in_development_project_can_be_cancelled_with_twenty_percent_refund(self) -> None:
         state = GameState()
         self.assertTrue(start_project(state))
@@ -1546,6 +1576,15 @@ class SimulationTests(unittest.TestCase):
         self.assertFalse(toggle_auto_contracts(state))
         self.assertEqual(len(state.studio.contract_queue), 0)
         self.assertIsNotNone(state.studio.contract)
+
+    def test_locked_contract_offers_have_no_selection(self) -> None:
+        state = GameState(modal="contracts")
+        for offer in state.studio.contract_offers:
+            offer.reputation_required = 1
+        state.selected_contract = 0
+        handle_key(state, curses.KEY_DOWN)
+        self.assertEqual(state.selected_contract, -1)
+        self.assertFalse(accept_contract_offer(state))
 
     def test_disabling_auto_preserves_manually_queued_job(self) -> None:
         state = GameState()
@@ -2416,12 +2455,30 @@ class SimulationTests(unittest.TestCase):
         ips = sum(len(competitor.franchises) for competitor in state.studio.competitors)
         self.assertGreaterEqual(ips, 10)
 
+    def test_competitors_grow_tools_and_fanbase_from_releases(self) -> None:
+        from simulation import CompetitorGame, process_market_week
+
+        state = GameState()
+        competitor = state.studio.competitors[0]
+        tools_before = competitor.tools_level
+        fans_before = competitor.fanbase
+        competitor.growth_points = 300 + competitor.tools_level * 100
+        competitor.cooldown = 5
+        competitor.in_development.append(
+            CompetitorGame("Growth Release", "", "Action", 90, 140, 1, competitor.size, channel="Steam")
+        )
+        process_market_week(state)
+        self.assertEqual(competitor.releases_completed, 1)
+        self.assertGreater(competitor.fanbase, fans_before)
+        self.assertGreater(competitor.tools_level, tools_before)
+
     def test_charts_are_dominated_by_rival_releases_early(self) -> None:
         state = GameState()
         chart = market_chart(state)
         self.assertGreaterEqual(len(chart), 5)
         self.assertTrue(all(entry.game_id == 0 for entry in chart))
         self.assertTrue(all(entry.weekly_units > 0 for entry in chart))
+        self.assertGreater(max(entry.weekly_units for entry in chart), 100_000, "platform holders should set the early commercial benchmark")
         game = self.release_first_game(state)
         position = chart_positions(state).get(game.game_id)
         self.assertNotEqual(position, 1, "a first release from an unknown studio must not top the charts")
@@ -2448,6 +2505,52 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(loaded_game.press_rating, game.press_rating)
         self.assertEqual(loaded_game.sales_history, game.sales_history)
         self.assertTrue(any(release.weekly_units > 0 for competitor in loaded.studio.competitors for release in competitor.recent_releases))
+
+    def test_rival_hit_claims_same_storefront_demand(self) -> None:
+        from simulation import CompetitorGame, genre_market_capacity, market_share_multiplier
+
+        state = GameState()
+        genre = "Action"
+        baseline = market_share_multiplier(state, genre, "Steam")
+        rival = state.studio.competitors[0]
+        rival.recent_releases.append(
+            CompetitorGame(
+                "Breakout Rival", "", genre, 90, 150, 0, rival.size,
+                released_week=state.clock.week,
+                weekly_units=genre_market_capacity(genre, "Steam") * 2,
+                channel="Steam",
+            )
+        )
+        self.assertLess(market_share_multiplier(state, genre, "Steam"), baseline)
+
+    def test_sales_trend_keeps_all_time_peak_after_history_rolls_over(self) -> None:
+        state = GameState()
+        game = self.release_first_game(state)
+        game.sales_history = [25] * 16
+        game.peak_weekly_sales = 500
+        text = rendered_games_text(state, 200, 60)
+        self.assertTrue(any("peak 500/w | latest 25/w" in line for line in text))
+
+    def test_long_lived_hit_ip_accumulates_severe_fatigue(self) -> None:
+        from simulation import franchise_fatigue_target, process_franchises_week
+
+        state = GameState()
+        game = self.release_first_game(state)
+        franchise = franchise_by_id(state.studio, game.franchise_id)
+        franchise.total_units = 8_000_000
+        game.dlcs_released = 4
+        game.updates_released = 12
+        state.clock.week = game.release_week + 52 * 5
+        game.last_update_week = state.clock.week
+        self.assertGreater(franchise_fatigue_target(state, franchise), 100)
+        for _ in range(52):
+            process_franchises_week(state)
+        self.assertGreater(franchise.fatigue, 80)
+        state.clock.week += 52 * 3
+        self.assertLess(franchise_fatigue_target(state, franchise), 25)
+        for _ in range(104):
+            process_franchises_week(state)
+        self.assertLess(franchise.fatigue, 40)
 
     def test_user_rating_falls_with_bugs_while_press_stays_settled(self) -> None:
         state = GameState()

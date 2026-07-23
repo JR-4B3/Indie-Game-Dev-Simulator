@@ -182,10 +182,11 @@ def draw_list(window: curses.window, items: list[str], selected: int, active: bo
 def draw_chart_rows(window: curses.window, chart: list, selected_game_id: int, y: int, inner: int, count: int) -> int:
     """Top-chart rows with unit bars; the selected game is highlighted and any
     studio title is dimmed. Returns the first free row below the block."""
-    bar_width = 7
     peak_units = max((entry.weekly_units for entry in chart), default=1) or 1
+    unit_width = max(7, min(14, len(f"{peak_units:,}")))
     studio_width = max(10, min(20, inner - 40))
-    title_width = max(10, inner - studio_width - bar_width - 14)
+    bar_width = max(3, min(7, inner - studio_width - unit_width - 16))
+    title_width = max(10, inner - studio_width - bar_width - unit_width - 6)
     for index, entry in enumerate(chart[:count], 1):
         filled = max(1, round(bar_width * entry.weekly_units / peak_units))
         if selected_game_id and entry.game_id == selected_game_id:
@@ -195,7 +196,7 @@ def draw_chart_rows(window: curses.window, chart: list, selected_game_id: int, y
         else:
             entry_attr = 0
         studio_name = "YOU" if entry.game_id else entry.studio_name
-        add_text(window, y + index - 1, 2, f"{index:>2} {entry.title[:title_width]:<{title_width}} {studio_name[:studio_width]:<{studio_width}} {'█' * filled:<{bar_width}} {entry.weekly_units:>7,}", inner, entry_attr)
+        add_text(window, y + index - 1, 2, f"{index:>2} {entry.title[:title_width]:<{title_width}} {studio_name[:studio_width]:<{studio_width}} {'█' * filled:<{bar_width}} {entry.weekly_units:>{unit_width},}", inner, entry_attr)
     return y + min(len(chart), count)
 
 

@@ -25,7 +25,9 @@ def draw_contract_screen(screen: curses.window, state: GameState, width: int, he
     draw_box(detail, "Contract Queue & Profile")
     if not studio.contract_offers:
         add_text(board, 1, 2, "No contract offers. The board refreshes monthly.", board_width - 4)
-    state.selected_contract = min(state.selected_contract, max(0, len(studio.contract_offers) - 1))
+    eligible = [index for index, offer in enumerate(studio.contract_offers) if offer.reputation_required <= studio.contractor_reputation]
+    if state.selected_contract not in eligible:
+        state.selected_contract = eligible[0] if eligible else -1
     board_inner = board_width - 4
     board_expanded = board_inner >= 85
     client_width = 18 if board_expanded else 10

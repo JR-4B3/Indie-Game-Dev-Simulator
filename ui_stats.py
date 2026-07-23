@@ -195,7 +195,7 @@ def draw_market_view(panel: curses.window, state: GameState) -> None:
     state.selected_stat = min(state.selected_stat, max(0, len(competitors) - 1))
     x = own_width + 4
     available = width - x - 2
-    header = f"  {'COMPETITOR':<22} {'TIER':<9} {'FANS':>10} {'REP':>4}  IPs / ACTIVITY"
+    header = f"  {'COMPETITOR':<22} {'TIER':<9} {'FANS':>10} {'REP':>4} {'TOOLS':>5}  IPs / ACTIVITY"
     add_text(panel, 3, x, header, available, curses.A_BOLD)
     rows = []
     for competitor in competitors:
@@ -205,14 +205,14 @@ def draw_market_view(panel: curses.window, state: GameState) -> None:
             activity.append(f"dev: {competitor.in_development[0].title} ({competitor.in_development[0].weeks_left}w)")
         if competitor.recent_releases:
             activity.append(f"out: {competitor.recent_releases[0].title} {competitor.recent_releases[0].quality}/100")
-        text = f"{competitor.name[:22]:<22} {competitor.tier:<9} {competitor.fanbase:>10,} {competitor.reputation:>4.0f}  {ips}"
+        text = f"{competitor.name[:22]:<22} {competitor.tier:<9} {competitor.fanbase:>10,} {competitor.reputation:>4.0f} {competitor.tools_level:>5}  {ips}"
         rows.append((text[:available], curses.color_pair(2)))
     draw_selectable_list(panel, rows, state.selected_stat, True, y=4, x=x, width=available, visible=max(1, height - 9))
     if competitors:
         selected = competitors[state.selected_stat]
         detail_y = height - 3
         franchises = "; ".join(f"{item.name} ({item.rank_name}, {item.entries} releases)" for item in selected.franchises) or "no known IPs"
-        add_text(panel, detail_y - 1, x, f"{selected.name} IPs: {franchises}"[:available], available, curses.color_pair(4))
+        add_text(panel, detail_y - 1, x, f"{selected.name} tools {selected.tools_level}/8 | scale {selected.size:.1f} | {selected.releases_completed} releases | IPs: {franchises}"[:available], available, curses.color_pair(4))
         add_text(panel, detail_y, x, ("Active: " + "; ".join(activity))[:available] if (activity := [f"developing {g.title} ({g.weeks_left}w)" for g in selected.in_development] + [f"recent {g.title} {g.quality}/100" for g in selected.recent_releases[:2]]) else "", available, curses.color_pair(4))
 
 

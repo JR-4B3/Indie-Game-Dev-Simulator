@@ -12,9 +12,11 @@ from simulation import (
     CREATIVE_DIRECTIONS,
     EMPLOYEE_SKILLS,
     GAME_FORMATS,
+    LOAN_OFFERS,
     MARKETING,
     MEDIA_VENTURES,
     PROMOTIONS,
+    PUBLISHER_OFFERS,
     RESEARCH_BRANCHES,
     RELEASE_STRATEGIES,
     SCOPES,
@@ -22,6 +24,8 @@ from simulation import (
     GameState,
     accept_contract_offer,
     buy_media_venture,
+    take_loan,
+    select_publisher,
     buy_promotion,
     buy_upgrade,
     cancel_queued_promotion,
@@ -39,6 +43,12 @@ from simulation import (
     prepare_sequel,
     prepare_spinoff,
     queue_game_update,
+    has_research,
+    research_requirement_for_channel,
+    research_requirement_for_format,
+    research_requirement_for_marketing,
+    research_requirement_for_scope,
+    research_requirement_for_strategy,
     research_nodes_for_branch,
     refresh_draft_title,
     resolve_project_decision,
@@ -112,6 +122,48 @@ def open_new_game(state: GameState) -> None:
     state.mix_blend = False
 
 
+def cycle_contract_selection(state: GameState, delta: int) -> None:
+    offers = state.studio.contract_offers
+    eligible = [index for index, offer in enumerate(offers) if offer.reputation_required <= state.studio.contractor_reputation]
+    if not eligible:
+        state.selected_contract = -1
+        return
+    if state.selected_contract not in eligible:
+        state.selected_contract = eligible[0 if delta > 0 else -1]
+        return
+    position = eligible.index(state.selected_contract)
+    state.selected_contract = eligible[(position + delta) % len(eligible)]
+
+
+def plan_option_unlocked(state: GameState, field_index: int, option_index: int) -> bool:
+    requirement_functions = {
+        0: research_requirement_for_scope,
+        1: research_requirement_for_format,
+        5: research_requirement_for_strategy,
+        6: research_requirement_for_marketing,
+    }
+    requirement = requirement_functions.get(field_index, lambda _: None)(option_index)
+    return not requirement or has_research(state.studio, requirement)
+
+
+def cycle_plan_option(state: GameState, field_index: int, attribute: str, count: int, delta: int) -> None:
+    current = getattr(state, attribute)
+    for offset in range(1, count + 1):
+        candidate = (current + delta * offset) % count
+        if plan_option_unlocked(state, field_index, candidate):
+            setattr(state, attribute, candidate)
+            return
+
+
+def cycle_channel_selection(state: GameState, delta: int) -> None:
+    for offset in range(1, len(CHANNELS) + 1):
+        candidate = (state.selected_channel + delta * offset) % len(CHANNELS)
+        requirement = research_requirement_for_channel(candidate)
+        if not requirement or has_research(state.studio, requirement):
+            state.selected_channel = candidate
+            return
+
+
 def enter_queue_cancellation(state: GameState) -> bool:
     if state.modal == "update_planner":
         if not state.studio.update_queue:
@@ -161,6 +213,9 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         open_new_game(state)
     elif action == "contracts":
         state.modal = "contracts"
+    elif action == "finance":
+        state.modal = "finance"
+        state.selected_finance_offer = 0
     elif action == "marketing":
         state.modal = "marketing"
         state.marketing_tab = 0
@@ -351,6 +406,14 @@ def perform_footer_action(state: GameState, action: str) -> bool:
             start_employee_vacation(state)
     elif action == "buy":
         buy_upgrade(state)
+    elif action == "finance_selection":
+        count = len(LOAN_OFFERS) if state.finance_tab == 0 else len(PUBLISHER_OFFERS)
+        state.selected_finance_offer = (state.selected_finance_offer + 1) % count
+    elif action == "finance_accept":
+        if state.finance_tab == 0:
+            take_loan(state, state.selected_finance_offer)
+        else:
+            select_publisher(state, state.selected_finance_offer)
     elif action == "cancel_research":
         cancel_queued_research(state)
     elif action == "previous_research_branch":
@@ -484,7 +547,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         elif state.new_game_step == 2:
             state.selected_focus = (state.selected_focus - 1) % 7
         else:
-            state.selected_channel = (state.selected_channel - 1) % len(CHANNELS)
+            cycle_channel_selection(state, -1)
     elif key == curses.KEY_DOWN:
         if state.new_game_step == 0:
             if state.mix_blend:
@@ -508,7 +571,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         elif state.new_game_step == 2:
             state.selected_focus = (state.selected_focus + 1) % 7
         else:
-            state.selected_channel = (state.selected_channel + 1) % len(CHANNELS)
+            cycle_channel_selection(state, 1)
     elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step == 2:
         delta = -1 if key == curses.KEY_LEFT else 1
         fields = (
@@ -521,7 +584,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
             ("selected_marketing", len(MARKETING)),
         )
         attribute, count = fields[state.selected_focus]
-        setattr(state, attribute, (getattr(state, attribute) + delta) % count)
+        cycle_plan_option(state, state.selected_focus, attribute, count, delta)
     if previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic):
         # Sequels/spin-offs keep their IP link even if genre/theme is remixed.
         if not state.sequel_game_id and not state.spinoff_franchise_id:
@@ -600,7 +663,7 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         elif state.modal == "team":
             handle_team_key(state, key)
         elif state.modal == "contracts" and state.studio.contract_offers:
-            state.selected_contract = (state.selected_contract + (-1 if wheel_up else 1)) % len(state.studio.contract_offers)
+            cycle_contract_selection(state, -1 if wheel_up else 1)
         elif state.modal == "games" and (state.studio.catalog or state.studio.current_project):
             entry_count = len(state.studio.catalog) + (1 if state.studio.current_project else 0)
             state.selected_game = (state.selected_game + (-1 if wheel_up else 1)) % entry_count
@@ -759,9 +822,10 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         board_width = contract_board_width(width)
         row = y - 4
         if x <= board_width and 0 <= row < len(state.studio.contract_offers):
-            state.selected_contract = row
-            if double_click:
-                accept_contract_offer(state)
+            if state.studio.contract_offers[row].reputation_required <= state.studio.contractor_reputation:
+                state.selected_contract = row
+                if double_click:
+                    accept_contract_offer(state)
         return
 
     if state.modal in ("games", "update_planner"):
@@ -927,7 +991,8 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                         if chip_x + len(chip) > plan_width - 2:
                             break
                         if plan_x + chip_x <= x < plan_x + chip_x + len(chip):
-                            setattr(state, attribute, index)
+                            if plan_option_unlocked(state, state.selected_focus, index):
+                                setattr(state, attribute, index)
                             break
                         chip_x += len(chip) + 2
                     return
@@ -949,11 +1014,14 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             storefront_y = 2 + top_height
             row = y - (storefront_y + 2)
             if x < storefront_width and 0 <= row < storefront_height - 3:
-                state.new_game_step = 3
                 start = list_start(state.selected_channel, len(CHANNELS), storefront_height - 3)
-                state.selected_channel = min(start + row, len(CHANNELS) - 1)
-                if double_click:
-                    handle_new_game_key(state, 10)
+                candidate = min(start + row, len(CHANNELS) - 1)
+                requirement = research_requirement_for_channel(candidate)
+                if not requirement or has_research(state.studio, requirement):
+                    state.new_game_step = 3
+                    state.selected_channel = candidate
+                    if double_click:
+                        handle_new_game_key(state, 10)
 
 
 def activate_title_choice(state: GameState) -> bool:
@@ -1118,6 +1186,14 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             return True
     if key in (ord("q"), ord("Q")):
         return False
+    if key in (ord("b"), ord("B")) and state.modal == "main":
+        state.modal = "finance"
+        state.selected_finance_offer = 0
+        return True
+    if state.modal == "finance" and key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+        state.finance_tab = 1 - state.finance_tab
+        state.selected_finance_offer = 0
+        return True
     if key == ord(" "):
         toggle_pause(state)
         return True
@@ -1137,11 +1213,26 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
         elif key in (ord("c"), ord("C")):
             toggle_auto_contracts(state)
         elif key == curses.KEY_UP and state.studio.contract_offers:
-            state.selected_contract = (state.selected_contract - 1) % len(state.studio.contract_offers)
+            cycle_contract_selection(state, -1)
         elif key == curses.KEY_DOWN and state.studio.contract_offers:
-            state.selected_contract = (state.selected_contract + 1) % len(state.studio.contract_offers)
+            cycle_contract_selection(state, 1)
         elif key in (10, 13, curses.KEY_ENTER):
             accept_contract_offer(state)
+    elif state.modal == "finance":
+        if key in (8, 127, curses.KEY_BACKSPACE):
+            state.modal = "main"
+        elif key in (curses.KEY_LEFT, curses.KEY_RIGHT):
+            state.finance_tab = 1 - state.finance_tab
+            state.selected_finance_offer = 0
+        elif key in (curses.KEY_UP, curses.KEY_DOWN):
+            count = len(LOAN_OFFERS) if state.finance_tab == 0 else len(PUBLISHER_OFFERS)
+            delta = -1 if key == curses.KEY_UP else 1
+            state.selected_finance_offer = (state.selected_finance_offer + delta) % count
+        elif key in (10, 13, curses.KEY_ENTER):
+            if state.finance_tab == 0:
+                take_loan(state, state.selected_finance_offer)
+            else:
+                select_publisher(state, state.selected_finance_offer)
     elif state.modal == "games":
         games = live_games(state)
         project = state.studio.current_project

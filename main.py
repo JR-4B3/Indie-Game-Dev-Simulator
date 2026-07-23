@@ -54,6 +54,7 @@ from ui_common import add_text, money
 from ui_contracts import draw_contract_screen
 from ui_games import draw_games_screen, draw_marketing_screen, draw_update_planner_screen
 from ui_hub import draw_dashboard, draw_main_content
+from ui_finance import draw_finance_screen
 from ui_input import CTRL_S, handle_key, handle_mouse, handle_new_game_key, open_new_game
 from ui_newgame import draw_new_game, new_game_panel_geometry
 from ui_stats import draw_analysis
@@ -76,6 +77,7 @@ SCREEN_DRAWERS = {
     "marketing": draw_marketing_screen,
     "upgrades": draw_upgrades,
     "analysis": draw_analysis,
+    "finance": draw_finance_screen,
 }
 
 
@@ -137,10 +139,10 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
         draw_training_popup(screen, state, width, height)
     if state.cancel_project_open:
         draw_cancel_project_popup(screen, state, width, height)
-    if state.save_picker_open:
-        draw_save_picker(screen, state, width, height)
     if state.settings_open:
         draw_settings_popup(screen, state, width, height)
+    if state.save_picker_open:
+        draw_save_picker(screen, state, width, height)
     if state.studio.closed:
         draw_insolvency_popup(screen, state, width, height)
 
@@ -156,6 +158,7 @@ def run(screen: curses.window, load_save: bool, save_path: str) -> None:
     curses.init_pair(3, curses.COLOR_YELLOW, -1)
     curses.init_pair(4, curses.COLOR_GREEN, -1)
     curses.init_pair(5, curses.COLOR_RED, -1)
+    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_BLACK)
     screen.nodelay(True)
     screen.keypad(True)
     try:

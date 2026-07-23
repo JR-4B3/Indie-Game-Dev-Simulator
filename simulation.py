@@ -10,7 +10,7 @@ from pathlib import Path
 from game_data import GENRES, GENRE_PROFILES, GOOD_MATCHES, TOPICS
 
 
-SAVE_VERSION = 8
+SAVE_VERSION = 9
 START_DATE = date.today()
 SECONDS_PER_WEEK = 120.0
 SECONDS_PER_DAY = SECONDS_PER_WEEK / 7
@@ -20,14 +20,26 @@ TIME_SPEEDS = (0.0, 12.0, 24.0, 48.0)
 TIME_LABELS = ("||", "> 1x", ">> 2x", ">>> 4x")
 
 CHANNELS = (
-    {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00},
-    {"name": "itch.io", "category": "PC", "fee": 0, "cut": 0.10, "reach": 0.18},
-    {"name": "Epic Games Store", "category": "PC", "fee": 100, "cut": 0.12, "reach": 0.32},
-    {"name": "App Store", "category": "Mobile", "fee": 99, "cut": 0.30, "reach": 0.70},
-    {"name": "Google Play", "category": "Mobile", "fee": 25, "cut": 0.30, "reach": 0.82},
-    {"name": "PlayStation 5", "category": "Console", "fee": 12_500, "cut": 0.30, "reach": 0.58},
-    {"name": "Xbox Series", "category": "Console", "fee": 8_000, "cut": 0.30, "reach": 0.42},
-    {"name": "Switch 2", "category": "Handheld", "fee": 10_000, "cut": 0.30, "reach": 0.52},
+    {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00, "visibility": 5},
+    {"name": "itch.io", "category": "PC", "fee": 0, "cut": 0.10, "reach": 0.18, "visibility": 1},
+    {"name": "Epic Games Store", "category": "PC", "fee": 100, "cut": 0.12, "reach": 0.32, "visibility": 3},
+    {"name": "App Store", "category": "Mobile", "fee": 99, "cut": 0.30, "reach": 0.70, "visibility": 4},
+    {"name": "Google Play", "category": "Mobile", "fee": 25, "cut": 0.30, "reach": 0.82, "visibility": 5},
+    {"name": "PlayStation 5", "category": "Console", "fee": 12_500, "cut": 0.30, "reach": 0.58, "visibility": 5},
+    {"name": "Xbox Series", "category": "Console", "fee": 8_000, "cut": 0.30, "reach": 0.42, "visibility": 4},
+    {"name": "Switch 2", "category": "Handheld", "fee": 10_000, "cut": 0.30, "reach": 0.52, "visibility": 5},
+)
+
+LOAN_OFFERS = (
+    {"name": "Bridge loan", "principal": 25_000, "weeks": 52, "rate": 0.13},
+    {"name": "Production loan", "principal": 100_000, "weeks": 104, "rate": 0.11},
+    {"name": "Growth loan", "principal": 500_000, "weeks": 156, "rate": 0.095},
+)
+
+PUBLISHER_OFFERS = (
+    {"name": "Northstar Publishing", "min_rep": 0, "advance": 35_000, "recoup_share": 0.50, "post_recoup_share": 0.30, "hype": 12, "visibility": 1},
+    {"name": "Cinder House", "min_rep": 12, "advance": 180_000, "recoup_share": 0.50, "post_recoup_share": 0.25, "hype": 30, "visibility": 1},
+    {"name": "Atlas Interactive", "min_rep": 35, "advance": 900_000, "recoup_share": 0.55, "post_recoup_share": 0.22, "hype": 55, "visibility": 2},
 )
 
 # setup = cash outlay at greenlight (assets, middleware, outsourcing, tech). Payroll is separate.
@@ -125,13 +137,13 @@ MARKETING = (
 )
 
 PROMOTIONS = (
-    {"key": "social", "name": "Social media push", "cost": 6_500, "weeks": 1, "hype": 8, "team": 0.02, "rep": 0, "effect": "Small targeted awareness"},
-    {"key": "press", "name": "Press outreach", "cost": 18_000, "weeks": 2, "hype": 16, "team": 0.04, "rep": 2, "effect": "Reviews, previews, and interviews"},
-    {"key": "creator", "name": "Creator key campaign", "cost": 42_000, "weeks": 2, "hype": 25, "team": 0.05, "rep": 5, "effect": "Keys sent to relevant creators"},
-    {"key": "streamer", "name": "Streamer placement", "cost": 85_000, "weeks": 2, "hype": 42, "team": 0.03, "rep": 12, "effect": "Paid sponsored broadcast"},
-    {"key": "festival", "name": "Digital festival demo", "cost": 55_000, "weeks": 3, "hype": 34, "team": 0.12, "rep": 8, "effect": "Demo preparation consumes team time"},
-    {"key": "event", "name": "Attend a games event", "cost": 175_000, "weeks": 4, "hype": 58, "team": 0.18, "rep": 18, "effect": "Booth, travel, demo, and staff time"},
-    {"key": "showcase", "name": "Premium showcase slot", "cost": 380_000, "weeks": 4, "hype": 105, "team": 0.10, "rep": 35, "effect": "Large placement for established studios"},
+    {"key": "social", "name": "Social media push", "cost": 6_500, "weeks": 1, "hype": 8, "ceiling": 30, "team": 0.02, "rep": 0, "effect": "Small targeted awareness"},
+    {"key": "press", "name": "Press outreach", "cost": 18_000, "weeks": 2, "hype": 16, "ceiling": 50, "team": 0.04, "rep": 2, "effect": "Reviews, previews, and interviews"},
+    {"key": "creator", "name": "Creator key campaign", "cost": 42_000, "weeks": 2, "hype": 25, "ceiling": 75, "team": 0.05, "rep": 5, "effect": "Keys sent to relevant creators"},
+    {"key": "streamer", "name": "Streamer placement", "cost": 85_000, "weeks": 2, "hype": 42, "ceiling": 105, "team": 0.03, "rep": 12, "effect": "Paid sponsored broadcast"},
+    {"key": "festival", "name": "Digital festival demo", "cost": 55_000, "weeks": 3, "hype": 34, "ceiling": 85, "team": 0.12, "rep": 8, "effect": "Demo preparation consumes team time"},
+    {"key": "event", "name": "Attend a games event", "cost": 175_000, "weeks": 4, "hype": 58, "ceiling": 125, "team": 0.18, "rep": 18, "effect": "Booth, travel, demo, and staff time"},
+    {"key": "showcase", "name": "Premium showcase slot", "cost": 380_000, "weeks": 4, "hype": 105, "ceiling": 160, "team": 0.10, "rep": 35, "effect": "Large placement for established studios"},
 )
 
 UPDATE_FOCUSES = (
@@ -276,6 +288,14 @@ COMPETITOR_IP_NAMES = (
     "Turbo Dynasty", "Whisker Works", "Astral Siege", "Frostline", "Byte Raiders", "Dune Runners",
     "Silent Grove", "Mecha Bloom", "Void Cartel", "Paper Kingdoms", "Thunder Vale", "Neon Harvest",
     "Ashen Circuit", "Briar Ritual", "Chrome Divide", "Dusk Harbor", "Echowild", "Flux Garden",
+)
+
+EXPANDED_COMPETITOR_NAMES = (
+    "Blue Harbor", "Ironclad Softworks", "Mosslight", "Signal Peak", "Hearthfire", "Kiteframe",
+    "Copper Owl", "Lighthouse Labs", "Mammoth Byte", "Pinecone Interactive", "Cobalt Fox",
+    "Velvet Hammer", "Afterimage", "Lanternfish", "Morrow Digital", "Wild Orbit",
+    "Blackbird Assembly", "Riverstone", "Glass Compass", "Firebreak", "Oxbow Studio",
+    "Daybreak Collective", "Fableworks", "Snowcap", "Sundial Games", "Tangent Studio",
 )
 
 SEGMENT_KEYS = ("core", "casual", "enthusiast", "live")
@@ -446,6 +466,11 @@ class Project:
     known_defects: float = 0.0
     bug_work: float = 0.0
     bug_work_done: float = 0.0
+    publisher: str = ""
+    publisher_advance: float = 0.0
+    publisher_recoup_share: float = 0.0
+    publisher_post_recoup_share: float = 0.0
+    publisher_visibility: int = 0
 
     @property
     def progress(self) -> float:
@@ -498,6 +523,11 @@ class ActiveSale:
     genre: str = ""
     evergreen_units: float = 1.0
     week_units: float = 0.0
+    publisher: str = ""
+    publisher_recoup_share: float = 0.0
+    publisher_post_recoup_share: float = 0.0
+    publisher_recoupable: float = 0.0
+    publisher_recouped: float = 0.0
 
     @property
     def week_to_date(self) -> int:
@@ -566,6 +596,7 @@ class ReleasedGame:
     press_rating: float = 0.0
     user_trend: float = 0.0
     sales_history: list[int] = field(default_factory=list)
+    peak_weekly_sales: int = 0
     chart_peak: int = 0
     support_level: str = "Active"
     last_update_week: int = 0
@@ -573,6 +604,9 @@ class ReleasedGame:
     patch_fatigue: float = 0.0
     hype_backlash: float = 0.0
     fans_betrayed: bool = False
+    publisher: str = ""
+    publisher_advance: float = 0.0
+    publisher_recouped: float = 0.0
 
     @property
     def known_bug_count(self) -> int:
@@ -642,6 +676,16 @@ class LedgerMonth:
 
 
 @dataclass
+class Loan:
+    name: str
+    principal: float
+    balance: float
+    annual_rate: float
+    weeks_left: int
+    weekly_payment: float
+
+
+@dataclass
 class Franchise:
     franchise_id: int
     name: str
@@ -697,6 +741,7 @@ class CompetitorGame:
     released_week: int = 0
     weekly_units: float = 0.0
     units_sold: int = 0
+    channel: str = "Steam"
 
 
 @dataclass
@@ -722,6 +767,9 @@ class Competitor:
     in_development: list[CompetitorGame] = field(default_factory=list)
     recent_releases: list[CompetitorGame] = field(default_factory=list)
     cooldown: int = 0
+    growth_points: float = 0.0
+    tools_level: int = 0
+    releases_completed: int = 0
 
 
 @dataclass
@@ -789,6 +837,8 @@ class Studio:
     insolvent_weeks: int = 0
     insolvent_days: int = 0
     closed: bool = False
+    loans: list[Loan] = field(default_factory=list)
+    pending_publisher: str = ""
 
 
 @dataclass
@@ -821,6 +871,8 @@ class GameState:
     selected_promotion: int = 0
     selected_promotion_target: int = 0
     selected_venture: int = 0
+    finance_tab: int = 0
+    selected_finance_offer: int = 0
     queue_cancellation: str = ""
     selected_queue_cancellation: int = 0
     marketing_tab: int = 0
@@ -983,7 +1035,7 @@ def segment_target(state: GameState, game: ReleasedGame, segment: Segment, franc
     target = score - (segment.expectation - 60) * 0.6
     note = ""
     if segment.key == "core":
-        target += min(6.0, service * 0.75) - game.patch_fatigue * 2.0 - min(12.0, stale_weeks * 0.8) - bug_drag * 0.35
+        target += min(6.0, service * 0.75) - game.patch_fatigue * 2.0 - min(12.0, stale_weeks * 0.8) - bug_drag * 0.35 - max(0.0, fatigue - 55) * 0.08
         if game.fans_betrayed:
             target -= 10
         if game.patch_fatigue >= 2.5:
@@ -995,7 +1047,7 @@ def segment_target(state: GameState, game: ReleasedGame, segment: Segment, franc
         else:
             note = "loves the support" if segment.satisfaction >= 72 else "watching the roadmap"
     elif segment.key == "casual":
-        target -= bug_drag * 0.9
+        target -= bug_drag * 0.9 + max(0.0, fatigue - 70) * 0.06
         target += min(4.0, service * 0.5)
         target -= min(18.0, game.hype_backlash * 0.35)
         if game.hype_backlash >= 15:
@@ -1045,6 +1097,49 @@ def hype_marketing_effectiveness(current_hype: float) -> float:
     return max(0.25, 1.0 - max(0.0, current_hype - 60) / 140 * 0.75)
 
 
+def promotion_hype_effectiveness(promotion: dict, current_hype: float) -> float:
+    """Campaigns cannot substitute for broader awareness once their tier tops out."""
+    remaining = max(0.0, promotion["ceiling"] - current_hype)
+    tier_headroom = min(1.0, remaining / max(1.0, promotion["hype"]))
+    return hype_marketing_effectiveness(current_hype) * tier_headroom
+
+
+def market_growth_factor(week: int) -> float:
+    """Audience spending expands over time for every studio, not just the player."""
+    return 1 + min(0.35, max(0, week - 1) / 52 * 0.03)
+
+
+def genre_market_capacity(genre: str, channel: str, week: int = 1) -> float:
+    """Weekly attention available to one genre/storefront market."""
+    storefront = channel_by_name(channel)
+    modern_bonus = 1.25 if genre in {"Battle Royale", "Extraction Shooter", "Survivors-like", "Roguelike", "Roguelite", "Deckbuilder", "Automation", "Cozy Game", "Social Deduction", "Immersive Sim", "Soulslike", "Metroidvania"} else 1.0
+    return 450_000 * storefront["reach"] * (0.55 + storefront["visibility"] / 10) * modern_bonus * market_growth_factor(week)
+
+
+def market_share_multiplier(state: GameState, genre: str, channel: str, excluded_game_id: int = 0) -> float:
+    """Demand left after currently visible games have claimed their share.
+
+    A hit in the same genre and storefront takes real attention from the next
+    launch and from catalog tails. Different storefronts overlap slightly,
+    while the same storefront competes directly.
+    """
+    demand_taken = 0.0
+    for competitor in state.studio.competitors:
+        for game in competitor.recent_releases:
+            if game.genre != genre or state.clock.week - game.released_week > 30:
+                continue
+            overlap = 1.0 if game.channel == channel else 0.20
+            demand_taken += game.weekly_units * overlap
+    for sale in state.studio.active_sales:
+        if sale.game_id == excluded_game_id or sale.genre != genre:
+            continue
+        game = game_by_id(state.studio, sale.game_id)
+        overlap = 1.0 if game and game.channel == channel else 0.20
+        demand_taken += sale.weekly_units * overlap * 0.55
+    load = demand_taken / max(1.0, genre_market_capacity(genre, channel, state.clock.week))
+    return max(0.18, min(1.0, 1.0 - load * 0.55))
+
+
 def update_genre_heat(state: GameState) -> None:
     studio = state.studio
     for index, genre in enumerate(GENRES):
@@ -1052,7 +1147,7 @@ def update_genre_heat(state: GameState) -> None:
         for competitor in studio.competitors:
             for release in competitor.recent_releases:
                 if release.genre == genre and 0 <= state.clock.week - release.released_week <= 30:
-                    saturation += 0.05 + release.quality / 800
+                    saturation += 0.04 + release.quality / 1_000 + min(0.28, release.weekly_units / genre_market_capacity(genre, release.channel, state.clock.week) * 0.28)
         for game in studio.catalog:
             if game.genre == genre and 0 <= state.clock.week - game.release_week <= 30:
                 saturation += 0.10
@@ -1080,6 +1175,32 @@ def team_research_skill(studio: Studio) -> float:
     lead = max(effective_research(employee) for employee in researchers)
     support = sum(effective_research(employee) for employee in researchers) / len(researchers)
     return min(99.0, lead * 0.7 + support * 0.3)
+
+
+def publisher_by_name(name: str) -> dict | None:
+    return next((publisher for publisher in PUBLISHER_OFFERS if publisher["name"] == name), None)
+
+
+def loan_payment(principal: float, annual_rate: float, weeks: int) -> float:
+    weekly_rate = annual_rate / 52
+    if weekly_rate <= 0:
+        return principal / weeks
+    return principal * weekly_rate / (1 - (1 + weekly_rate) ** -weeks)
+
+
+def market_release_pressure(state: GameState, genre: str, target_weeks: int) -> float:
+    """Weighted rival launches that will still compete when this project ships."""
+    pressure = 0.0
+    release_week = state.clock.week + target_weeks
+    for competitor in state.studio.competitors:
+        for game in competitor.recent_releases:
+            age_at_launch = release_week - game.released_week
+            if game.genre == genre and -2 <= age_at_launch <= 20:
+                pressure += 0.35 + game.hype / 300 * (0.35 + competitor.size / 10)
+        for game in competitor.in_development:
+            if game.genre == genre and abs(game.weeks_left - target_weeks) <= 12:
+                pressure += 0.45 + game.hype / 260 * (0.35 + competitor.size / 10)
+    return min(8.0, pressure)
 
 
 def market_truth(state: GameState) -> dict:
@@ -1123,6 +1244,15 @@ def market_truth(state: GameState) -> dict:
     else:
         format_fit = 12 if online_matches else -10
     trend = rng.randint(-14, 14)
+    nominal_work = round(
+        scope["work"]
+        * game_format["work"]
+        * strategy["work"]
+        * (primary_direction["work"] * 0.6 + secondary_direction["work"] * 0.4)
+    )
+    target_weeks = max(4, round(nominal_work / max(0.1, projected_weekly_output(state.studio, concept_focus(state)))))
+    release_pressure = market_release_pressure(state, genre, target_weeks)
+    open_market = market_share_multiplier(state, genre, channel["name"])
     score = round(
         42
         + (topic_score - 0.5) * 40
@@ -1133,16 +1263,20 @@ def market_truth(state: GameState) -> dict:
         + blend_fit
         + format_fit
         + trend
+        - release_pressure * 4
+        + (open_market - 0.7) * 18
     )
     score = max(8, min(96, score + round((heat - 1.0) * 24)))
-    competitors = max(1, round(2 + demand * 3 + (3 if genre in modern else 0) + max(0, trend) / 4 + rng.uniform(-2, 2)))
+    competitors = max(1, round(2 + demand * 3 + (3 if genre in modern else 0) + release_pressure + max(0, trend) / 4 + rng.uniform(-2, 2)))
     audience_size = round(
         48_000
         * demand
+        * market_growth_factor(state.clock.week)
         * audience["market"]
         * game_format["market"]
         * scope.get("sales", scope["market"])
         * (0.65 + score / 100)
+        * (0.65 + channel["visibility"] / 10)
     )
     opportunity = max(1, round(audience_size / competitors))
     risk = round(
@@ -1151,12 +1285,6 @@ def market_truth(state: GameState) -> dict:
         + strategy["risk"]
         + primary_direction["risk"] * 0.6
         + secondary_direction["risk"] * 0.4
-    )
-    nominal_work = round(
-        scope["work"]
-        * game_format["work"]
-        * strategy["work"]
-        * (primary_direction["work"] * 0.6 + secondary_direction["work"] * 0.4)
     )
     overrun_ceiling = 1.18 + min(0.35, risk / 100)
     actual_work = round(nominal_work * rng.uniform(0.92, overrun_ceiling))
@@ -1169,6 +1297,8 @@ def market_truth(state: GameState) -> dict:
         "topic_fit": topic_score,
         "audience_fit": audience_fit,
         "trend": trend,
+        "release_pressure": round(release_pressure, 1),
+        "open_market": round(open_market, 2),
         "work": actual_work,
         "nominal_work": nominal_work,
     }
@@ -1239,6 +1369,8 @@ def market_report(state: GameState) -> dict:
         "confidence": round(confidence * 100),
         "research": round(research),
         "outlook": outlook,
+        "release_pressure": truth["release_pressure"],
+        "open_market": truth["open_market"],
     }
 
 
@@ -1387,6 +1519,38 @@ def monthly_cost_breakdown(studio: Studio) -> dict[str, int]:
 
 def monthly_fixed_cost(studio: Studio) -> int:
     return sum(monthly_cost_breakdown(studio).values())
+
+
+def loan_weekly_obligation(studio: Studio) -> int:
+    return round(sum(loan.weekly_payment for loan in studio.loans))
+
+
+def take_loan(state: GameState, offer_index: int) -> bool:
+    studio = state.studio
+    offer = LOAN_OFFERS[offer_index]
+    if offer["principal"] > max(25_000, studio.lifetime_revenue * 0.40 + 100_000):
+        state.log(f"The bank declined the {offer['name'].lower()}: build more revenue history first.")
+        return False
+    if any(loan.name == offer["name"] for loan in studio.loans):
+        state.log(f"The {offer['name'].lower()} is already outstanding.")
+        return False
+    payment = loan_payment(offer["principal"], offer["rate"], offer["weeks"])
+    studio.loans.append(Loan(offer["name"], offer["principal"], offer["principal"], offer["rate"], offer["weeks"], payment))
+    add_revenue(studio, offer["principal"], "Bank loan")
+    state.log(f"Bank approved a ${offer['principal']:,} {offer['name'].lower()} at {offer['rate']:.1%}; ${payment:,.0f}/week for {offer['weeks']} weeks.")
+    return True
+
+
+def select_publisher(state: GameState, offer_index: int) -> bool:
+    studio = state.studio
+    offer = PUBLISHER_OFFERS[offer_index]
+    if studio.reputation < offer["min_rep"]:
+        state.log(f"{offer['name']} requires {offer['min_rep']} game reputation; you have {studio.reputation:.0f}.")
+        return False
+    studio.pending_publisher = "" if studio.pending_publisher == offer["name"] else offer["name"]
+    status = "declined" if not studio.pending_publisher else "selected for your next project"
+    state.log(f"{offer['name']} {status}. Their advance is recouped before the lower royalty share applies.")
+    return True
 
 
 def recommended_team_size(studio: Studio) -> int:
@@ -2040,12 +2204,14 @@ def start_project(state: GameState) -> bool:
     primary_direction = CREATIVE_DIRECTIONS[state.selected_creative_primary]
     secondary_direction = CREATIVE_DIRECTIONS[state.selected_creative_secondary]
     strategy = RELEASE_STRATEGIES[state.selected_release_strategy]
+    publisher = publisher_by_name(studio.pending_publisher)
     requirements = plan_requirements(state)
     if requirements:
         state.log(f"Plan not production-ready: requires {', '.join(requirements)}.")
         return False
     cost = scope["setup"] + channel["fee"] + marketing["cost"] + game_format["setup"] + strategy["setup"]
-    if studio.cash < cost + monthly_fixed_cost(studio):
+    publisher_advance = publisher["advance"] if publisher else 0
+    if studio.cash + publisher_advance < cost + monthly_fixed_cost(studio):
         state.log(f"Plan rejected: ${cost:,} setup would leave less than one month of runway.")
         return False
     focus = concept_focus(state)
@@ -2110,13 +2276,21 @@ def start_project(state: GameState) -> bool:
         sequel_of=previous_game.game_id if previous_game else None,
         generation=generation,
         franchise_id=state.spinoff_franchise_id if state.spinoff_franchise_id else (previous_game.franchise_id if previous_game else None),
-        hype=5 + marketing["boost"] / 25,
+        hype=5 + marketing["boost"] / 25 + (publisher["hype"] if publisher else 0),
         production_cost=scope["setup"] + channel["fee"] + game_format["setup"] + strategy["setup"],
         marketing_cost=marketing["cost"],
+        publisher=publisher["name"] if publisher else "",
+        publisher_advance=publisher_advance,
+        publisher_recoup_share=publisher["recoup_share"] if publisher else 0.0,
+        publisher_post_recoup_share=publisher["post_recoup_share"] if publisher else 0.0,
+        publisher_visibility=publisher["visibility"] if publisher else 0,
     )
     add_expense(studio, scope["setup"] + game_format["setup"] + strategy["setup"], "Development")
     add_expense(studio, channel["fee"], "Store fees")
     add_expense(studio, marketing["cost"], "Marketing")
+    if publisher:
+        add_revenue(studio, publisher_advance, "Publisher advance")
+        studio.pending_publisher = ""
     studio.current_project = project
     state.modal = "games"
     state.new_game_step = 0
@@ -2127,7 +2301,8 @@ def start_project(state: GameState) -> bool:
     refresh_draft_title(state)
     mix = genre if secondary_genre == genre else f"{genre} / {secondary_genre}"
     state.log(f"Greenlit {project.title}, a {scope['name'].lower()} {mix} game for {audience['name']}.")
-    state.log(f"Paid ${cost:,}. Research forecast: {report['audience_low']:,}-{report['audience_high']:,} interested, {report['competitors_low']}-{report['competitors_high']} rivals, about {planned_weeks} weeks.")
+    funding_note = f" {publisher['name']} advanced ${publisher_advance:,}; it recoups from sales." if publisher else ""
+    state.log(f"Paid ${cost:,}. Research forecast: {report['audience_low']:,}-{report['audience_high']:,} interested, {report['competitors_low']}-{report['competitors_high']} rivals, about {planned_weeks} weeks.{funding_note}")
     runway_weeks = studio.cash / max(1, monthly_fixed_cost(studio)) * 4.33
     forecast_high_weeks = max(4, round(report["work_high"] / output))
     if runway_weeks < forecast_high_weeks:
@@ -2382,7 +2557,7 @@ def refresh_contract_offers(state: GameState, announce: bool = True) -> None:
     max_difficulty = min(5, 2 + int(studio.contractor_reputation // 20))
     difficulties = [1] + [rng.randint(1, max_difficulty) for _ in range(5)]
     studio.contract_offers = [generate_contract_offer(studio, rng, difficulty) for difficulty in difficulties]
-    state.selected_contract = 0
+    state.selected_contract = next((index for index, offer in enumerate(studio.contract_offers) if offer.reputation_required <= studio.contractor_reputation), -1)
     if announce:
         state.log(f"The Contract Board refreshed with {len(studio.contract_offers)} offers.")
     if studio.auto_contracts:
@@ -2404,6 +2579,8 @@ def accept_contract_offer(state: GameState, index: int | None = None, automatic:
     if studio.closed or not studio.contract_offers:
         return False
     selected = state.selected_contract if index is None else index
+    if selected < 0:
+        return False
     selected = min(selected, len(studio.contract_offers) - 1)
     contract = studio.contract_offers[selected]
     if studio.contractor_reputation < contract.reputation_required:
@@ -2419,7 +2596,7 @@ def accept_contract_offer(state: GameState, index: int | None = None, automatic:
     else:
         studio.contract_queue.append(contract)
         state.log(f"Queued {contract.client}'s {contract.title} behind {len(studio.contract_queue)} accepted contract(s).")
-    state.selected_contract = min(state.selected_contract, max(0, len(studio.contract_offers) - 1))
+    state.selected_contract = next((index for index, offer in enumerate(studio.contract_offers) if offer.reputation_required <= studio.contractor_reputation), -1)
     return True
 
 
@@ -2501,7 +2678,13 @@ def finish_project(state: GameState) -> None:
     genre_audience = studio.genre_fans.get(project.genre, 0)
     franchise = franchise_by_id(studio, project.franchise_id)
     freshness = 1 - min(0.6, franchise.fatigue / 150) if franchise else 1.0
-    sequel_audience = (genre_audience * 0.45 if project.sequel_of else genre_audience * 0.10) * freshness
+    comeback = 1.0
+    if franchise and project.sequel_of:
+        franchise_games = [game for game in studio.catalog if game.franchise_id == franchise.franchise_id]
+        last_activity = max(max(game.release_week, game.last_update_week) for game in franchise_games)
+        quiet_years = max(0.0, (state.clock.week - last_activity) / 52)
+        comeback += min(0.35, max(0.0, quiet_years - 1) * 0.12)
+    sequel_audience = (genre_audience * 0.45 if project.sequel_of else genre_audience * 0.10) * freshness * comeback
     discoverability = 80 + marketing["boost"] + project.hype * 8 + studio.followers * 0.12 + studio.reputation * 3 + sequel_audience
     quality_multiplier = max(0.12, (score / 72) ** 3)
     scope_data = scope_by_name(project.scope)
@@ -2512,7 +2695,10 @@ def finish_project(state: GameState) -> None:
         * format_data.get("sales", 1.0)
         * strategy_data.get("sales", 1.0)
     )
-    market_multiplier = max(0.4, project.market_score / 60) * max(0.55, 1 - project.competitors * 0.025) * max(0.6, 1 - genre_release_pressure(studio, project.genre) * 0.12) * max(0.5, min(1.4, genre_heat(studio, project.genre)))
+    publisher_lift = 1 + project.publisher_visibility * 0.10
+    open_market = market_share_multiplier(state, project.genre, project.channel)
+    storefront_lift = 0.55 + channel_by_name(project.channel)["visibility"] / 10
+    market_multiplier = max(0.4, project.market_score / 60) * max(0.55, 1 - project.competitors * 0.025) * max(0.6, 1 - genre_release_pressure(studio, project.genre) * 0.12) * max(0.5, min(1.4, genre_heat(studio, project.genre))) * market_growth_factor(state.clock.week) * publisher_lift * storefront_lift * open_market
     units = max(18, round(discoverability * quality_multiplier * scope_multiplier * project.reach * market_multiplier * 16))
     units = min(max(18, round(project.addressable_audience * 0.20)), units) if project.addressable_audience else units
     evergreen_units = max(2, round((score / 100) ** 3.4 * scope_multiplier * 160 + genre_audience / 650))
@@ -2565,6 +2751,8 @@ def finish_project(state: GameState) -> None:
         last_update_week=state.clock.week,
         segments=segments,
         hype_backlash=round(hype_backlash, 1),
+        publisher=project.publisher,
+        publisher_advance=project.publisher_advance,
     )
     studio.catalog.append(game)
     if hype_backlash >= 15:
@@ -2594,6 +2782,10 @@ def finish_project(state: GameState) -> None:
         game_id=game_id,
         genre=project.genre,
         evergreen_units=evergreen_units,
+        publisher=project.publisher,
+        publisher_recoup_share=project.publisher_recoup_share,
+        publisher_post_recoup_share=project.publisher_post_recoup_share,
+        publisher_recoupable=project.publisher_advance,
     )
     studio.active_sales.append(sale)
     studio.current_project = None
@@ -2608,7 +2800,7 @@ def finish_project(state: GameState) -> None:
     if project.secondary_topic and project.secondary_topic != project.topic:
         studio.topic_fans[project.secondary_topic] = studio.topic_fans.get(project.secondary_topic, 0) + launch_followers // 2
     state.log(f"Released {project.title} after {project.weeks} weeks: {score}/100, {refund_rate:.0%} expected refunds, {math.floor(known_bugs)} known bugs.")
-    state.log(f"The store predicts {units:,} first-week units. You keep {(1 - project.platform_cut):.0%} before refunds.")
+    state.log(f"The store predicts {units:,} first-week units. You keep {(1 - project.platform_cut):.0%} before refunds; {open_market:.0%} of this storefront's genre demand remains open.")
     if units >= 40_000:
         copycat_rng = random.Random(studio.seed + state.clock.week * 911)
         candidates = [item for item in studio.competitors if item.size >= 4 and len(item.in_development) < 2]
@@ -2671,7 +2863,6 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
     weekly_salary = sum(employee.annual_salary / 52 for employee in studio.team)
     weekly_burden = sum(employee.annual_salary / 52 for employee in studio.team if not employee.founder) * 0.13
     project.labor_cost += (weekly_salary + weekly_burden) / 7
-    project.hype *= 0.98 ** (1 / 7)
     if week_end:
         heat_score = max(10, min(100, project.market_score_start + (genre_heat(studio, project.genre) - 1.0) * 80))
         project.market_score = round(max(10, min(100, project.market_score + (heat_score - project.market_score) * 0.02)))
@@ -2836,9 +3027,9 @@ def buy_promotion(state: GameState, game_id: int, promotion_index: int) -> bool:
     status = "Started" if was_idle else "Queued"
     state.log(f"{status} {promotion['name']} for {target_title}: ${promotion['cost']:,}, {promotion['weeks']} weeks, +{promotion['hype']} potential hype.")
     current_hype = studio.current_project.hype if game_id == 0 and studio.current_project else (game_by_id(studio, game_id).hype if game_by_id(studio, game_id) else 0)
-    effectiveness = hype_marketing_effectiveness(current_hype)
+    effectiveness = promotion_hype_effectiveness(promotion, current_hype)
     if effectiveness < 0.6:
-        state.log(f"Hype around {target_title} is already saturated; only {effectiveness:.0%} of this campaign will convert - the rest is money burned.")
+        state.log(f"Hype around {target_title} is saturated for {promotion['name']}; only {effectiveness:.0%} will convert before its {promotion['ceiling']} hype ceiling.")
     return True
 
 
@@ -2898,20 +3089,23 @@ def process_promotions(state: GameState, week_end: bool = True) -> None:
     if activity_allocations(state.studio)["promotion"] <= 0:
         return
     promotion = state.studio.active_promotions[0]
+    promotion_data = next((item for item in PROMOTIONS if item["name"] == promotion.name), None)
+    if promotion_data is None:
+        return
     weekly_hype = promotion.hype_total / promotion.total_weeks
     if promotion.game_id == 0 and state.studio.current_project:
         project = state.studio.current_project
-        hype_gain = weekly_hype / 7 * hype_marketing_effectiveness(project.hype)
+        hype_gain = weekly_hype / 7 * promotion_hype_effectiveness(promotion_data, project.hype)
         project.hype = min(200, project.hype + hype_gain)
     else:
         game = game_by_id(state.studio, promotion.game_id)
         if game:
-            hype_gain = weekly_hype / 7 * hype_marketing_effectiveness(game.hype)
+            hype_gain = weekly_hype / 7 * promotion_hype_effectiveness(promotion_data, game.hype)
             game.hype = min(200, game.hype + hype_gain)
             if week_end:
                 sale = sale_for_game(state.studio, game.game_id)
                 if sale:
-                    sale.weekly_units += max(1, round(weekly_hype / 4 * hype_marketing_effectiveness(game.hype)))
+                    sale.weekly_units += max(1, round(weekly_hype / 4 * promotion_hype_effectiveness(promotion_data, game.hype)))
     if not week_end:
         return
     promotion.weeks_left -= 1
@@ -3064,8 +3258,12 @@ def finish_game_update(state: GameState, job: UpdateJob, game: ReleasedGame) -> 
         sale.weekly_units += max(1, round(sale.evergreen_units * size["sales"] * rating_factor * engagement))
     franchise = franchise_by_id(state.studio, game.franchise_id)
     if franchise:
-        if job.focus == "New content" or job.size in ("Expansion", "Paid DLC"):
-            franchise.fatigue = max(0, franchise.fatigue - 4)
+        if job.focus == "New content":
+            franchise.fatigue = max(0, franchise.fatigue - 3)
+        elif job.size == "Paid DLC":
+            franchise.fatigue = min(120, franchise.fatigue + 3)
+        elif job.size == "Expansion":
+            franchise.fatigue = max(0, franchise.fatigue - 1)
         elif game.patch_fatigue >= 4:
             franchise.fatigue = min(120, franchise.fatigue + 1)
     if job.size == "Paid DLC":
@@ -3139,10 +3337,19 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
         rng = random.Random(studio.seed + day_number * 131 + sale.game_id * 17)
         units = max(0.0, sale.weekly_units / 7 * rng.uniform(0.8, 1.25))
         sale.week_units += units
-        gross = units * sale.price
-        net = gross * (1 - sale.refund_rate) * (1 - sale.platform_cut)
-        add_revenue(studio, net, "Game sales")
         game = next((item for item in studio.catalog if item.game_id == sale.game_id), None)
+        gross = units * sale.price
+        receipts = gross * (1 - sale.refund_rate) * (1 - sale.platform_cut)
+        publisher_share = 0.0
+        if sale.publisher:
+            share_rate = sale.publisher_recoup_share if sale.publisher_recouped < sale.publisher_recoupable else sale.publisher_post_recoup_share
+            publisher_share = receipts * share_rate
+            sale.publisher_recouped += publisher_share
+            if game:
+                game.publisher_recouped = sale.publisher_recouped
+            add_expense(studio, publisher_share, "Publisher royalties")
+        net = receipts - publisher_share
+        add_revenue(studio, net, "Game sales")
         hosting_rate = game.hosting_rate if game else 0.0
         if game and game.support_level == "Sunset":
             hosting_cost = 0.0
@@ -3215,6 +3422,7 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
             game.patch_fatigue *= 0.92
             game.press_rating += (game.score - game.press_rating) * 0.03
             game.sales_history.append(round(week_units))
+            game.peak_weekly_sales = max(game.peak_weekly_sales, round(week_units))
             del game.sales_history[:-16]
             engaged = game.last_update_week >= state.clock.week - 12 or any(item.game_id == game.game_id for item in studio.active_promotions)
             if not engaged and game.support_level != "Sunset":
@@ -3226,12 +3434,15 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0) 
         tail = min(0.91, max(0.30, 0.55 + sale.score * 0.0035 + strategy_tail - stale_tail + (0.01 if "analytics" in studio.upgrades else 0)))
         demand_heat = 1 + (genre_heat(studio, sale.genre) - 1) * 0.10 if sale.genre else 1.0
         community = community_factor(game) if game else 1.0
+        shared_demand = market_share_multiplier(state, sale.genre, game.channel if game else sale.channel, sale.game_id) if sale.genre else 1.0
+        franchise = franchise_by_id(studio, game.franchise_id) if game else None
+        fatigue_demand = max(0.30, 1 - franchise.fatigue / 175) if franchise else 1.0
         if game and game.support_level == "Sunset":
             sale.weekly_units = max(0, round(week_units * 0.35))
         elif game and game.support_level == "Maintenance":
-            sale.weekly_units = max(1, round(sale.evergreen_units * 0.5), round(week_units * tail * community * demand_heat + hype_lift))
+            sale.weekly_units = max(1, round(sale.evergreen_units * 0.5), round(week_units * tail * community * demand_heat * shared_demand * fatigue_demand + hype_lift))
         else:
-            sale.weekly_units = max(round(sale.evergreen_units), round(week_units * tail * community * demand_heat + hype_lift))
+            sale.weekly_units = max(round(sale.evergreen_units), round(week_units * tail * community * demand_heat * shared_demand * fatigue_demand + hype_lift))
         sale.weeks_left = -1
 
 
@@ -3294,6 +3505,21 @@ def begin_month(state: GameState, month: str) -> None:
         state.log(f"Growth analysis recommends {target} staff; the current team of {len(studio.team)} is understaffed. Hire only if runway allows.")
     elif len(studio.team) > target + 1:
         state.log(f"The {len(studio.team)}-person team is above the current demand signal of {target}; monitor payroll closely.")
+
+
+def process_loans_week(state: GameState) -> None:
+    studio = state.studio
+    for loan in list(studio.loans):
+        weekly_rate = loan.annual_rate / 52
+        interest = loan.balance * weekly_rate
+        payment = min(loan.weekly_payment, loan.balance + interest)
+        principal_paid = max(0.0, payment - interest)
+        loan.balance = max(0.0, loan.balance - principal_paid)
+        loan.weeks_left -= 1
+        add_expense(studio, payment, "Loan repayment")
+        if loan.balance <= 1 or loan.weeks_left <= 0:
+            studio.loans.remove(loan)
+            state.log(f"Repaid the {loan.name.lower()}; the bank has released its claim on future cash flow.")
 
 
 def process_contract(state: GameState, week_end: bool = True, workday: bool = True) -> None:
@@ -3359,6 +3585,7 @@ def process_day(state: GameState, day_date: date) -> None:
     process_research(state, workday)
     process_employee_wellbeing(state, week_end, workday)
     if week_end:
+        process_loans_week(state)
         process_franchises_week(state)
         process_media_ventures_week(state)
         process_market_week(state)
@@ -3459,11 +3686,42 @@ def prepare_spinoff(state: GameState, game: ReleasedGame) -> bool:
     return True
 
 
+def franchise_fatigue_target(state: GameState, franchise: Franchise) -> float:
+    games = [game for game in state.studio.catalog if game.franchise_id == franchise.franchise_id]
+    if not games:
+        return 0.0
+    oldest_week = min(game.release_week for game in games if game.release_week)
+    years_active = max(0.0, (state.clock.week - oldest_week) / 52)
+    dlcs = sum(game.dlcs_released for game in games)
+    updates = sum(game.updates_released for game in games)
+    live_years = sum(
+        max(0.0, (state.clock.week - game.release_week) / 52)
+        for game in games
+        if game.release_strategy in ("DLC roadmap", "Live service")
+    )
+    last_activity_week = max(max(game.release_week, game.last_update_week) for game in games)
+    quiet_years = max(0.0, (state.clock.week - last_activity_week) / 52)
+    unit_pressure = max(0.0, franchise.total_units / 1_000_000 - 0.5) * 8.5
+    longevity_pressure = max(0.0, years_active - 1) * 4.0 + live_years * 2.0
+    content_pressure = dlcs * 6.0 + max(0, updates - 5) * 1.25
+    sequel_pressure = max(0, franchise.entries - 1) * 7.0
+    # Audiences eventually miss an IP after it stops asking for attention. A
+    # quiet break resets sequel appetite even when the old game sold millions.
+    cooldown_factor = max(0.08, 1 - quiet_years * 0.30)
+    return min(120.0, (unit_pressure + longevity_pressure + content_pressure + sequel_pressure) * cooldown_factor)
+
+
 def process_franchises_week(state: GameState) -> None:
     state.studio.reputation *= 0.997
     for franchise in state.studio.franchises:
         franchise.awareness *= 0.997
-        franchise.fatigue *= 0.95
+        games = [game for game in state.studio.catalog if game.franchise_id == franchise.franchise_id]
+        if not games:
+            continue
+        target = franchise_fatigue_target(state, franchise)
+        quiet_years = max(0.0, (state.clock.week - max(max(game.release_week, game.last_update_week) for game in games)) / 52)
+        rate = 0.035 if target > franchise.fatigue else 0.025 if quiet_years >= 1.5 else 0.008
+        franchise.fatigue = max(0.0, min(120.0, franchise.fatigue + (target - franchise.fatigue) * rate))
 
 
 def media_venture_available(studio: Studio, franchise: Franchise, venture: dict) -> str:
@@ -3556,6 +3814,38 @@ QA_CLEAR_FRACTION = 0.75
 LAUNCH_DISCOVERY_WEEKS = 4
 
 
+def competitor_channel(genre: str, rng: random.Random) -> str:
+    mobile = {"Puzzle Game", "Skill Game", "Simulation", "Visual Novel", "Economic Simulation", "Cozy Game", "Survivors-like", "Social Deduction"}
+    console = {"Action", "Platformer", "Racing", "Sports Game", "Fighting Game", "Third-Person Shooter", "First-Person Shooter", "Battle Royale", "Soulslike", "Metroidvania"}
+    if genre in mobile:
+        choices = ("Google Play", "App Store", "Steam", "Epic Games Store")
+    elif genre in console:
+        choices = ("PlayStation 5", "Xbox Series", "Switch 2", "Steam")
+    else:
+        choices = ("Steam", "Steam", "Epic Games Store", "itch.io")
+    return rng.choice(choices)
+
+
+def competitor_launch_units(state: GameState, competitor: Competitor, release: CompetitorGame, rng: random.Random) -> int:
+    """A small studio can still break out; scale helps, but does not decide hits."""
+    channel = channel_by_name(release.channel)
+    tier_scale = {"platform": 2.5, "publisher": 1.5, "studio": 1.0, "indie": 0.8}.get(competitor.tier, 1.0)
+    studio_scale = (0.55 + competitor.size / 5) * (1 + competitor.fanbase / 150_000) * tier_scale
+    quality_scale = 0.35 + release.quality / 125 + competitor.tools_level * 0.025
+    visibility_scale = 0.55 + channel["visibility"] / 10
+    breakout_chance = min(0.08, (0.01 + max(0, release.quality - 65) / 500 + release.hype / 4_000) / (1 + competitor.size / 5))
+    # A viral game can briefly stand beside a giant, but it is exceptional.
+    breakout = rng.uniform(4.0, 12.0) if rng.random() < breakout_chance else 1.0
+    open_share = market_share_multiplier(state, release.genre, release.channel)
+    launch = release.hype * 45 * studio_scale * quality_scale * visibility_scale * market_growth_factor(state.clock.week) * breakout * open_share
+    return max(40, min(competitor_weekly_sales_cap(state, competitor), round(launch)))
+
+
+def competitor_weekly_sales_cap(state: GameState, competitor: Competitor) -> int:
+    caps = {"platform": 650_000, "publisher": 450_000, "studio": 250_000, "indie": 120_000}
+    return round(caps.get(competitor.tier, 200_000) * market_growth_factor(state.clock.week))
+
+
 def seed_market(state: GameState) -> None:
     studio = state.studio
     rng = random.Random(studio.seed * 3 + 77)
@@ -3570,6 +3860,7 @@ def seed_market(state: GameState) -> None:
             archetype["fanbase"],
             float(archetype["reputation"]),
             genres=list(archetype["genres"]),
+            tools_level={"platform": 4, "publisher": 3, "studio": 2, "indie": 1}[archetype["tier"]],
         )
         ip_count = 2 if archetype["tier"] in ("platform", "publisher") else 1
         for _ in range(ip_count):
@@ -3597,11 +3888,30 @@ def seed_market(state: GameState) -> None:
             quality = max(25, min(96, round(competitor.reputation + rng.uniform(-12, 10))))
             hype = min(200, (25 + competitor.size * 10 + (franchise.value / 14 if franchise else 0)) * rng.uniform(0.7, 1.3))
             title = f"{franchise.name} {roman_number(max(1, franchise.entries - seed_index))}" if franchise else generate_game_title(genre, rng.choice(TOPICS), studio.seed + competitor.competitor_id * 7 + weeks_ago)
-            launch = hype * 11 * (0.4 + competitor.size / 5) * (0.5 + competitor.fanbase / 600_000) * (0.55 + quality / 150)
+            channel = competitor_channel(genre, rng)
+            release = CompetitorGame(title, franchise.name if franchise else "", genre, quality, round(hype, 1), 0, competitor.size, released_week=1, channel=channel)
+            launch = competitor_launch_units(state, competitor, release, rng)
             weekly = max(40.0, launch * min(0.90, 0.50 + quality * 0.004) ** weeks_ago)
             competitor.recent_releases.append(
-                CompetitorGame(title, franchise.name if franchise else "", genre, quality, round(hype, 1), 0, competitor.size, released_week=1, weekly_units=weekly, units_sold=round(launch * weeks_ago * 0.6))
+                CompetitorGame(title, franchise.name if franchise else "", genre, quality, round(hype, 1), 0, competitor.size, released_week=1, weekly_units=weekly, units_sold=round(launch * weeks_ago * 0.6), channel=channel)
             )
+        studio.competitors.append(competitor)
+    # The long tail matters: most launches do not fight a handful of named giants,
+    # but a crowded field of capable small studios releasing into the same windows.
+    for name in EXPANDED_COMPETITOR_NAMES:
+        genres = rng.sample(list(GENRES), 3)
+        size = round(rng.uniform(0.6, 3.8), 1)
+        competitor = Competitor(
+            len(studio.competitors) + 1,
+            name,
+            "indie" if size < 1.8 else "studio",
+            size,
+            round(rng.uniform(18_000, 420_000) * size),
+            round(rng.uniform(52, 84)),
+            genres=genres,
+            tools_level=1 if size < 1.8 else 2,
+        )
+        competitor.cooldown = rng.randint(1, 16)
         studio.competitors.append(competitor)
 
 
@@ -3623,26 +3933,30 @@ def process_market_week(state: GameState) -> None:
             available_ips = [item for item in competitor.franchises if item.name not in busy]
             franchise = rng.choice(available_ips) if available_ips and rng.random() < 0.5 else None
             genre = franchise.genre if franchise else rng.choice(competitor.genres)
-            dev_weeks = max(4, round(rng.uniform(10, 30) / (0.5 + competitor.size / 6)))
-            quality = max(25, min(96, round(competitor.reputation + rng.uniform(-12, 10))))
-            hype = min(200, (25 + competitor.size * 10 + (franchise.value / 14 if franchise else 0)) * rng.uniform(0.7, 1.3))
+            production_capacity = 0.5 + competitor.size / 6 + competitor.tools_level * 0.15
+            dev_weeks = max(4, round(rng.uniform(10, 30) / production_capacity))
+            quality = max(25, min(96, round(competitor.reputation + competitor.tools_level * 2 + rng.uniform(-12, 10))))
+            hype = min(200, (25 + competitor.size * 10 + competitor.tools_level * 7 + (franchise.value / 14 if franchise else 0)) * rng.uniform(0.7, 1.3))
             title = f"{franchise.name} {roman_number(franchise.entries + 1)}" if franchise else generate_game_title(genre, rng.choice(TOPICS), studio.seed + state.clock.week + competitor.competitor_id)
-            competitor.in_development.append(CompetitorGame(title, franchise.name if franchise else "", genre, quality, round(hype, 1), dev_weeks, competitor.size))
-            competitor.cooldown = rng.randint(8, max(12, round(52 - competitor.size * 4)))
+            competitor.in_development.append(CompetitorGame(title, franchise.name if franchise else "", genre, quality, round(hype, 1), dev_weeks, competitor.size, channel=competitor_channel(genre, rng)))
+            competitor.cooldown = rng.randint(10, max(14, round(52 - competitor.size * 4 - competitor.tools_level)))
         for game in finished:
             release = game
             franchise = next((item for item in competitor.franchises if item.name == release.franchise_name), None)
-            competitor.fanbase += round(1_000 * competitor.size * release.quality / 80)
-            launch_units = round(
-                release.hype
-                * 11
-                * (0.4 + competitor.size / 5)
-                * (0.5 + competitor.fanbase / 600_000)
-                * (0.55 + release.quality / 150)
-                * rng.uniform(0.85, 1.15)
-            )
-            release.weekly_units = float(max(40, launch_units))
+            launch_units = competitor_launch_units(state, competitor, release, rng)
+            release.weekly_units = float(launch_units)
             release.units_sold += max(40, launch_units)
+            competitor.releases_completed += 1
+            competitor.growth_points += launch_units / 20_000 + release.quality / 25
+            competitor.fanbase += round(launch_units * (0.025 + release.quality / 4_000))
+            competitor.reputation = max(20.0, min(98.0, competitor.reputation + (release.quality - competitor.reputation) * 0.08))
+            growth_step = 300 + competitor.tools_level * 100
+            while competitor.growth_points >= growth_step:
+                competitor.growth_points -= growth_step
+                competitor.tools_level = min(8, competitor.tools_level + 1)
+                competitor.size = min(14.0, round(competitor.size + 0.25, 2))
+                growth_step = 300 + competitor.tools_level * 100
+                state.log(f"{competitor.name} expanded its production capability to tools level {competitor.tools_level}.")
             if franchise:
                 franchise.entries += 1
                 franchise.awareness = min(6_000, franchise.awareness + 20 + release.hype / 4)
@@ -3651,8 +3965,8 @@ def process_market_week(state: GameState) -> None:
             notable = competitor.size >= 3 or release.quality >= 80
             if notable:
                 state.log(f"{competitor.name} released {release.title} ({release.genre}, {release.quality}/100). The market took notice.")
-            impact = min(0.45, release.hype / 400 * (0.5 + competitor.size / 10))
-            player_genre_games = [item for item in studio.catalog if item.genre == release.genre]
+            impact = min(0.65, release.weekly_units / genre_market_capacity(release.genre, release.channel, state.clock.week) * 0.55)
+            player_genre_games = [item for item in studio.catalog if item.genre == release.genre and item.channel == release.channel]
             for player_game in player_genre_games:
                 sale = sale_for_game(studio, player_game.game_id)
                 if sale and impact > 0.02:
@@ -3662,7 +3976,7 @@ def process_market_week(state: GameState) -> None:
         for game in competitor.recent_releases:
             if game.released_week and game.released_week < state.clock.week and game.weekly_units > 0:
                 tail = min(0.90, 0.50 + game.quality * 0.004)
-                game.weekly_units *= tail
+                game.weekly_units = min(competitor_weekly_sales_cap(state, competitor), game.weekly_units * tail)
                 game.units_sold += round(game.weekly_units)
     positions = chart_positions(state)
     update_genre_heat(state)
@@ -3746,6 +4060,8 @@ def state_to_data(state: GameState) -> dict:
             "new_game_kind": state.new_game_kind,
             "selected_venture": state.selected_venture,
             "selected_research_branch": state.selected_research_branch,
+            "finance_tab": state.finance_tab,
+            "selected_finance_offer": state.selected_finance_offer,
         },
         "logs": state.logs,
     }
@@ -3783,6 +4099,7 @@ def studio_from_data(data: dict) -> Studio:
     for franchise in values["franchises"]:
         franchise.total_units = round(franchise.total_units)
     values["media_ventures"] = [MediaVenture(**item) for item in values.get("media_ventures", [])]
+    values["loans"] = [Loan(**item) for item in values.get("loans", [])]
     competitors = []
     for item in values.get("competitors", []):
         entry = dict(item)
@@ -3801,7 +4118,7 @@ def studio_from_data(data: dict) -> Studio:
 
 
 def state_from_data(data: dict, save_path: str) -> GameState:
-    if data.get("version") != SAVE_VERSION:
+    if data.get("version") not in (8, SAVE_VERSION):
         raise ValueError(f"Unsupported save version: {data.get('version')!r}")
     clock_data = data["clock"]
     clock = GameClock(date.fromisoformat(clock_data["current_date"]), clock_data["week"], clock_data.get("elapsed_seconds", 0.0), clock_data.get("day", clock_data["week"] * 7 - 6))
@@ -3834,6 +4151,8 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         new_game_kind=ui.get("new_game_kind", ""),
         selected_venture=ui.get("selected_venture", 0),
         selected_research_branch=ui.get("selected_research_branch", 0),
+        finance_tab=ui.get("finance_tab", 0),
+        selected_finance_offer=ui.get("selected_finance_offer", 0),
         save_path=save_path,
         logs=data.get("logs", []),
     )
