@@ -23,6 +23,8 @@ from __future__ import annotations
 
 import curses
 
+from ui_theme import glyph
+
 
 # Color pair semantics used across the whole UI (pairs are registered in
 # ``main.run``): 1 = chrome (inverted bar), 2 = borders/dim, 3 = selection
@@ -81,14 +83,14 @@ def money(value: float) -> str:
 
 def meter(value: float, maximum: float, width: int) -> str:
     filled = max(0, min(width, round(width * value / max(1, maximum))))
-    return "█" * filled + "░" * (width - filled)
+    return glyph("full") * filled + glyph("shade") * (width - filled)
 
 
 def range_meter(low: float, high: float, maximum: float, width: int) -> str:
     """Uncertainty bar: the [low, high] interval is filled on a 0..maximum scale."""
     start = max(0, min(width, round(width * low / max(1, maximum))))
     end = max(start, min(width, round(width * high / max(1, maximum))))
-    return "░" * start + "█" * (end - start) + "░" * (width - end)
+    return glyph("shade") * start + glyph("full") * (end - start) + glyph("shade") * (width - end)
 
 
 def update_status(game) -> str:
@@ -196,7 +198,7 @@ def draw_chart_rows(window: curses.window, chart: list, selected_game_id: int, y
         else:
             entry_attr = 0
         studio_name = "YOU" if entry.game_id else entry.studio_name
-        add_text(window, y + index - 1, 2, f"{index:>2} {entry.title[:title_width]:<{title_width}} {studio_name[:studio_width]:<{studio_width}} {'█' * filled:<{bar_width}} {entry.weekly_units:>{unit_width},}", inner, entry_attr)
+        add_text(window, y + index - 1, 2, f"{index:>2} {entry.title[:title_width]:<{title_width}} {studio_name[:studio_width]:<{studio_width}} {glyph('full') * filled:<{bar_width}} {entry.weekly_units:>{unit_width},}", inner, entry_attr)
     return y + min(len(chart), count)
 
 

@@ -21,6 +21,7 @@ from simulation import (
     sale_for_game,
 )
 from ui_common import add_text, draw_box, draw_chart_rows, game_title, live_games, meter, money, rating_text
+from ui_theme import glyph
 
 
 def draw_live_operations(panel: curses.window, state: GameState, panel_width: int, start_row: int) -> None:
@@ -101,7 +102,7 @@ def draw_dashboard(screen: curses.window, state: GameState, width: int) -> int:
         bar_width = max(8, right_width - 12 - phase_width)
         bar_value = project.bug_progress if project.bug_work else project.progress
         filled = round(bar_width * bar_value)
-        bar = "█" * filled + "░" * (bar_width - filled)
+        bar = glyph("full") * filled + glyph("shade") * (bar_width - filled)
         weekly_output = projected_weekly_output(studio, project.focus)
         remaining = max(1, round(project.remaining_work / weekly_output))
         add_text(project_panel, 1, 2, "GAME", 4, curses.A_BOLD)

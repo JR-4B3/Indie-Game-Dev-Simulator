@@ -13,6 +13,7 @@ from __future__ import annotations
 import curses
 
 from ui_common import COLOR_ACCENT, COLOR_BAD, COLOR_BORDER, COLOR_GOOD, add_text
+from ui_theme import glyph
 
 
 TITLE_MENU = ("New Game", "Load Game", "Settings", "Quit")
@@ -77,7 +78,7 @@ def draw_title_screen(screen: curses.window, state, width: int, height: int) -> 
     screen.attroff(curses.color_pair(COLOR_BORDER))
     layout = title_layout(width, height)
     for y, x, line in layout["art"]:
-        add_text(screen, y, x, line, width - x - 1, curses.color_pair(COLOR_BORDER) | curses.A_BOLD)
+        add_text(screen, y, x, line.replace("█", glyph("logo")), width - x - 1, curses.color_pair(COLOR_BORDER) | curses.A_BOLD)
     add_text(screen, layout["subtitle_y"], max(1, (width - len(SUBTITLE)) // 2), SUBTITLE, len(SUBTITLE), curses.color_pair(COLOR_ACCENT))
     for index, (y, x, label) in enumerate(layout["items"]):
         selected = index == state.title_menu_index

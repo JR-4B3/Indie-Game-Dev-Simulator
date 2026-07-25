@@ -6,7 +6,11 @@ You start as a one-person indie developer on the current day. Keep the studio al
 
 - Python 3.10 or newer
 - A terminal at least 74 columns by 24 rows
-- No external Python packages are required
+- No external Python packages are required (on Windows: `pip install windows-curses`)
+
+## Compatibility
+
+On modern terminals the game keeps the terminal's own palette, so a themed emulator (for example Ghostty with Tokyo Night) looks exactly like the rest of your setup; pass `--theme tokyo` to force the built-in Tokyo Night palette everywhere. On legacy consoles (old Windows cmd) the game forces a high-contrast dark scheme so the default colors cannot wash the UI out, and it switches meters, charts, and the logo to plain ASCII where Unicode blocks are unsupported; force a glyph mode with `--ascii` or `--unicode` (or `GAMEDEV_ASCII=1`). For the best look on Windows use Windows Terminal. Rendering adapts to any window size and is frame-limited, so large high-resolution terminals stay fast.
 
 ## Start
 

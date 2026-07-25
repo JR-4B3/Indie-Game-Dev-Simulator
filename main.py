@@ -60,12 +60,15 @@ from ui_newgame import draw_new_game, new_game_panel_geometry
 from ui_stats import draw_analysis
 from ui_saves import draw_save_picker
 from ui_team import draw_team_screen, team_layout
+from ui_theme import init_theme
 from ui_title import draw_title_screen
 from ui_upgrades import draw_upgrades
 
 
 DEFAULT_SAVE_FILE = "saves/gamedev_save.json"
 NAVIGATION_KEYS = {curses.KEY_UP, curses.KEY_DOWN, curses.KEY_LEFT, curses.KEY_RIGHT}
+MIN_FRAME_INTERVAL = 0.05
+IDLE_REDRAW_INTERVAL = 0.25
 
 
 SCREEN_DRAWERS = {
@@ -148,17 +151,11 @@ def draw_screen(screen: curses.window, state: GameState) -> None:
 
 
 
-def run(screen: curses.window, load_save: bool, save_path: str) -> None:
+def run(screen: curses.window, load_save: bool, save_path: str, ascii_mode: bool | None = None, theme: str = "auto") -> None:
     curses.curs_set(0)
     curses.raw()
     curses.set_escdelay(25)
-    curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_CYAN)
-    curses.init_pair(2, curses.COLOR_CYAN, -1)
-    curses.init_pair(3, curses.COLOR_YELLOW, -1)
-    curses.init_pair(4, curses.COLOR_GREEN, -1)
-    curses.init_pair(5, curses.COLOR_RED, -1)
-    curses.init_pair(6, curses.COLOR_BLACK, curses.COLOR_BLACK)
+    init_theme(screen, ascii_mode, theme)
     screen.nodelay(True)
     screen.keypad(True)
     try:
@@ -177,16 +174,17 @@ def run(screen: curses.window, load_save: bool, save_path: str) -> None:
         state = GameState(save_path=save_path)
     state.title_screen = True
     previous_time = time.monotonic()
+    last_draw = 0.0
+    dirty = True
     running = True
     while running:
         now = time.monotonic()
         days = 0 if state.title_screen else state.clock.update((now - previous_time) * TIME_SPEEDS[min(state.time_speed_index, len(TIME_SPEEDS) - 1)])
         previous_time = now
         advance_days(state, days)
-        draw_screen(screen, state)
-        screen.refresh()
         key = screen.getch()
         while key != -1:
+            dirty = True
             running = handle_key(state, key, screen.getmaxyx())
             if not running:
                 break
@@ -194,7 +192,20 @@ def run(screen: curses.window, load_save: bool, save_path: str) -> None:
                 curses.flushinp()
                 break
             key = screen.getch()
-        time.sleep(0.03)
+        # Redrawing the full screen every loop is what makes large
+        # high-resolution terminals sluggish: only repaint when input or
+        # simulation progress changed something, capped at 20 fps, plus a
+        # slow heartbeat so the real-time week meter keeps moving while
+        # the sim runs below one day per frame.
+        dirty = dirty or days > 0
+        since_draw = now - last_draw
+        heartbeat = state.time_speed_index > 0 and not state.title_screen
+        if (dirty or (heartbeat and since_draw >= IDLE_REDRAW_INTERVAL)) and since_draw >= MIN_FRAME_INTERVAL:
+            draw_screen(screen, state)
+            screen.refresh()
+            last_draw = now
+            dirty = False
+        time.sleep(0.02)
 
 
 def simulate(weeks: int, load_save: bool, save_path: str) -> None:
@@ -216,12 +227,17 @@ def parse_args(arguments: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--load", action="store_true", help="load a studio; optionally put its path after this flag")
     parser.add_argument("--save-file", dest="save_file_option", help=f"explicit save path (default: {DEFAULT_SAVE_FILE})")
     parser.add_argument("--simulate", type=int, metavar="WEEKS", help="advance without curses and print a summary")
+    glyphs = parser.add_mutually_exclusive_group()
+    glyphs.add_argument("--ascii", dest="ascii_mode", action="store_true", help="draw meters and charts with plain ASCII (safe on any console)")
+    glyphs.add_argument("--unicode", dest="unicode_mode", action="store_true", help="force Unicode block glyphs even on consoles that default to ASCII")
+    parser.add_argument("--theme", choices=("auto", "tokyo"), default="auto", help="auto keeps the terminal's own palette (default); tokyo forces the built-in Tokyo Night palette")
     args = parser.parse_args(arguments)
     if args.save_path and args.save_file_option:
         parser.error("choose either a positional save path or --save-file, not both")
     positional_path = args.save_path
     args.save_path = positional_path or args.save_file_option or DEFAULT_SAVE_FILE
     args.load = args.load or positional_path is not None
+    args.ascii_mode = True if args.ascii_mode else (False if args.unicode_mode else None)
     return args
 
 
@@ -235,7 +251,7 @@ def main() -> None:
     if args.simulate is not None:
         simulate(max(0, args.simulate), args.load, args.save_path)
     else:
-        curses.wrapper(run, args.load, args.save_path)
+        curses.wrapper(run, args.load, args.save_path, args.ascii_mode, args.theme)
 
 
 if __name__ == "__main__":

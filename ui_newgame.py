@@ -31,6 +31,7 @@ from simulation import (
     research_requirement_for_topic,
 )
 from ui_common import COLOR_GOOD, add_text, draw_box, draw_selectable_list, game_title, meter, money, range_meter, rating_text, update_status
+from ui_theme import glyph
 
 
 def project_kind_choices(state: GameState) -> list[tuple[str, str, bool]]:
@@ -373,4 +374,4 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
         for row, channel in enumerate(CHANNELS[:visible], 2):
             for block in range(5):
                 attr = curses.color_pair(3) | curses.A_BOLD if block < channel["visibility"] else curses.color_pair(6)
-                add_text(storefront, row, popularity_x + block, "▁▂▃▄▅"[block], 1, attr)
+                add_text(storefront, row, popularity_x + block, glyph("pop_steps")[block], 1, attr)

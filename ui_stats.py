@@ -18,6 +18,7 @@ from simulation import (
     runway_months,
 )
 from ui_common import add_text, draw_box, draw_selectable_list, game_title, live_games, money, rating_text
+from ui_theme import glyph
 
 
 ANALYSIS_TABS = ("Overview", "Cash Flow", "Genres", "Game Catalogue", "Market")
@@ -32,7 +33,7 @@ def draw_breakdown_bars(panel: curses.window, title: str, data: dict[str, int], 
     bar_width = max(4, width - 30)
     for row, (category, amount) in enumerate(list(data.items())[:6], y + 1):
         filled = max(1, round(bar_width * amount / peak))
-        add_text(panel, row, x, f"{category[:15]:<15} {'█' * filled:<{bar_width}} {money(amount):>10}", width, curses.color_pair(color))
+        add_text(panel, row, x, f"{category[:15]:<15} {glyph('full') * filled:<{bar_width}} {money(amount):>10}", width, curses.color_pair(color))
 
 
 def draw_analysis_overview(panel: curses.window, state: GameState) -> None:
@@ -84,9 +85,9 @@ def draw_vertical_cashflow(panel: curses.window, state: GameState) -> None:
     peak = max(1, *(max(entry.revenue, entry.expenses) for entry in entries))
     top = 5
     baseline = top + chart_height
-    add_text(panel, 3, 2, f"Monthly vertical cash flow   █ revenue   █ expenses   Scale peak {money(peak)}", width - 4, curses.A_BOLD)
-    add_text(panel, 3, 31, "██", 2, curses.color_pair(4))
-    add_text(panel, 3, 44, "██", 2, curses.color_pair(5))
+    add_text(panel, 3, 2, f"Monthly vertical cash flow   {glyph('full')} revenue   {glyph('full')} expenses   Scale peak {money(peak)}", width - 4, curses.A_BOLD)
+    add_text(panel, 3, 31, glyph("full") * 2, 2, curses.color_pair(4))
+    add_text(panel, 3, 44, glyph("full") * 2, 2, curses.color_pair(5))
     for index, entry in enumerate(entries):
         x = 4 + index * group_width
         revenue_height = round(chart_height * entry.revenue / peak)
@@ -94,10 +95,10 @@ def draw_vertical_cashflow(panel: curses.window, state: GameState) -> None:
         for level in range(chart_height):
             y = baseline - level - 1
             if level < revenue_height:
-                add_text(panel, y, x, "██", 2, curses.color_pair(4))
+                add_text(panel, y, x, glyph("full") * 2, 2, curses.color_pair(4))
             if level < expense_height:
-                add_text(panel, y, x + 2, "██", 2, curses.color_pair(5))
-        add_text(panel, baseline, x, "────", 4, curses.color_pair(2))
+                add_text(panel, y, x + 2, glyph("full") * 2, 2, curses.color_pair(5))
+        add_text(panel, baseline, x, glyph("hline") * 4, 4, curses.color_pair(2))
         add_text(panel, baseline + 1, x, entry.month[-3:], 4)
         add_text(panel, baseline + 2, x, "+" if entry.net >= 0 else "-", 1, curses.color_pair(4) if entry.net >= 0 else curses.color_pair(5))
     add_text(panel, min(height - 2, baseline + 3), 2, "Each pair is revenue (green) beside expenses (red); * is the open month.", width - 4)
@@ -137,7 +138,7 @@ def draw_genre_statistics(panel: curses.window, state: GameState) -> None:
     for item in statistics:
         filled = round(bar_width * item["fans"] / peak_fans)
         average = str(item["score"]) if item["score"] else "-"
-        text = f"{item['genre'][:genre_width]:<{genre_width}} {item['fans']:>9,} {'█' * filled:<{bar_width}} {item['games']:>5} {average:>{average_width}} {item['units']:>11,} {money(item['revenue']):>11}"
+        text = f"{item['genre'][:genre_width]:<{genre_width}} {item['fans']:>9,} {glyph('full') * filled:<{bar_width}} {item['games']:>5} {average:>{average_width}} {item['units']:>11,} {money(item['revenue']):>11}"
         rows.append((text, curses.color_pair(2)))
     draw_selectable_list(panel, rows, state.selected_stat, True, y=4, width=width - 4, visible=height - 6)
 

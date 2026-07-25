@@ -49,6 +49,7 @@ from ui_common import (
     range_meter,
     wrap_text,
 )
+from ui_theme import glyph
 
 
 def update_jobs_for_game(state: GameState, game_id: int) -> list:
@@ -57,14 +58,12 @@ def update_jobs_for_game(state: GameState, game_id: int) -> list:
     return [job for job in jobs if job.game_id == game_id]
 
 
-SPARK_CHARS = "▁▂▃▄▅▆▇█"
-
-
 def sparkline(values: list[int]) -> str:
     if not values:
         return ""
+    chars = glyph("spark")
     peak = max(1, max(values))
-    return "".join(SPARK_CHARS[min(7, round(7 * value / peak))] for value in values)
+    return "".join(chars[min(7, round(7 * value / peak))] for value in values)
 
 
 def satisfaction(user_rating: float) -> tuple[str, int]:
@@ -81,9 +80,9 @@ def satisfaction(user_rating: float) -> tuple[str, int]:
 
 def rating_trend(trend: float) -> str:
     if trend > 0.2:
-        return "▲"
+        return glyph("up")
     if trend < -0.2:
-        return "▼"
+        return glyph("down")
     return "="
 
 
@@ -98,7 +97,7 @@ def draw_trend_bars(panel: curses.window, values: list[int], y: int, inner: int,
     shown = min(len(values), (inner + 1) // (column + 1))
     heights = [max(1, round(height * value / peak)) for value in values[-shown:]]
     for level in range(height, 0, -1):
-        line = "".join(("█" * column if bar >= level else " " * column) + " " for bar in heights)
+        line = "".join((glyph("full") * column if bar >= level else " " * column) + " " for bar in heights)
         add_text(panel, y + height - level, x, line, inner, curses.color_pair(4))
     return y + height
 
@@ -414,7 +413,7 @@ def draw_franchise_ip_block(panel: curses.window, state: GameState, game, row: i
             add_text(panel, row + 1, 2, f"{franchise.name[:20]} [{meter(franchise.total_units, target, meter_width)}] {franchise.total_units:,}/{target:,} units", inner, curses.color_pair(3))
             add_text(panel, row + 2, 2, f"{franchise.rank_name} -> {FRANCHISE_RANKS[rank + 1]} | gen {game.generation} | {franchise.entries} releases", inner)
         else:
-            add_text(panel, row + 1, 2, f"{franchise.name[:20]} [{'█' * meter_width}] {franchise.rank_name}", inner, curses.color_pair(3) | curses.A_BOLD)
+            add_text(panel, row + 1, 2, f"{franchise.name[:20]} [{glyph('full') * meter_width}] {franchise.rank_name}", inner, curses.color_pair(3) | curses.A_BOLD)
             add_text(panel, row + 2, 2, f"gen {game.generation} | {franchise.entries} releases", inner)
         add_text(panel, row + 3, 2, f"FAT [{meter(franchise.fatigue, 120, meter_width)}] {franchise.fatigue:.0f} fatigue | {franchise.total_units:,} IP units", inner, curses.color_pair(5) if franchise.fatigue >= 90 else 0)
         genre_fans = state.studio.genre_fans.get(game.genre, 0)
