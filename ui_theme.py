@@ -35,6 +35,7 @@ PAIR_GOOD = 4
 PAIR_BAD = 5
 PAIR_DIM = 6
 PAIR_BASE = 7
+COLOR_CHROME_TEXT = 24
 
 TOKYO_NIGHT = {
     "bg": (0x1A, 0x1B, 0x26),
@@ -113,7 +114,13 @@ def _init_native_pairs() -> bool:
     themed emulators (Ghostty, Windows Terminal). False if the console
     cannot do transparent backgrounds."""
     try:
-        curses.init_pair(PAIR_CHROME, curses.COLOR_BLACK, curses.COLOR_CYAN)
+        chrome_text = curses.COLOR_BLACK
+        # Windows' standard palette maps COLOR_BLACK to dark gray. Reserve a
+        # color slot for true black so controls remain readable on light bars.
+        if os.name == "nt" and curses.can_change_color() and curses.COLORS > COLOR_CHROME_TEXT:
+            curses.init_color(COLOR_CHROME_TEXT, 0, 0, 0)
+            chrome_text = COLOR_CHROME_TEXT
+        curses.init_pair(PAIR_CHROME, chrome_text, curses.COLOR_CYAN)
         curses.init_pair(PAIR_BORDER, curses.COLOR_CYAN, -1)
         curses.init_pair(PAIR_ACCENT, curses.COLOR_YELLOW, -1)
         curses.init_pair(PAIR_GOOD, curses.COLOR_GREEN, -1)
