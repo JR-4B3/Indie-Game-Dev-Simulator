@@ -211,6 +211,10 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
         actions = [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
         if project and state.selected_game == 0:
             actions.append(("[C]" if compact else control_label("C", "Cancel project"), "open_cancel_project"))
+            if project.ready_for_release:
+                actions.append(("[R]" if compact else control_label("R", "Release"), "release_project"))
+            if project.monetization == "paid_early_access" and not project.early_access:
+                actions.append(("[E]" if compact else control_label("E", "Early Access"), "early_access"))
         if live_games(state) and has_research(state.studio, "portfolio_management"):
             actions.append(("[X]" if compact else control_label("X", "Support level"), "cycle_support"))
         return actions
@@ -236,10 +240,13 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
         if state.marketing_tab == 0:
             actions = [("[Bksp]" if compact else control_label("Backspace", "Catalogue"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Game"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Select"), "select_marketing_target")]
         elif state.marketing_tab == 2:
-            actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Venture"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Fund"), "buy_promotion"), ("[M]" if compact else control_label("M", "Promotions"), "toggle_marketing_panel")]
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Venture"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Fund"), "buy_promotion"), ("[M]" if compact else control_label("M", "Community"), "toggle_marketing_panel")]
+        elif state.marketing_tab == 3:
+            actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Action"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Run"), "buy_promotion"), ("[M]" if compact else control_label("M", "Promotions"), "toggle_marketing_panel")]
         else:
             actions = [("[Bksp]" if compact else control_label("Backspace", "Planning"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Promotion"), "marketing_selection"), ("[Enter]" if compact else control_label("Enter", "Buy"), "buy_promotion"), ("[M]" if compact else control_label("M", "Merch & Media"), "toggle_marketing_panel")]
-        actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
+        if state.marketing_tab != 3:
+            actions.append(("[C]" if compact else control_label("C", "Cancel"), "enter_queue_cancellation"))
         return actions
     if state.modal == "upgrades":
         actions = [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Enter]" if compact else control_label("Enter", "Start R&D"), "buy")]
@@ -559,7 +566,7 @@ def delete_save_and_restart(state: GameState) -> bool:
     except OSError as error:
         state.log(f"Could not delete save: {error}.")
         return False
-    fresh_state = GameState(save_path=save_path)
+    fresh_state = GameState.new_campaign(save_path=save_path)
     state.__dict__.clear()
     state.__dict__.update(fresh_state.__dict__)
     return True

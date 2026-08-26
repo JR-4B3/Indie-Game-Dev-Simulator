@@ -209,7 +209,7 @@ def run(screen: curses.window, load_save: bool, save_path: str, ascii_mode: bool
 
 
 def simulate(weeks: int, load_save: bool, save_path: str) -> None:
-    state = load_game(save_path) if load_save else GameState(save_path=save_path)
+    state = load_game(save_path) if load_save else GameState.new_campaign(save_path=save_path)
     for _ in range(weeks):
         state.clock.current_date += timedelta(days=7)
         state.clock.week += 1

@@ -29,6 +29,10 @@ from simulation import (
     research_requirement_for_scope,
     research_requirement_for_strategy,
     research_requirement_for_topic,
+    selected_announcement_strategy,
+    selected_monetization_model,
+    selected_price_point,
+    selected_release_policy,
 )
 from ui_common import COLOR_GOOD, add_text, draw_box, draw_selectable_list, game_title, meter, money, range_meter, rating_text, update_status
 from ui_theme import glyph
@@ -231,6 +235,10 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     primary_direction = CREATIVE_DIRECTIONS[state.selected_creative_primary]
     secondary_direction = CREATIVE_DIRECTIONS[state.selected_creative_secondary]
     release_strategy = RELEASE_STRATEGIES[state.selected_release_strategy]
+    monetization = selected_monetization_model(state)
+    price_point = selected_price_point(state)
+    announcement = selected_announcement_strategy(state)
+    release_policy = selected_release_policy(state)
     report = market_report(state)
     publisher = publisher_by_name(state.studio.pending_publisher)
     inner = plan_width - 4
@@ -288,9 +296,11 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
             chip_x += len(chip) + 2
     else:
         add_text(plan, 11, 2, f"Trade-off   {primary_direction['tradeoff']} + {secondary_direction['tradeoff']}", inner, curses.color_pair(2))
+    commercial = f"[M] {monetization['name']} | [P] {price_point['name']} | [A] {announcement['name']} | [L] {release_policy['name']}"
+    add_text(plan, 12, 2, commercial, inner, curses.color_pair(3) | curses.A_BOLD)
 
     fit_attr = curses.color_pair(COLOR_GOOD) if report["score_low"] >= 52 else curses.color_pair(5) if report["score_high"] < 38 else 0
-    cost = scope["setup"] + game_format["setup"] + release_strategy["setup"] + marketing["cost"] + channel_data["fee"]
+    cost = scope["setup"] + game_format["setup"] + release_strategy["setup"] + marketing["cost"] + channel_data["fee"] + int(monetization["setup_cost"])
     publisher_advance = publisher["advance"] if publisher else 0
     funded_cost = max(0, cost - publisher_advance)
     output = projected_weekly_output(state.studio, concept_focus(state))
@@ -345,7 +355,7 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
             add_text(plan, 29, 2, "BRIEF", inner, curses.A_BOLD)
             add_text(plan, 30, 2, f"{scope['name']} {game_format['name']} {genre_mix} game about {topic_mix}", inner)
             add_text(plan, 31, 2, f"for {audience['name']}; lead {primary_direction['name']}, support {secondary_direction['name']};", inner)
-            add_text(plan, 32, 2, f"{release_strategy['name']} launch, {marketing['name']} marketing, on {channel_data['name']}.", inner)
+            add_text(plan, 32, 2, f"{release_strategy['name']}, {monetization['name']} at {price_point['name']}, on {channel_data['name']}.", inner)
             if sequel:
                 score = f"{sequel.score}/100"
                 add_text(plan, 33, 2, f"Sequel to {sequel.title} ({score})", inner, curses.color_pair(2))

@@ -5,6 +5,7 @@ from __future__ import annotations
 import curses
 
 from simulation import (
+    COMMUNITY_ACTIONS,
     FRANCHISE_RANKS,
     FRANCHISE_RANK_THRESHOLDS,
     MEDIA_VENTURES,
@@ -296,6 +297,7 @@ def draw_compact_detail(overview, updates, promotion, state: GameState, game, sa
     add_text(overview, 3, 2, f"Revenue {money(game.net_revenue)} | Profit {money(game_profit(game))}", game_width - 4)
     position = positions.get(game.game_id)
     add_text(overview, 4, 2, f"Chart {f'#{position}' if position else '--'} | Sales {(sale.week_to_date if sale else 0):,}/w | {sparkline(game.sales_history)}", game_width - 4)
+    add_text(overview, 5, 2, f"{game.monetization} | {game.lifecycle_state} | {money(game.price)} | Trust {game.trust:.0f}", game_width - 4)
     jobs = update_jobs_for_game(state, game.game_id)
     add_text(updates, 1, 2, f"Version v{game.version} | {len(jobs)} active/queued", updates_width - 4)
     add_text(updates, 2, 2, f"{game.update_size} / {game.update_focus}", updates_width - 4)
@@ -317,9 +319,9 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     topic_mix = game.topic if not game.secondary_topic or game.secondary_topic == game.topic else f"{game.topic} + {game.secondary_topic}"
     add_text(panel, 2, 2, f"{genre_mix} | {topic_mix}", inner)
     add_text(panel, 3, 2, f"{game.target_audience} | {game.game_format}", inner)
-    add_text(panel, 4, 2, f"{game.channel} | {game.scope} | {money(game.price)}", inner)
+    add_text(panel, 4, 2, f"{game.channel} | {game.scope} | {game.monetization} | {money(game.price)}", inner)
     support_hint = " | [X] change" if has_research(state.studio, "portfolio_management") else ""
-    add_text(panel, 5, 2, f"Support {game.support_level.upper()}{support_hint}", inner, curses.color_pair(4) if game.support_level == "Active" else curses.color_pair(5) if game.support_level == "Sunset" else curses.color_pair(3))
+    add_text(panel, 5, 2, f"Support {game.support_level.upper()}{support_hint} | Trust {game.trust:.0f}", inner, curses.color_pair(4) if game.support_level == "Active" else curses.color_pair(5) if game.support_level == "Sunset" else curses.color_pair(3))
     meter_width = max(10, min(18, inner - 26))
     add_text(panel, 6, 2, "CONDITION", inner, curses.A_BOLD)
     known = game.known_bug_count
@@ -332,8 +334,6 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     add_text(panel, 12, 2, f"PRESS [{meter(game.press_rating, 100, meter_width)}] {game.press_rating:>4.0f}/100", inner)
     add_text(panel, 13, 2, f"SCORE [{meter(game.score, 100, meter_width)}] {rating_text(game):>4}/100", inner, rating_attr)
     weekly_sales = sale.week_to_date if sale else 0
-    evergreen = sale.evergreen_units if sale else 0
-    demand_multiple = weekly_sales / max(1, evergreen)
     retention = game.monthly_players / max(1, game.peak_monthly_players)
     if game.monthly_players == 0:
         audience_status, audience_color = "DORMANT", 5
@@ -345,9 +345,11 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
         audience_status, audience_color = "FADING", 5
     audience_attr = curses.color_pair(audience_color) if audience_color in (4, 5) else 0
     add_text(panel, 15, 2, "AUDIENCE HEALTH", inner, curses.A_BOLD)
-    add_text(panel, 16, 2, f"{audience_status:<8} Demand {weekly_sales:,}/w | {demand_multiple:.1f}x floor", inner, audience_attr)
-    add_text(panel, 17, 2, f"RET [{meter(retention, 1, meter_width)}] {retention:>5.0%} | {game.monthly_players:,}/{game.peak_monthly_players:,} peak", inner)
-    next_row = 19
+    owners = sum(sale.owners_by_cohort.values()) if sale else game.units_sold
+    add_text(panel, 16, 2, f"{audience_status:<8} {game.lifecycle_state.upper()} | Demand {weekly_sales:,}/w | Owners {owners:,}", inner, audience_attr)
+    add_text(panel, 17, 2, f"Funnel {game.aware_players:,} aware | {game.interested_players:,} interested | {game.wishlists:,} wishlists", inner)
+    add_text(panel, 18, 2, f"RET [{meter(retention, 1, meter_width)}] {retention:>5.0%} | {game.monthly_players:,}/{game.peak_monthly_players:,} peak", inner)
+    next_row = 20
     segments = [segment for segment in getattr(game, "segments", []) if segment.weight > 0]
     if segments:
         from simulation import SEGMENT_NAMES, community_insight
@@ -459,10 +461,23 @@ def draw_promotion_panel(panel: curses.window, state: GameState, game_id: int, i
     row += 1
     if not promotion_queue:
         add_text(panel, row, 2, "No promotion running. P opens planning.", inner)
-        return
-    name_width = max(10, inner - 26)
-    for offset, item in enumerate(promotion_queue[: max(0, detail_height - row - 2)]):
-        add_text(panel, row + offset, 2, f"{offset + 1}. {item.name[:name_width]} | {item.target_title[: max(8, inner - name_width - 12)]} | {item.weeks_left}w", inner, curses.color_pair(4) if item is active_promotion else 0)
+        row += 1
+    else:
+        name_width = max(10, inner - 26)
+        for offset, item in enumerate(promotion_queue[: max(0, detail_height - row - 6)]):
+            add_text(panel, row + offset, 2, f"{offset + 1}. {item.name[:name_width]} | {item.target_title[: max(8, inner - name_width - 12)]} | {item.weeks_left}w", inner, curses.color_pair(4) if item is active_promotion else 0)
+        row += min(len(promotion_queue), max(0, detail_height - row - 6))
+    community_jobs = [job for job in state.studio.active_community_actions if not game_id or job.get("game_id") == game_id]
+    if row + 2 < detail_height:
+        row += 1
+        add_text(panel, row, 2, "COMMUNITY", inner, curses.A_BOLD)
+        row += 1
+        if community_jobs:
+            for job in community_jobs[: max(0, detail_height - row - 1)]:
+                add_text(panel, row, 2, f"{job.get('name', 'Action')} | {job.get('target_title', '')[: max(8, inner - 22)]} | {job.get('weeks_left', 0)}w left", inner, curses.color_pair(4))
+                row += 1
+        else:
+            add_text(panel, row, 2, "No community work. P > Community tab to act.", inner, curses.color_pair(2))
 
 
 def draw_project_detail(screen: curses.window, state: GameState, project, bottom_y: int, detail_height: int, summary_height: int, width: int, overview_width: int, promotion_width: int, positions: dict, campaign_load: float) -> None:
@@ -482,6 +497,7 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         recommendation, recommendation_color = project_recommendation(state, project)
         add_text(overview, 3, 2, recommendation, overview_width - 4, curses.color_pair(recommendation_color) if recommendation_color in (4, 5) else 0)
         add_text(overview, 4, 2, f"Forecast {project.forecast_score_low}-{project.forecast_score_high}/100 | Capacity {weekly_output:.1f} work/wk", overview_width - 4)
+        add_text(overview, 5, 2, f"{project.monetization} | {money(project.price)} | Trust {project.trust:.0f}", overview_width - 4)
         add_text(promotion, 1, 2, f"Hype {project.hype:.0f}/200 pre-launch", promotion_width - 4)
         add_text(promotion, 2, 2, "P opens Promotion Planning", promotion_width - 4)
     else:
@@ -499,7 +515,7 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         if project.bug_work:
             plan_text += f" | {project.bugs_to_clear} bugs to clear"
         add_text(overview, 4, 2, plan_text, left_inner)
-        add_text(overview, 5, 2, f"{project.scope} / {project.channel} / {money(project.price)} retail | {project.target_audience}", left_inner)
+        add_text(overview, 5, 2, f"{project.scope} / {project.channel} / {project.monetization} / {money(project.price)} | {project.target_audience}", left_inner)
         tracked_cost = project.production_cost + project.labor_cost + project.marketing_cost
         add_text(overview, 6, 2, f"Tracked cost {money(tracked_cost)} | Marketing {money(project.marketing_cost)}", left_inner)
         add_text(overview, 8, 2, "CAPACITY", left_inner, curses.A_BOLD)
@@ -552,6 +568,9 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         add_text(overview, 15, right_x, f"Market fit {project.market_score}/100 | {project.competitors} rivals{shift_hint}", right_inner, shift_attr)
         add_text(overview, 16, right_x, f"Genre pressure {genre_release_pressure(state.studio, project.genre):.1f}/3.0", right_inner, curses.color_pair(5) if genre_release_pressure(state.studio, project.genre) >= 1.5 else 0)
         add_text(overview, 17, right_x, f"Store demand {open_market:.0%} open on {project.channel}", right_inner, curses.color_pair(5) if open_market < 0.55 else 0)
+        launch_state = "READY: press R to release" if project.ready_for_release else "[E] Early Access" if project.monetization == "paid_early_access" and not project.early_access else project.release_policy
+        add_text(overview, 19, right_x, f"Launch {launch_state} | Trust {project.trust:.0f}", right_inner, curses.color_pair(4) if project.ready_for_release else 0)
+        add_text(overview, 20, right_x, "Community actions live in Promotion planning (P)", right_inner)
 
         draw_promotion_panel(promotion, state, 0, promotion_width - 4, detail_height, campaign_load, prelaunch_hype=project.hype)
     if summary_height >= 5:
@@ -675,7 +694,8 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
             add_text(detail, 7, 2, f"Capacity {weekly_output:.1f} work/wk | Drains: {', '.join(capacity_drains(state.studio)) or 'none'}", detail_width - 4)
             add_text(detail, 9, 2, f"Known bugs {int(selected.known_defects)} | Hype {selected.hype:.0f}", detail_width - 4)
             add_text(detail, 10, 2, f"Forecast {selected.forecast_score_low}-{selected.forecast_score_high}/100 | confidence {selected.forecast_confidence}%", detail_width - 4)
-            add_text(detail, 12, 2, "P opens Promotion Planning", detail_width - 4, curses.color_pair(4))
+            add_text(detail, 11, 2, f"{selected.monetization} | {money(selected.price)} | Trust {selected.trust:.0f}", detail_width - 4)
+            add_text(detail, 13, 2, "P opens Promotion Planning", detail_width - 4, curses.color_pair(4))
             return
         game = selected
         sale = sale_for_game(state.studio, game.game_id)
@@ -691,7 +711,8 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         add_text(detail, 7, 2, f"Chart {f'#{position}' if position else '--'} | Hype {game.hype:.0f}/200", detail_width - 4)
         add_text(detail, 8, 2, f"Monthly players {game.monthly_players:,} | Sales {(sale.week_to_date if sale else 0):,}/week", detail_width - 4)
         add_text(detail, 9, 2, f"Known bugs {game.known_bug_count} | DLC {game.dlcs_released}", detail_width - 4, curses.color_pair(5) if game.known_bug_count else 0)
-        add_text(detail, 11, 2, f"{game.update_size} / {game.update_focus} | U opens planner", detail_width - 4)
+        add_text(detail, 10, 2, f"{game.monetization} | {game.lifecycle_state} | {money(game.price)} | Trust {game.trust:.0f}", detail_width - 4)
+        add_text(detail, 11, 2, "P promotion & community | brackets change price | U planner", detail_width - 4)
         return
 
     trend_width = sales_trend_width(width)
@@ -827,7 +848,7 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
 
 def draw_marketing_screen(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel_height = height - 4
-    state.marketing_tab = max(0, min(2, state.marketing_tab))
+    state.marketing_tab = max(0, min(3, state.marketing_tab))
     targets = promotion_targets(state)
     catalog_height = catalogue_table_height(len(targets), panel_height)
     targets_panel = screen.derwin(catalog_height, width, 2, 0)
@@ -859,6 +880,8 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
     franchise = franchise_for_game(state.studio, selected_game) if selected_game else None
     if state.marketing_tab == 2:
         draw_box(options_panel, f"Merch & Media | {franchise.name + ' IP' if franchise else 'no IP selected'}")
+    elif state.marketing_tab == 3:
+        draw_box(options_panel, f"Community Actions | {selected_title[:24]}")
     else:
         draw_box(options_panel, f"Promotion Planning & Queue | Reputation {state.studio.reputation:.1f}")
     add_text(summary_panel, 1, 2, selected_title, summary_width - 4, curses.A_BOLD)
@@ -908,6 +931,30 @@ def draw_marketing_screen(screen: curses.window, state: GameState, width: int, h
             add_text(options_panel, heading_row, 2, "ACTIVE VENTURES", option_inner, curses.A_BOLD)
             for row, item in enumerate(active_ventures[: max(0, bottom_height - heading_row - 2)], heading_row + 1):
                 add_text(options_panel, row, 2, f"{item.name} | {item.franchise_name} | {item.weeks_left}w left | earned {money(item.revenue)}", option_inner, curses.color_pair(4))
+        return
+
+    if state.marketing_tab == 3:
+        state.selected_community_action = min(state.selected_community_action, len(COMMUNITY_ACTIONS) - 1)
+        option_inner = option_width - 4
+        expanded = option_inner >= 72
+        header = f"  {'ACTION':<20} {'COST':>10} {'TEAM':>6} {'WEEKS':>6} {'TRUST':>6} {'AWARE':>6}" if expanded else f"  {'ACTION':<18} {'COST':>9} {'TEAM':>5}"
+        add_text(options_panel, 1, 2, header, option_inner, curses.A_BOLD)
+        action_rows = []
+        for action in COMMUNITY_ACTIONS:
+            if expanded:
+                text = f"{action['name']:<20} {money(action['cash_cost']):>10} {action['team_load']:>6.0%} {action['duration_weeks']:>6} {action['trust']:>+6} {action['awareness']:>+5}%"
+            else:
+                text = f"{action['name']:<18} {money(action['cash_cost']):>9} {action['team_load']:>5.0%}"
+            affordable = state.studio.cash >= action["cash_cost"] + monthly_fixed_cost(state.studio)
+            action_rows.append((text[:option_inner], curses.color_pair(5) if not affordable else 0))
+        draw_selectable_list(options_panel, action_rows, state.selected_community_action, True, y=2, width=option_width - 4, scroll=False)
+        hint_row = len(COMMUNITY_ACTIONS) + 3
+        add_text(options_panel, hint_row, 2, "Enter runs the action on the selected game; effects shrink as awareness grows.", option_inner, curses.color_pair(2))
+        jobs = [job for job in state.studio.active_community_actions if job.get("game_id") == selected_id]
+        if jobs and hint_row + 2 < bottom_height:
+            add_text(options_panel, hint_row + 2, 2, "ACTIVE COMMUNITY WORK", option_inner, curses.A_BOLD)
+            for row, job in enumerate(jobs[: max(0, bottom_height - hint_row - 4)], hint_row + 3):
+                add_text(options_panel, row, 2, f"{job.get('name', 'Action')} | {job.get('weeks_left', 0)}w left | load {job.get('team_load', 0):.0%}", option_inner, curses.color_pair(4))
         return
 
     state.selected_promotion = min(state.selected_promotion, len(PROMOTIONS) - 1)
