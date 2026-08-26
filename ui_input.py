@@ -51,6 +51,7 @@ from simulation import (
     queue_game_update,
     has_research,
     research_requirement_for_channel,
+    channel_lock_reason,
     research_requirement_for_format,
     research_requirement_for_marketing,
     research_requirement_for_scope,
@@ -175,6 +176,8 @@ def cycle_plan_option(state: GameState, field_index: int, attribute: str, count:
 def cycle_channel_selection(state: GameState, delta: int) -> None:
     for offset in range(1, len(CHANNELS) + 1):
         candidate = (state.selected_channel + delta * offset) % len(CHANNELS)
+        if channel_lock_reason(state.studio, candidate):
+            continue
         requirement = research_requirement_for_channel(candidate)
         if not requirement or has_research(state.studio, requirement):
             state.selected_channel = candidate

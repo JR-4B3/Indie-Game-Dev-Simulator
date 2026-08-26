@@ -52,6 +52,21 @@ CHANNELS = (
     {"name": "Switch 2", "category": "Handheld", "fee": 10_000, "cut": 0.30, "reach": 0.52, "visibility": 5},
 )
 
+# Storefronts bury unknown developers: nobody ships their first game on Steam.
+# Free itch.io releases build the tiny audience and craft history that unlocks
+# the big storefronts.
+ITCH_RELEASES_BEFORE_STEAM = 10
+
+# Weekly infrastructure rent online games pay while their servers run,
+# multiplied by 1..5 depending on monthly players. This is the fixed cost
+# that makes live games a liability even when development is done.
+SERVER_RENT_PER_WEEK = {
+    "Online co-op": 120.0,
+    "Competitive online": 450.0,
+    "Persistent world": 900.0,
+    "MMO": 1_600.0,
+}
+
 LOAN_OFFERS = (
     {"name": "Bridge loan", "principal": 25_000, "weeks": 52, "rate": 0.13},
     {"name": "Production loan", "principal": 100_000, "weeks": 104, "rate": 0.11},
@@ -67,13 +82,16 @@ PUBLISHER_OFFERS = (
 # setup = cash outlay at greenlight (assets, middleware, outsourcing, tech). Payroll is separate.
 # sales = commercial scale used for audience and unit potential.
 SCOPES = (
-    {"name": "Micro", "work": 1_200, "setup": 6_500, "price": 7.99, "risk": 0, "team": 1, "rep": 0, "market": 0.55, "sales": 1.0},
+    {"name": "Micro", "work": 1_200, "setup": 3_500, "price": 7.99, "risk": 0, "team": 1, "rep": 0, "market": 0.55, "sales": 1.0},
     {"name": "Compact", "work": 4_200, "setup": 24_000, "price": 11.99, "risk": 1, "team": 2, "rep": 0, "market": 0.75, "sales": 2.4},
     {"name": "Small", "work": 14_000, "setup": 90_000, "price": 14.99, "risk": 4, "team": 4, "rep": 0, "market": 1.0, "sales": 6.0},
     {"name": "Mid-size", "work": 55_000, "setup": 480_000, "price": 19.99, "risk": 7, "team": 10, "rep": 0, "market": 1.4, "sales": 18.0},
     {"name": "Ambitious", "work": 125_000, "setup": 2_400_000, "price": 29.99, "risk": 10, "team": 20, "rep": 4, "market": 1.9, "sales": 55.0},
     {"name": "Large", "work": 340_000, "setup": 14_000_000, "price": 49.99, "risk": 17, "team": 35, "rep": 18, "market": 3.2, "sales": 170.0},
     {"name": "Blockbuster", "work": 800_000, "setup": 65_000_000, "price": 69.99, "risk": 28, "team": 55, "rep": 45, "market": 5.5, "sales": 450.0},
+    # Jam-sized experiments: the raw material of the itch.io years. Deliberately
+    # last in the tuple so existing scope indexes stay stable.
+    {"name": "Bite-size", "work": 220, "setup": 800, "price": 3.99, "risk": 0, "team": 1, "rep": 0, "market": 0.35, "sales": 0.5},
 )
 
 AUDIENCES = (
@@ -967,6 +985,7 @@ class Studio:
     community_capacity: float = 0.0
     active_community_actions: list[dict] = field(default_factory=list)
     community_cooldowns: dict[str, int] = field(default_factory=dict)
+    itch_releases: int = 0
 
 
 @dataclass
@@ -1079,7 +1098,12 @@ class GameState:
     def new_campaign(cls, save_path: str = "saves/gamedev_save.json", studio_name: str = "New Studio") -> GameState:
         """Create a unique campaign while direct construction stays deterministic for tests."""
         seed = secrets.randbits(63) or 1
-        return cls(studio=Studio(seed=seed, name=studio_name), save_path=save_path)
+        state = cls(studio=Studio(seed=seed, name=studio_name), save_path=save_path)
+        # New developers start where everyone starts: tiny free games on itch.io.
+        state.selected_channel = next(index for index, channel in enumerate(CHANNELS) if channel["name"] == "itch.io")
+        state.selected_monetization = next(index for index, model in enumerate(MONETIZATION_MODELS) if model["key"] == "donationware")
+        state.selected_scope = next(index for index, scope in enumerate(SCOPES) if scope["name"] == "Bite-size")
+        return state
 
 
 def channel_by_name(name: str) -> dict:
@@ -1146,15 +1170,27 @@ def studio_macro_snapshot(studio: Studio) -> MacroSnapshot:
 
 def initial_awareness_by_cohort(state: GameState, hype: float, marketing_boost: float, announcement_key: str) -> dict[str, float]:
     announcement = announcement_strategy_by_key(announcement_key) or ANNOUNCEMENT_STRATEGIES[1]
-    brand = min(0.22, state.studio.followers / 2_500_000 + state.studio.reputation / 1_500)
-    paid = min(0.28, marketing_boost / 8_000)
-    hype_reach = min(0.18, max(0.0, hype) / 900)
-    base = max(0.0004, min(0.75, (0.004 + brand + paid + hype_reach) * float(announcement["awareness"])))
+    # Reputation alone barely moves an algorithm; a studio the market knows
+    # (high reputation AND followers) earns real brand awareness.
+    brand = min(0.10, (state.studio.reputation / 100.0) ** 4 * 0.06 + state.studio.followers / 10_000_000)
+    paid = min(0.22, marketing_boost / 60_000)
+    hype_reach = min(0.15, max(0.0, hype) / 4_000)
+    base = max(0.0001, min(0.75, (0.0001 + brand + paid + hype_reach) * float(announcement["awareness"])))
     awareness = {}
     for cohort in COHORTS:
         regional_variation = 0.90 + ((sum(ord(char) for char in cohort.key) + state.studio.seed) % 21) / 100
         awareness[cohort.key] = max(0.0001, min(0.95, base * regional_variation))
     return awareness
+
+
+def studio_store_visibility(studio: Studio) -> float:
+    """Storefront algorithmic reach for this studio's releases.
+
+    Unknown developers are buried: their store pages convert far below the
+    channel baseline. Followers and industry reputation are what lift you
+    toward full visibility.
+    """
+    return 0.25 + 0.75 * min(1.0, studio.followers / 50_000 + studio.reputation / 300)
 
 
 # Creative directions whose names carry a direct quality-dimension bonus.
@@ -1227,7 +1263,7 @@ def product_offer_for_game(state: GameState, game: ReleasedGame, sale: ActiveSal
         sentiment=max(0.0, (game.sentiment or game.user_rating) - stale_trust_drag * 0.8),
         novelty=novelty,
         network_health=game.network_health * stale_network_multiplier,
-        store_reach=channel_by_name(game.channel)["reach"],
+        store_reach=channel_by_name(game.channel)["reach"] * studio_store_visibility(state.studio),
         platform_category=channel_by_name(game.channel)["category"],
         cultural_resonance=game.cultural_resonance or 50.0,
         lifecycle_state=game.lifecycle_state,
@@ -1682,7 +1718,7 @@ def market_truth(state: GameState) -> dict:
         sentiment=55,
         novelty=max(20, min(90, 50 + trend + direction_market)),
         network_health=70 if game_format["name"] != "Offline solo" else 100,
-        store_reach=channel["reach"],
+        store_reach=channel["reach"] * studio_store_visibility(state.studio),
         platform_category=channel["category"],
         cultural_resonance=cultural_resonance,
         lifecycle_state="launch",
@@ -1869,6 +1905,12 @@ def plan_requirements(state: GameState) -> list[str]:
     if monetization_research and not has_research(studio, str(monetization_research)):
         node = research_by_key(str(monetization_research))
         requirements.append(f"research: {node['name'] if node else monetization_research}")
+    channel_lock = channel_lock_reason(studio, state.selected_channel)
+    if channel_lock:
+        if "itch.io" in channel_lock:
+            requirements.append(f"{ITCH_RELEASES_BEFORE_STEAM} itch.io releases before Steam (have {studio.itch_releases})")
+        else:
+            requirements.append(channel_lock)
     unlock_requirements = (
         research_requirement_for_scope(state.selected_scope),
         research_requirement_for_format(state.selected_format),
@@ -1903,6 +1945,10 @@ def completed_research_keys(studio: Studio) -> set[str]:
 
 
 def research_requirement_for_scope(index: int) -> str | None:
+    # Jam-sized experiments are always available; the tuple lookup below only
+    # knows the classic ascending scopes.
+    if SCOPES[index]["name"] == "Bite-size":
+        return None
     return (None, None, "small_production", "mid_production", "ambitious_production", "large_production", "blockbuster_production")[index]
 
 
@@ -1921,6 +1967,18 @@ def research_requirement_for_topic(topic: str) -> str | None:
     if topic in STARTER_TOPICS:
         return None
     return f"theme_library_{index % 4 + 1}"
+
+
+def channel_lock_reason(studio: Studio, index: int) -> str | None:
+    """Return why this storefront is unavailable, or None when selectable."""
+    channel = CHANNELS[index]
+    if channel["name"] == "Steam" and studio.itch_releases < ITCH_RELEASES_BEFORE_STEAM:
+        return f"{ITCH_RELEASES_BEFORE_STEAM - studio.itch_releases} more itch.io releases"
+    requirement = research_requirement_for_channel(index)
+    if requirement and not has_research(studio, requirement):
+        node = research_by_key(requirement)
+        return f"research: {node['name'] if node else requirement}"
+    return None
 
 
 def research_requirement_for_channel(index: int) -> str | None:
@@ -3086,26 +3144,36 @@ def contract_offer_eta_weeks(contract: Contract) -> int:
     return max(1, contract.weeks_left - 2 - contract.difficulty // 2)
 
 
+# Below this contractor reputation (and before a few delivered jobs) clients
+# only offer unpaid portfolio work: you build contacts, not savings.
+PAID_CONTRACT_REPUTATION = 12
+UNPAID_CONTRACT_HEAD_START = 3
+
+
 def generate_contract_offer(studio: Studio, rng: random.Random, difficulty: int) -> Contract:
     focus = rng.choice(tuple(CONTRACT_TYPES))
     required_work = 65 + difficulty * 55 + rng.randint(0, 45)
     reputation_required = max(0, (difficulty - 1) * 15)
     client = rng.choice(CONTRACT_CLIENTS)
     relationship = studio.client_relationships.get(client, 0.0)
+    unpaid = (
+        studio.contractor_reputation < PAID_CONTRACT_REPUTATION
+        and studio.contracts_completed < UNPAID_CONTRACT_HEAD_START
+    )
     rate = (85 + difficulty * 28 + studio.contractor_reputation * 1.1 + relationship * 0.8) * studio.inflation_index
-    payout = round(required_work * rate / 500) * 500
+    payout = 0 if unpaid else max(5_000, round(required_work * rate / 500) * 500)
     provisional = Contract(
         rng.choice(CONTRACT_TYPES[focus]),
         1,
-        max(5_000, payout),
+        payout,
         studio.next_contract_id,
         client,
         focus,
         difficulty,
         float(required_work),
         reputation_required=reputation_required,
-        deposit=max(500, round(max(5_000, payout) * 0.15 / 100) * 100),
-        late_penalty=max(500, round(max(5_000, payout) * 0.12 / 100) * 100),
+        deposit=0 if unpaid else max(500, round(payout * 0.15 / 100) * 100),
+        late_penalty=0 if unpaid else max(500, round(payout * 0.12 / 100) * 100),
         quality_target=45 + difficulty * 7,
     )
     studio.next_contract_id += 1
@@ -3158,7 +3226,10 @@ def accept_contract_offer(state: GameState, index: int | None = None, automatic:
     studio.contract_offers.pop(selected)
     if studio.contract is None:
         studio.contract = contract
-        state.log(f"Accepted {contract.client}'s {contract.title}: ${contract.payout:,}, {contract.focus}, due in {contract.weeks_left} weeks.")
+        if contract.payout:
+            state.log(f"Accepted {contract.client}'s {contract.title}: ${contract.payout:,}, {contract.focus}, due in {contract.weeks_left} weeks.")
+        else:
+            state.log(f"Accepted {contract.client}'s {contract.title}: unpaid portfolio work, {contract.focus}, due in {contract.weeks_left} weeks.")
     else:
         studio.contract_queue.append(contract)
         state.log(f"Queued {contract.client}'s {contract.title} behind {len(studio.contract_queue)} accepted contract(s).")
@@ -3305,7 +3376,7 @@ def finish_project(state: GameState) -> None:
         sentiment=score,
         novelty=project.novelty,
         network_health=70 if project.game_format != "Offline solo" else 100,
-        store_reach=project.reach,
+        store_reach=project.reach * studio_store_visibility(studio),
         platform_category=project.category,
         cultural_resonance=project.cultural_resonance,
         lifecycle_state="launch",
@@ -3458,6 +3529,14 @@ def finish_project(state: GameState) -> None:
     studio.active_sales.append(sale)
     studio.current_project = None
     studio.released_games += 1
+    if project.channel == "itch.io":
+        studio.itch_releases += 1
+        remaining = ITCH_RELEASES_BEFORE_STEAM - studio.itch_releases
+        if remaining == 0:
+            state.log(f"Steam approves your developer page after {studio.itch_releases} itch.io releases; the paid storefronts are watching you now.")
+            emit_event(state, "storefront_unlocked", "Steam developer page approved.", "success", "studio", studio.name)
+        elif remaining > 0:
+            state.log(f"itch.io release {studio.itch_releases} of {ITCH_RELEASES_BEFORE_STEAM} - {remaining} more free games before paid storefronts take you seriously.")
     studio.reputation = max(0, studio.reputation + (score - 50) / 12)
     for key in (f"genre:{project.genre}", f"format:{project.game_format}", f"monetization:{project.monetization}", f"scope:{project.scope}"):
         studio.market_experience[key] = studio.market_experience.get(key, 0.0) + 1.0
@@ -3466,7 +3545,10 @@ def finish_project(state: GameState) -> None:
     studio.forecast_calibration[project.genre] = studio.forecast_calibration.get(project.genre, 0.5) * 0.75 + min(2.0, calibration_error) * 0.25
     game.postmortem["forecast_error"] = round(calibration_error, 3)
     game.postmortem["quality_dimensions"] = dict(quality_dimensions)
-    launch_followers = max(0, round(project.early_access_units * (0.005 + (score / 100) ** 2 * 0.025)))
+    # Even an unknown studio's first release reaches friends, lurkers, and one
+    # small curator - never zero traction, never enough to get rich either.
+    # A genuine hit converts launch attention into lasting audience.
+    launch_followers = max(12, round((project.early_access_units + units) * (0.005 + (score / 100) ** 2 * 0.02)))
     studio.followers += launch_followers
     studio.genre_fans[project.genre] = studio.genre_fans.get(project.genre, 0) + launch_followers
     studio.topic_fans[project.topic] = studio.topic_fans.get(project.topic, 0) + launch_followers
@@ -4334,13 +4416,16 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0, 
         net = receipts - publisher_share
         hosting_rate = game.hosting_rate
         model = monetization_by_key(game.monetization)
-        if game.support_level == "Sunset" and game.game_format == "Offline solo":
+        if game.support_level == "Sunset":
+            # Servers are shut down; nobody can play and nothing runs.
             hosting_cost = 0.0
         else:
             support_factor = 0.45 if game.support_level == "Maintenance" else 1.0
             per_player = float(model["recurring_cost_per_player"])
+            # Variable hosting only; fixed infrastructure rent is charged
+            # separately as "Server rent" in the weekly block below.
             hosting_cost = max(
-                0.0 if game.game_format == "Offline solo" else 10 / 7,
+                0.0,
                 (units * (0.01 + hosting_rate) + game.monthly_players * (hosting_rate * 0.02 + per_player) / 30) * support_factor,
             )
         add_expense(studio, hosting_cost, "Hosting")
@@ -4366,7 +4451,13 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0, 
             sale.owners_by_cohort[cohort.key] = min(cohort.population, sale.owners_by_cohort.get(cohort.key, 0) + cohort_units)
             cohort_refunds = max(0, round(refunded_units * weekly_mix.get(cohort.key, 0) / mix_total))
             sale.refunded_by_cohort[cohort.key] = sale.refunded_by_cohort.get(cohort.key, 0) + cohort_refunds
-        gained = round(units * max(0.0001, (sale.score / 100) ** 2 * 0.0025))
+        gained = round(units * max(0.0001, (sale.score / 100) ** 2 * 0.005))
+        if sale.price <= 0:
+            # Free games are how unknown developers build an audience: a small
+            # slice of players follows the dev, and good ones travel fast.
+            gained = round(units * max(0.004, (sale.score / 100) ** 2 * 0.03))
+            if sale.score >= 75:
+                gained *= 3
         studio.followers += gained
         if sale.genre:
             studio.genre_fans[sale.genre] = studio.genre_fans.get(sale.genre, 0) + gained
@@ -4478,8 +4569,32 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0, 
             game.weekly_recurring_revenue = recurring_net
             game.recurring_revenue += recurring_net
             game.net_revenue += recurring_net
+        elif game.monetization == "donationware":
+            recurring_net = game.monthly_players * 0.05
+            add_revenue(studio, recurring_net, "Donations")
+            game.weekly_recurring_revenue = recurring_net
+            game.recurring_revenue += recurring_net
+            game.net_revenue += recurring_net
         else:
             game.weekly_recurring_revenue = 0.0
+
+        # Online games pay for their infrastructure every week, players or not.
+        if game.game_format != "Offline solo":
+            if game.support_level == "Sunset":
+                # Servers are off: the community disperses and trust craters.
+                if game.active_players > 0.5:
+                    game.active_players *= 0.55
+                    game.network_health = max(0.0, game.network_health * 0.5)
+                    game.trust = max(0.0, game.trust - 1.5)
+                    clamp_player_counts(game)
+                    if state.clock.week % 4 == 0:
+                        state.log(f"{game.title}'s servers are dark; remaining players are migrating away.")
+            else:
+                rent = SERVER_RENT_PER_WEEK.get(game.game_format, 0.0)
+                if rent:
+                    rent *= 1 + min(4.0, game.monthly_players / 50_000)
+                    add_expense(studio, rent, "Server rent")
+                    game.post_launch_cost += rent
 
         result = player_demand_result(market_results, game.game_id)
         if result:
@@ -4669,10 +4784,18 @@ def process_contract(state: GameState, week_end: bool = True, workday: bool = Tr
             return
         add_revenue(studio, max(0, contract.payout - contract.deposit), "Contracts")
         reputation_gain = contract.difficulty * 0.5 + min(0.75, max(0, contract.weeks_left) * 0.05)
+        if contract.payout <= 0:
+            # Portfolio work pays in contacts: double reputation, plus a
+            # little client relationship for delivering anyway.
+            reputation_gain = reputation_gain * 2 + 1.0
+            studio.client_relationships[contract.client] = min(100.0, studio.client_relationships.get(contract.client, 0.0) + 2)
         studio.contractor_reputation = min(100, studio.contractor_reputation + reputation_gain)
         studio.contracts_completed += 1
         studio.client_relationships[contract.client] = min(100.0, studio.client_relationships.get(contract.client, 0.0) + 3 + contract.difficulty)
-        state.log(f"Delivered {contract.client}'s {contract.title}; paid ${contract.payout:,} against ${contract.labor_cost:,.0f} labor, contractor reputation +{reputation_gain:.1f}.")
+        if contract.payout:
+            state.log(f"Delivered {contract.client}'s {contract.title}; paid ${contract.payout:,} against ${contract.labor_cost:,.0f} labor, contractor reputation +{reputation_gain:.1f}.")
+        else:
+            state.log(f"Delivered {contract.client}'s {contract.title} for free; they will vouch for you (reputation +{reputation_gain:.1f}).")
         studio.contract = None
         start_next_contract(state)
     elif contract.weeks_left <= 0:

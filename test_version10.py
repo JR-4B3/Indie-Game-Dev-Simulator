@@ -1,20 +1,31 @@
 import tempfile
 import unittest
+from copy import deepcopy
 from datetime import timedelta
 from pathlib import Path
 
 from sim_core.market import COHORTS, MacroSnapshot, ProductOffer, allocate_weekly_demand
 from simulation import (
+    CHANNELS,
+    GAME_FORMATS,
+    ITCH_RELEASES_BEFORE_STEAM,
     MONETIZATION_MODELS,
     PRICE_POINTS,
+    RESEARCH_NODES,
     GameState,
+    accept_contract_offer,
     advance_game,
+    channel_lock_reason,
     cycle_game_price,
+    cycle_game_support,
     launch_early_access,
     load_game,
+    plan_requirements,
     process_sales,
+    refresh_contract_offers,
     release_ready_project,
     save_game,
+    selected_monetization_model,
     start_project,
     state_from_data,
     state_to_data,
@@ -30,10 +41,17 @@ def advance(state: GameState, weeks: int = 1) -> None:
 
 
 def release_game(state: GameState):
+    state.studio.itch_releases = 99  # tests bypass the itch.io storefront gate
     assert start_project(state)
     state.studio.current_project.work_done = state.studio.current_project.total_work - 1
     advance(state)
     return state.studio.catalog[-1]
+
+
+def unlock_everything(state: GameState) -> None:
+    for node in RESEARCH_NODES:
+        if node["key"] not in state.studio.completed_research:
+            state.studio.completed_research.append(node["key"])
 
 
 class Version10Tests(unittest.TestCase):
@@ -101,6 +119,7 @@ class Version10Tests(unittest.TestCase):
         state.selected_announcement = 2
         state.selected_release_policy = 1
 
+        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         self.assertEqual(project.monetization, "premium_dlc")
@@ -111,6 +130,7 @@ class Version10Tests(unittest.TestCase):
 
     def test_manual_release_holds_gold_build_until_player_launches(self) -> None:
         state = GameState(selected_release_policy=1)
+        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         project.work_done = project.total_work
@@ -128,6 +148,7 @@ class Version10Tests(unittest.TestCase):
         state.studio.cash = 1_000_000
         state.studio.completed_research.append("content_updates")
         state.selected_monetization = next(index for index, model in enumerate(MONETIZATION_MODELS) if model["key"] == "paid_early_access")
+        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         project.work_done = project.total_work * 0.5
@@ -153,6 +174,89 @@ class Version10Tests(unittest.TestCase):
         self.assertTrue(take_community_action(state, game.game_id, 0))
         self.assertGreater(game.trust, trust)
         self.assertEqual(state.studio.active_community_actions[-1]["action"], "dev_diary")
+
+    def test_new_campaign_starts_on_itchio_with_donationware(self) -> None:
+        state = GameState.new_campaign()
+        self.assertEqual(CHANNELS[state.selected_channel]["name"], "itch.io")
+        self.assertEqual(selected_monetization_model(state)["key"], "donationware")
+        self.assertIsNone(channel_lock_reason(state.studio, state.selected_channel))
+        self.assertIsNotNone(channel_lock_reason(state.studio, 0))
+
+    def test_steam_unlocks_after_ten_itchio_releases(self) -> None:
+        state = GameState()
+        self.assertFalse(start_project(state))
+        self.assertTrue(any("itch.io releases before Steam" in message for message in state.logs))
+        state.studio.itch_releases = ITCH_RELEASES_BEFORE_STEAM
+        self.assertTrue(all("itch.io" not in requirement for requirement in plan_requirements(state)))
+        self.assertTrue(start_project(state))
+
+    def test_first_contracts_are_unpaid_portfolio_work(self) -> None:
+        state = GameState()
+        self.assertTrue(state.studio.contract_offers)
+        self.assertTrue(all(offer.payout == 0 for offer in state.studio.contract_offers))
+        revenue_before = state.studio.lifetime_revenue
+        reputation_before = state.studio.contractor_reputation
+        self.assertTrue(accept_contract_offer(state))
+        contract = state.studio.contract
+        self.assertEqual(contract.payout, 0)
+        contract.quality_target = 0
+        contract.work_done = contract.required_work
+        advance(state)
+        self.assertIsNone(state.studio.contract)
+        self.assertEqual(state.studio.lifetime_revenue, revenue_before)
+        self.assertGreater(state.studio.contractor_reputation, reputation_before)
+
+        state.studio.contractor_reputation = 20
+        state.studio.contracts_completed = 5
+        refresh_contract_offers(state, announce=False)
+        self.assertTrue(any(offer.payout > 0 for offer in state.studio.contract_offers))
+
+    def test_online_games_pay_server_rent_until_sunset(self) -> None:
+        state = GameState.new_campaign()
+        state.studio.seed = 424242
+        state.studio.cash = 3_000_000
+        state.studio.followers = 300_000
+        unlock_everything(state)
+        state.studio.itch_releases = ITCH_RELEASES_BEFORE_STEAM
+        state.selected_format = next(
+            index for index, item in enumerate(GAME_FORMATS) if item["name"] == "Online co-op"
+        )
+        while len(state.studio.team) < 4:
+            member = deepcopy(state.studio.team[0])
+            member.employee_id = 10 + len(state.studio.team)
+            state.studio.team.append(member)
+        game = release_game(state)
+        self.assertNotEqual(game.game_format, "Offline solo")
+
+        advance(state, 2)
+        rent = [item for item in state.studio.transactions if item["category"] == "Server rent"]
+        self.assertTrue(rent, "an online game must pay infrastructure rent even with few players")
+
+        cycle_game_support(state, game.game_id)  # Active -> Maintenance
+        cycle_game_support(state, game.game_id)  # Maintenance -> Sunset
+        mark = len(state.studio.transactions)
+        players_before = game.active_players
+        advance(state)
+        self.assertEqual(
+            [item for item in state.studio.transactions[mark:] if item["category"] == "Server rent"],
+            [],
+            "sunsetting an online game shuts its servers down",
+        )
+        self.assertLess(game.active_players, players_before * 0.9)
+
+    def test_free_games_trickle_donations_and_never_charge_players(self) -> None:
+        state = GameState.new_campaign()
+        state.studio.seed = 424242
+        state.studio.cash = 1_000_000
+        state.studio.followers = 120_000
+        unlock_everything(state)
+        game = release_game(state)
+        sale = state.studio.active_sales[-1]
+        self.assertEqual(sale.price, 0.0)
+        self.assertEqual(game.price, 0.0)
+        advance(state, 3)
+        self.assertGreater(game.recurring_revenue, 0)
+        self.assertTrue(any(item["category"] == "Donations" for item in state.studio.transactions))
 
     def test_publisher_recoup_crossing_uses_post_recoup_share_only_on_excess(self) -> None:
         state = GameState()

@@ -8,6 +8,11 @@ from simulation import GameState, contract_offer_eta_weeks, estimated_contract_w
 from ui_common import add_text, draw_box, draw_selectable_list, money
 
 
+def contract_pay_text(contract) -> str:
+    """Unpaid portfolio gigs show what they actually pay: contacts."""
+    return money(contract.payout) if contract.payout else "reputation"
+
+
 def contract_board_width(width: int) -> int:
     """Width of the offers board; shared with the mouse handler."""
     return max(46, width * 2 // 3)
@@ -43,9 +48,9 @@ def draw_contract_screen(screen: curses.window, state: GameState, width: int, he
         estimate = contract_offer_eta_weeks(contract)
         locked = studio.contractor_reputation < contract.reputation_required
         if board_expanded:
-            text = f"{contract.client[:client_width]:<{client_width}} {contract.title[:job_width]:<{job_width}} {contract.focus[:focus_width]:<{focus_width}} {contract.difficulty:>5} {money(contract.payout):>10} {estimate:>4}w {contract.weeks_left:>4}w {contract.reputation_required:>7}"
+            text = f"{contract.client[:client_width]:<{client_width}} {contract.title[:job_width]:<{job_width}} {contract.focus[:focus_width]:<{focus_width}} {contract.difficulty:>5} {contract_pay_text(contract):>10} {estimate:>4}w {contract.weeks_left:>4}w {contract.reputation_required:>7}"
         else:
-            text = f"{contract.client[:client_width]:<{client_width}} {contract.title[:job_width]:<{job_width}} {contract.focus[:focus_width]:<{focus_width}} {money(contract.payout):>8} {contract.weeks_left:>3}w"
+            text = f"{contract.client[:client_width]:<{client_width}} {contract.title[:job_width]:<{job_width}} {contract.focus[:focus_width]:<{focus_width}} {contract_pay_text(contract):>8} {contract.weeks_left:>3}w"
         offer_rows.append((text, curses.color_pair(5) if locked else 0))
     draw_selectable_list(board, offer_rows, state.selected_contract, True, y=2, width=board_width - 4, scroll=False, highlight_wins=False)
 
@@ -62,7 +67,7 @@ def draw_contract_screen(screen: curses.window, state: GameState, width: int, he
         add_text(detail, 7, 2, active.title, detail_width - 4)
         add_text(detail, 8, 2, f"Focus {active.focus} | D{active.difficulty}", detail_width - 4)
         add_text(detail, 9, 2, f"Progress {progress:.0%} | est {estimate}w", detail_width - 4)
-        add_text(detail, 10, 2, f"Deadline {active.weeks_left}w | {money(active.payout)}", detail_width - 4)
+        add_text(detail, 10, 2, f"Deadline {active.weeks_left}w | {contract_pay_text(active)}", detail_width - 4)
     else:
         add_text(detail, 5, 2, "No active contract", detail_width - 4)
     queue_row = 12
@@ -70,4 +75,4 @@ def draw_contract_screen(screen: curses.window, state: GameState, width: int, he
         add_text(detail, queue_row, 2, f"QUEUE ({len(studio.contract_queue)})", detail_width - 4, curses.A_BOLD)
         for row, contract in enumerate(studio.contract_queue[: panel_height - queue_row - 2], queue_row + 1):
             source = "A" if contract.auto_accepted else "M"
-            add_text(detail, row, 2, f"{row - queue_row}. [{source}] {contract.focus}: {contract.title} ({money(contract.payout)})", detail_width - 4)
+            add_text(detail, row, 2, f"{row - queue_row}. [{source}] {contract.focus}: {contract.title} ({contract_pay_text(contract)})", detail_width - 4)

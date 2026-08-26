@@ -23,6 +23,7 @@ from simulation import (
     publisher_by_name,
     projected_weekly_output,
     research_requirement_for_channel,
+    channel_lock_reason,
     research_requirement_for_format,
     research_requirement_for_genre,
     research_requirement_for_marketing,
@@ -376,9 +377,10 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     visible = storefront_height - 3
     channel_rows = []
     for index, channel in enumerate(CHANNELS):
-        requirement = research_requirement_for_channel(index)
-        locked = bool(requirement and not has_research(state.studio, requirement))
-        channel_rows.append((f"{channel['name']:<{store_width}} {'':<9} | {channel['cut']:>4.0%} | {money(channel['fee']):>8}", curses.color_pair(5) if locked else 0))
+        lock = channel_lock_reason(state.studio, index)
+        locked = bool(lock)
+        lock_note = lock[:9] if lock else ""
+        channel_rows.append((f"{channel['name']:<{store_width}} {lock_note:<9} | {channel['cut']:>4.0%} | {money(channel['fee']):>8}", curses.color_pair(5) if locked else 0))
     draw_selectable_list(storefront, channel_rows, state.selected_channel, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)
     if storefront_width >= 52:
         for row, channel in enumerate(CHANNELS[:visible], 2):

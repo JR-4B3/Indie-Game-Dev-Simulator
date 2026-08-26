@@ -509,7 +509,7 @@ def _complexity_for(genre: str, game_format: str) -> float:
 def _monetization_fit(monetization: str, tolerance: float) -> float:
     text = str(monetization).strip().casefold().replace("_", " ")
     tolerance = _clamp(tolerance, 0.0, 1.0)
-    if not text or text in {"none", "free", "premium", "one time", "complete package"}:
+    if not text or text in {"none", "free", "premium", "one time", "complete package", "donationware", "donations"}:
         return 0.96
     if "loot" in text or "gacha" in text:
         return 0.08 + 0.78 * tolerance

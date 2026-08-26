@@ -44,7 +44,7 @@ def draw_contract_status(panel: curses.window, state: GameState, panel_width: in
     if active:
         progress = 0 if active.required_work <= 0 else active.work_done / active.required_work
         add_text(panel, start_row + 1, 2, f"Active: {active.client} / {active.focus}", panel_width - 4)
-        add_text(panel, start_row + 2, 2, f"[{meter(progress, 1, 16)}] {progress:.0%} | due {active.weeks_left}w | {money(active.payout)}", panel_width - 4, curses.color_pair(4))
+        add_text(panel, start_row + 2, 2, f"[{meter(progress, 1, 16)}] {progress:.0%} | due {active.weeks_left}w | {money(active.payout) if active.payout else 'unpaid'}", panel_width - 4, curses.color_pair(4))
     else:
         add_text(panel, start_row + 1, 2, "No active contract", panel_width - 4)
         add_text(panel, start_row + 2, 2, "J  open Jobs to accept client work", panel_width - 4)
