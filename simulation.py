@@ -52,11 +52,6 @@ CHANNELS = (
     {"name": "Switch 2", "category": "Handheld", "fee": 10_000, "cut": 0.30, "reach": 0.52, "visibility": 5},
 )
 
-# Storefronts bury unknown developers: nobody ships their first game on Steam.
-# Free itch.io releases build the tiny audience and craft history that unlocks
-# the big storefronts.
-ITCH_RELEASES_BEFORE_STEAM = 10
-
 # Weekly infrastructure rent online games pay while their servers run,
 # multiplied by 1..5 depending on monthly players. This is the fixed cost
 # that makes live games a liability even when development is done.
@@ -531,6 +526,7 @@ class Project:
     early_access_rating: float = 0.0
     awareness_by_cohort: dict[str, float] = field(default_factory=dict)
     wishlists_by_cohort: dict[str, int] = field(default_factory=dict)
+    platforms: list[str] = field(default_factory=list)
     promises: list[dict] = field(default_factory=list)
     quality_dimensions: dict[str, float] = field(default_factory=dict)
     technical_debt: float = 0.0
@@ -596,6 +592,7 @@ class ActiveSale:
     publisher_post_recoup_share: float = 0.0
     publisher_recoupable: float = 0.0
     publisher_recouped: float = 0.0
+    platforms: list[str] = field(default_factory=list)
     awareness_by_cohort: dict[str, float] = field(default_factory=dict)
     owners_by_cohort: dict[str, int] = field(default_factory=dict)
     refunded_by_cohort: dict[str, int] = field(default_factory=dict)
@@ -687,6 +684,7 @@ class ReleasedGame:
     publisher: str = ""
     publisher_advance: float = 0.0
     publisher_recouped: float = 0.0
+    platforms: list[str] = field(default_factory=list)
     monetization: str = "premium"
     announcement_strategy: str = "late_reveal"
     release_policy: str = "ship_when_ready"
@@ -715,6 +713,8 @@ class ReleasedGame:
     issues: list[dict] = field(default_factory=list)
     promises: list[dict] = field(default_factory=list)
     postmortem: dict = field(default_factory=dict)
+    platforms: list[str] = field(default_factory=list)
+    press_reviewed: bool = False
     dlc_owners: dict[str, dict[str, int]] = field(default_factory=dict)
     early_access: bool = False
     early_access_week: int = 0
@@ -995,6 +995,7 @@ class GameState:
     selected_genre: int = 0
     selected_topic: int = 0
     selected_channel: int = 0
+    selected_platforms: list[int] = field(default_factory=list)
     selected_scope: int = 0
     selected_marketing: int = 0
     selected_secondary_genre: int = 0
@@ -1100,7 +1101,9 @@ class GameState:
         seed = secrets.randbits(63) or 1
         state = cls(studio=Studio(seed=seed, name=studio_name), save_path=save_path)
         # New developers start where everyone starts: tiny free games on itch.io.
-        state.selected_channel = next(index for index, channel in enumerate(CHANNELS) if channel["name"] == "itch.io")
+        itch_index = next(index for index, channel in enumerate(CHANNELS) if channel["name"] == "itch.io")
+        state.selected_channel = itch_index
+        state.selected_platforms = [itch_index]
         state.selected_monetization = next(index for index, model in enumerate(MONETIZATION_MODELS) if model["key"] == "donationware")
         state.selected_scope = next(index for index, scope in enumerate(SCOPES) if scope["name"] == "Bite-size")
         return state
@@ -1157,6 +1160,52 @@ def selected_release_policy(state: GameState) -> dict:
 
 def monetization_by_key(key: str) -> dict:
     return monetization_model_by_key(key) or MONETIZATION_MODELS[0]
+
+
+def selected_platform_indexes(state: GameState) -> list[int]:
+    """Every storefront this release targets, in selection order.
+
+    The storefront cursor (``selected_channel``) only previews stores; the
+    actual platform set is chosen by toggling stores with [T].
+    """
+    if state.selected_platforms:
+        return list(state.selected_platforms)
+    return [state.selected_channel]
+
+
+def blended_platform_cut(platform_indexes: list[int]) -> float:
+    """Revenue-weighted average store cut across the targeted platforms."""
+    platforms = [CHANNELS[index] for index in platform_indexes]
+    total_reach = sum(float(platform["reach"]) for platform in platforms) or 1.0
+    return sum(float(platform["cut"]) * float(platform["reach"]) for platform in platforms) / total_reach
+
+
+def ensure_platform_selection(state: GameState) -> None:
+    """Materialize the implicit platform choice so the cursor becomes pure
+    navigation afterwards: moving the storefront cursor no longer silently
+    changes which stores a release targets."""
+    if not state.selected_platforms:
+        state.selected_platforms = [state.selected_channel]
+
+
+def toggle_platform_selection(state: GameState, index: int) -> bool:
+    """Add or remove the storefront under the cursor from the release plan."""
+    ensure_platform_selection(state)
+    lock = channel_lock_reason(state.studio, index)
+    if lock and index in state.selected_platforms:
+        state.selected_platforms.remove(index)
+        return True
+    if lock:
+        state.log(f"{CHANNELS[index]['name']} needs {lock.replace('research: ', '')} research before you can ship there.")
+        return False
+    if index in state.selected_platforms:
+        if len(state.selected_platforms) == 1:
+            state.log("A release needs at least one storefront.")
+            return False
+        state.selected_platforms.remove(index)
+    else:
+        state.selected_platforms.append(index)
+    return True
 
 
 def studio_macro_snapshot(studio: Studio) -> MacroSnapshot:
@@ -1234,10 +1283,11 @@ def project_quality_dimensions(studio: Studio, project: Project, average_skill: 
     }
 
 
-def product_offer_for_game(state: GameState, game: ReleasedGame, sale: ActiveSale | None = None) -> ProductOffer:
+def product_offer_for_game(state: GameState, game: ReleasedGame, sale: ActiveSale | None = None, channel_index: int | None = None) -> ProductOffer:
     sale = sale or sale_for_game(state.studio, game.game_id)
     awareness = sale.awareness_by_cohort if sale else {}
     owners = sale.owners_by_cohort if sale else {}
+    channel = CHANNELS[channel_index] if channel_index is not None else channel_by_name(game.channel)
     novelty = max(5.0, game.novelty - max(0, state.clock.week - game.release_week) * 0.28)
     strategy = release_strategy_by_name(game.release_strategy)
     expected_cadence = int(strategy.get("expect_weeks", 0))
@@ -1263,8 +1313,8 @@ def product_offer_for_game(state: GameState, game: ReleasedGame, sale: ActiveSal
         sentiment=max(0.0, (game.sentiment or game.user_rating) - stale_trust_drag * 0.8),
         novelty=novelty,
         network_health=game.network_health * stale_network_multiplier,
-        store_reach=channel_by_name(game.channel)["reach"] * studio_store_visibility(state.studio),
-        platform_category=channel_by_name(game.channel)["category"],
+        store_reach=float(channel["reach"]) * studio_store_visibility(state.studio),
+        platform_category=channel["category"],
         cultural_resonance=game.cultural_resonance or 50.0,
         lifecycle_state=game.lifecycle_state,
     )
@@ -1307,12 +1357,29 @@ def competitor_product_offers(state: GameState) -> list[ProductOffer]:
     return offers
 
 
+def game_platform_indexes(game_or_sale) -> list[int]:
+    """Storefront indexes a released product targets; primary first."""
+    primary = channel_index_by_name(game_or_sale.channel)
+    indexes = [primary] if primary is not None else []
+    for name in getattr(game_or_sale, "platforms", ()):
+        index = channel_index_by_name(name)
+        if index is not None and index not in indexes:
+            indexes.append(index)
+    return indexes or [0]
+
+
+def channel_index_by_name(name: str) -> int | None:
+    return next((index for index, channel in enumerate(CHANNELS) if channel["name"] == name), None)
+
+
 def allocate_weekly_market(state: GameState) -> dict[str, DemandResult]:
     """Allocate this week's finite demand once for the whole market.
 
     The player's catalog and every rival release compete in a single
     ``allocate_weekly_demand`` call so one shopper pool cannot be spent twice.
-    Results are keyed by offer id: ``"player:{game_id}"`` for the studio's
+    Multi-platform games enter one offer per storefront (they share ownership,
+    so a cohort's eligible pool shrinks as owners accumulate). Results are
+    keyed by offer id: ``"player:{game_id}:p{store_index}"`` for the studio's
     games and ``"rival:{competitor_id}:{index}"`` for competitor releases.
     """
     offers = []
@@ -1320,7 +1387,10 @@ def allocate_weekly_market(state: GameState) -> dict[str, DemandResult]:
         sale = sale_for_game(state.studio, game.game_id)
         if sale is None or game.lifecycle_state in ("delisted", "closed"):
             continue
-        offers.append(product_offer_for_game(state, game, sale))
+        for store_index in game_platform_indexes(game):
+            offer = product_offer_for_game(state, game, sale, store_index)
+            offer = replace(offer, product_id=f"player:{game.game_id}:p{store_index}")
+            offers.append(offer)
     offers.extend(competitor_product_offers(state))
     if not offers:
         return {}
@@ -1328,8 +1398,17 @@ def allocate_weekly_market(state: GameState) -> dict[str, DemandResult]:
     return {result.product_id: result for result in results}
 
 
-def player_demand_result(market_results: dict[str, DemandResult], game_id: int) -> DemandResult | None:
-    return market_results.get(f"player:{game_id}")
+def player_demand_results(market_results: dict[str, DemandResult], game_id: int) -> list[DemandResult]:
+    prefix = f"player:{game_id}:p"
+    return [result for key, result in market_results.items() if key.startswith(prefix)]
+
+
+def merge_cohort_counts(maps: list[dict[str, int]]) -> dict[str, int]:
+    merged: dict[str, int] = {}
+    for mapping in maps:
+        for key, value in mapping.items():
+            merged[key] = merged.get(key, 0) + value
+    return merged
 
 
 def segment_weights_for(game_format: str, target_audience: str) -> dict[str, float]:
@@ -1700,37 +1779,41 @@ def market_truth(state: GameState) -> dict:
         for cohort in COHORTS
     }
     preview_hype = 5 + MARKETING[state.selected_marketing]["boost"] / 25
-    draft_offer = ProductOffer(
-        product_id="draft",
-        genre=genre,
-        secondary_genre=secondary_genre,
-        topic=topic,
-        target_audience=audience["name"],
-        game_format=game_format["name"],
-        monetization=str(monetization["key"]),
-        price=price,
-        quality=max(30, min(85, 42 + score * 0.40)),
-        user_rating=55,
-        awareness_by_cohort=initial_awareness_by_cohort(state, preview_hype, MARKETING[state.selected_marketing]["boost"], str(announcement["key"])),
-        owners_by_cohort={},
-        hype=preview_hype,
-        trust=state.studio.studio_trust,
-        sentiment=55,
-        novelty=max(20, min(90, 50 + trend + direction_market)),
-        network_health=70 if game_format["name"] != "Offline solo" else 100,
-        store_reach=channel["reach"] * studio_store_visibility(state.studio),
-        platform_category=channel["category"],
-        cultural_resonance=cultural_resonance,
-        lifecycle_state="launch",
-    )
+    draft_platforms = [CHANNELS[index] for index in selected_platform_indexes(state)]
+    draft_offers = [
+        ProductOffer(
+            product_id=f"draft:p{index}",
+            genre=genre,
+            secondary_genre=secondary_genre,
+            topic=topic,
+            target_audience=audience["name"],
+            game_format=game_format["name"],
+            monetization=str(monetization["key"]),
+            price=price,
+            quality=max(30, min(85, 42 + score * 0.40)),
+            user_rating=55,
+            awareness_by_cohort=initial_awareness_by_cohort(state, preview_hype, MARKETING[state.selected_marketing]["boost"], str(announcement["key"])),
+            owners_by_cohort={},
+            hype=preview_hype,
+            trust=state.studio.studio_trust,
+            sentiment=55,
+            novelty=max(20, min(90, 50 + trend + direction_market)),
+            network_health=70 if game_format["name"] != "Offline solo" else 100,
+            store_reach=float(platform["reach"]) * studio_store_visibility(state.studio),
+            platform_category=platform["category"],
+            cultural_resonance=cultural_resonance,
+            lifecycle_state="launch",
+        )
+        for index, platform in enumerate(draft_platforms)
+    ]
     market_results = allocate_weekly_demand(
-        [draft_offer, *competitor_product_offers(state)],
+        [*draft_offers, *competitor_product_offers(state)],
         studio_macro_snapshot(state.studio),
         seed + 84_271,
     )
-    draft_result = market_results[0]
-    audience_size = max(1_000, sum(draft_result.interested_by_cohort.values()))
-    opportunity = max(1, draft_result.units)
+    draft_results = market_results[: len(draft_offers)]
+    audience_size = max(1_000, sum(sum(result.interested_by_cohort.values()) for result in draft_results))
+    opportunity = max(1, sum(result.units for result in draft_results))
     risk = round(
         scope["risk"]
         + game_format["risk"]
@@ -1758,7 +1841,7 @@ def market_truth(state: GameState) -> dict:
         "launch_demand": opportunity,
         "price": price,
         "cultural_resonance": cultural_resonance,
-        "demand_drivers": list(draft_result.explanation_drivers),
+        "demand_drivers": list(max(draft_results, key=lambda result: result.units).explanation_drivers),
     }
 
 
@@ -1905,12 +1988,6 @@ def plan_requirements(state: GameState) -> list[str]:
     if monetization_research and not has_research(studio, str(monetization_research)):
         node = research_by_key(str(monetization_research))
         requirements.append(f"research: {node['name'] if node else monetization_research}")
-    channel_lock = channel_lock_reason(studio, state.selected_channel)
-    if channel_lock:
-        if "itch.io" in channel_lock:
-            requirements.append(f"{ITCH_RELEASES_BEFORE_STEAM} itch.io releases before Steam (have {studio.itch_releases})")
-        else:
-            requirements.append(channel_lock)
     unlock_requirements = (
         research_requirement_for_scope(state.selected_scope),
         research_requirement_for_format(state.selected_format),
@@ -1970,10 +2047,12 @@ def research_requirement_for_topic(topic: str) -> str | None:
 
 
 def channel_lock_reason(studio: Studio, index: int) -> str | None:
-    """Return why this storefront is unavailable, or None when selectable."""
-    channel = CHANNELS[index]
-    if channel["name"] == "Steam" and studio.itch_releases < ITCH_RELEASES_BEFORE_STEAM:
-        return f"{ITCH_RELEASES_BEFORE_STEAM - studio.itch_releases} more itch.io releases"
+    """Return why this platform's technology is unavailable, or None.
+
+    Storefronts themselves are never gated - an unknown developer *can* ship
+    on Steam; the market just will not care. Platforms are gated by the
+    technology to build for them (mobile SDKs, console certification).
+    """
     requirement = research_requirement_for_channel(index)
     if requirement and not has_research(studio, requirement):
         node = research_by_key(requirement)
@@ -2788,7 +2867,13 @@ def start_project(state: GameState) -> bool:
     if requirements:
         state.log(f"Plan not production-ready: requires {', '.join(requirements)}.")
         return False
-    cost = scope["setup"] + channel["fee"] + marketing["cost"] + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"])
+    platform_indexes = [index for index in selected_platform_indexes(state) if not channel_lock_reason(studio, index)]
+    if not platform_indexes:
+        platform_indexes = [state.selected_channel]
+    platform_list = [CHANNELS[index] for index in platform_indexes]
+    store_fees = sum(int(platform["fee"]) for platform in platform_list)
+    platform_names = [platform["name"] for platform in platform_list]
+    cost = scope["setup"] + store_fees + marketing["cost"] + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"])
     publisher_advance = publisher["advance"] if publisher else 0
     if studio.cash + publisher_advance < cost + monthly_fixed_cost(studio):
         state.log(f"Plan rejected: ${cost:,} setup would leave less than one month of runway.")
@@ -2830,10 +2915,10 @@ def start_project(state: GameState) -> bool:
         title=title[:48],
         genre=genre,
         topic=topic,
-        channel=channel["name"],
+        channel=CHANNELS[platform_indexes[0]]["name"],
         category=channel["category"],
-        platform_cut=channel["cut"],
-        reach=channel["reach"],
+        platform_cut=blended_platform_cut(platform_indexes),
+        reach=max(float(platform["reach"]) for platform in platform_list),
         scope=scope["name"],
         price=float(price_point["price"]),
         marketing_name=marketing["name"],
@@ -2866,7 +2951,8 @@ def start_project(state: GameState) -> bool:
         generation=generation,
         franchise_id=state.spinoff_franchise_id if state.spinoff_franchise_id else (previous_game.franchise_id if previous_game else None),
         hype=initial_hype,
-        production_cost=scope["setup"] + channel["fee"] + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"]),
+        production_cost=scope["setup"] + store_fees + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"]),
+        platforms=platform_names,
         marketing_cost=marketing["cost"],
         publisher=publisher["name"] if publisher else "",
         publisher_advance=publisher_advance,
@@ -2888,7 +2974,7 @@ def start_project(state: GameState) -> bool:
         forecast_work_high=report["work_high"],
     )
     add_expense(studio, scope["setup"] + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"]), "Development")
-    add_expense(studio, channel["fee"], "Store fees")
+    add_expense(studio, store_fees, "Store fees")
     add_expense(studio, marketing["cost"], "Marketing")
     if publisher:
         financing_inflow(studio, publisher_advance, "Publisher advance", date=state.clock.current_date, counterparty=publisher["name"], memo=f"Recoupable advance for {title[:48]}")
@@ -3357,56 +3443,75 @@ def finish_project(state: GameState) -> None:
             * (1 + project.publisher_visibility * 0.12)
             + franchise_reach,
         )
-    launch_offer = ProductOffer(
-        product_id="launch",
-        genre=project.genre,
-        secondary_genre=project.secondary_genre,
-        topic=project.topic,
-        target_audience=project.target_audience,
-        game_format=project.game_format,
-        monetization=project.monetization,
-        price=project.price,
-        quality=score,
-        user_rating=score,
-        awareness_by_cohort=launch_awareness,
-        owners_by_cohort={},
-        age_weeks=0,
-        hype=project.hype,
-        trust=(project.trust + studio.studio_trust) / 2,
-        sentiment=score,
-        novelty=project.novelty,
-        network_health=70 if project.game_format != "Offline solo" else 100,
-        store_reach=project.reach * studio_store_visibility(studio),
-        platform_category=project.category,
-        cultural_resonance=project.cultural_resonance,
-        lifecycle_state="launch",
-    )
-    launch_results = allocate_weekly_demand(
-        [launch_offer, *competitor_product_offers(state)],
-        studio_macro_snapshot(studio),
-        studio.seed + state.clock.week * 65_537 + studio.next_game_id,
-    )
-    launch_result = launch_results[0]
+    launch_platforms = project.platforms or [project.channel]
+    launch_store_indexes = [channel_index_by_name(name) for name in launch_platforms]
+    launch_store_indexes = [index for index in launch_store_indexes if index is not None] or [channel_index_by_name(project.channel) or 0]
+
+    def launch_offers(awareness: dict[str, float], hype: float) -> list[ProductOffer]:
+        return [
+            ProductOffer(
+                product_id=f"launch:p{index}",
+                genre=project.genre,
+                secondary_genre=project.secondary_genre,
+                topic=project.topic,
+                target_audience=project.target_audience,
+                game_format=project.game_format,
+                monetization=project.monetization,
+                price=project.price,
+                quality=score,
+                user_rating=score,
+                awareness_by_cohort=awareness,
+                owners_by_cohort={},
+                age_weeks=0,
+                hype=hype,
+                trust=(project.trust + studio.studio_trust) / 2,
+                sentiment=score,
+                novelty=project.novelty,
+                network_health=70 if project.game_format != "Offline solo" else 100,
+                store_reach=float(CHANNELS[index]["reach"]) * studio_store_visibility(studio),
+                platform_category=CHANNELS[index]["category"],
+                cultural_resonance=project.cultural_resonance,
+                lifecycle_state="launch",
+            )
+            for index in launch_store_indexes
+        ]
+
+    def allocate_launch(awareness: dict[str, float], hype: float) -> list[DemandResult]:
+        results = allocate_weekly_demand(
+            [*launch_offers(awareness, hype), *competitor_product_offers(state)],
+            studio_macro_snapshot(studio),
+            studio.seed + state.clock.week * 65_537 + studio.next_game_id,
+        )
+        return results[: len(launch_store_indexes)]
+
+    launch_results = allocate_launch(launch_awareness, project.hype)
     viral_rng = random.Random(studio.seed + state.clock.week * 97_409 + studio.next_game_id)
     viral_chance = min(0.18, max(0.005, (score - 55) / 400 + project.novelty / 1_500 + project.hype / 4_000))
     viral_coefficient = 0.0
     if viral_rng.random() < viral_chance:
         viral_coefficient = viral_rng.uniform(1.15, 3.5)
-        viral_awareness = {key: min(0.99, value * viral_coefficient) for key, value in launch_awareness.items()}
-        launch_offer = replace(launch_offer, awareness_by_cohort=viral_awareness, hype=min(100, project.hype + 25))
-        launch_result = allocate_weekly_demand(
-            [launch_offer, *competitor_product_offers(state)],
-            studio_macro_snapshot(studio),
-            studio.seed + state.clock.week * 65_537 + studio.next_game_id,
-        )[0]
-        launch_awareness = viral_awareness
-    units = max(0, launch_result.units)
+        launch_awareness = {key: min(0.99, value * viral_coefficient) for key, value in launch_awareness.items()}
+        launch_results = allocate_launch(launch_awareness, min(100, project.hype + 25))
+    units = max(0, sum(result.units for result in launch_results))
+    launch_result = max(launch_results, key=lambda result: result.units)
     evergreen_units = 0
     game_id = studio.next_game_id
     studio.next_game_id += 1
     known_bugs = min(project.known_defects, max(0, project.defects - 0.01))
     rating_rng = random.Random(studio.seed + game_id * 37 + state.clock.week)
-    press_rating = max(20.0, min(98.0, score + rating_rng.uniform(-5, 4)))
+    # Real press only reviews games that arrive with buzz. An unknown dev's
+    # tiny release - free or paid - ships unreviewed; hype, audience, real
+    # marketing spend, or a publisher are what earn coverage.
+    press_buzz = (
+        project.hype >= 30
+        or studio.followers >= 15_000
+        or project.marketing_budget >= 25_000
+        or bool(project.publisher)
+    )
+    if press_buzz:
+        press_rating = max(20.0, min(98.0, score + rating_rng.uniform(-5, 4)))
+    else:
+        press_rating = 0.0
     segments = build_segments(studio, project, score, known_bugs, sequel_quality, sequel_fatigue, rating_rng)
     segment_weight = sum(segment.weight for segment in segments if segment.weight > 0)
     user_rating = max(15.0, min(99.0, sum(segment.satisfaction * segment.weight for segment in segments if segment.weight > 0) / segment_weight if segment_weight else float(score)))
@@ -3450,6 +3555,8 @@ def finish_project(state: GameState) -> None:
         production_decisions=list(project.decisions_made),
         user_rating=round(user_rating, 1),
         press_rating=round(press_rating, 1),
+        press_reviewed=press_buzz,
+        platforms=list(launch_platforms),
         last_update_week=state.clock.week,
         segments=segments,
         hype_backlash=round(hype_backlash, 1),
@@ -3516,27 +3623,22 @@ def finish_project(state: GameState) -> None:
         awareness_by_cohort=dict(launch_awareness),
         owners_by_cohort={cohort.key: 0 for cohort in COHORTS},
         refunded_by_cohort={cohort.key: 0 for cohort in COHORTS},
-        interested_by_cohort=dict(launch_result.interested_by_cohort),
-        wishlists_by_cohort=dict(launch_result.wishlists_by_cohort),
+        interested_by_cohort=merge_cohort_counts([result.interested_by_cohort for result in launch_results]),
+        wishlists_by_cohort=merge_cohort_counts([result.wishlists_by_cohort for result in launch_results]),
         payers_by_cohort={cohort.key: 0 for cohort in COHORTS},
-        weekly_result_by_cohort=dict(launch_result.units_by_cohort),
-        unmet_potential=launch_result.unmet_potential,
+        weekly_result_by_cohort=merge_cohort_counts([result.units_by_cohort for result in launch_results]),
+        unmet_potential=sum(result.unmet_potential for result in launch_results),
         demand_drivers=list(launch_result.explanation_drivers),
         lifecycle_state="launch",
         price_history=[{"week": state.clock.week, "price": project.price, "reason": "launch"}],
         units_sold=project.early_access_units,
+        platforms=list(launch_platforms),
     )
     studio.active_sales.append(sale)
     studio.current_project = None
     studio.released_games += 1
     if project.channel == "itch.io":
         studio.itch_releases += 1
-        remaining = ITCH_RELEASES_BEFORE_STEAM - studio.itch_releases
-        if remaining == 0:
-            state.log(f"Steam approves your developer page after {studio.itch_releases} itch.io releases; the paid storefronts are watching you now.")
-            emit_event(state, "storefront_unlocked", "Steam developer page approved.", "success", "studio", studio.name)
-        elif remaining > 0:
-            state.log(f"itch.io release {studio.itch_releases} of {ITCH_RELEASES_BEFORE_STEAM} - {remaining} more free games before paid storefronts take you seriously.")
     studio.reputation = max(0, studio.reputation + (score - 50) / 12)
     for key in (f"genre:{project.genre}", f"format:{project.game_format}", f"monetization:{project.monetization}", f"scope:{project.scope}"):
         studio.market_experience[key] = studio.market_experience.get(key, 0.0) + 1.0
@@ -3681,36 +3783,43 @@ def process_early_access_week(state: GameState, project: Project) -> None:
     awareness = dict(project.awareness_by_cohort)
     for cohort in COHORTS:
         awareness[cohort.key] = min(0.45, awareness.get(cohort.key, 0.001) * 1.012 + project.early_access_units / max(1, cohort.population) * 0.15)
-    offer = ProductOffer(
-        product_id="early_access",
-        genre=project.genre,
-        secondary_genre=project.secondary_genre,
-        topic=project.topic,
-        target_audience=project.target_audience,
-        game_format=project.game_format,
-        monetization=project.monetization,
-        price=project.price,
-        quality=public_quality,
-        user_rating=project.early_access_rating,
-        awareness_by_cohort=awareness,
-        owners_by_cohort=owners,
-        age_weeks=max(0, state.clock.week - project.early_access_week),
-        hype=project.hype,
-        trust=project.trust,
-        sentiment=project.early_access_rating,
-        novelty=project.novelty,
-        network_health=60,
-        store_reach=project.reach,
-        platform_category=project.category,
-        cultural_resonance=project.cultural_resonance,
-        lifecycle_state="active",
-    )
-    result = allocate_weekly_demand(
-        [offer, *competitor_product_offers(state)],
+    offer_platforms = project.platforms or [project.channel]
+    offer_indexes = [channel_index_by_name(name) for name in offer_platforms]
+    offer_indexes = [index for index in offer_indexes if index is not None] or [0]
+    offers = [
+        ProductOffer(
+            product_id=f"early_access:p{index}",
+            genre=project.genre,
+            secondary_genre=project.secondary_genre,
+            topic=project.topic,
+            target_audience=project.target_audience,
+            game_format=project.game_format,
+            monetization=project.monetization,
+            price=project.price,
+            quality=public_quality,
+            user_rating=project.early_access_rating,
+            awareness_by_cohort=awareness,
+            owners_by_cohort=owners,
+            age_weeks=max(0, state.clock.week - project.early_access_week),
+            hype=project.hype,
+            trust=project.trust,
+            sentiment=project.early_access_rating,
+            novelty=project.novelty,
+            network_health=60,
+            store_reach=float(CHANNELS[index]["reach"]) * studio_store_visibility(state.studio),
+            platform_category=CHANNELS[index]["category"],
+            cultural_resonance=project.cultural_resonance,
+            lifecycle_state="active",
+        )
+        for index in offer_indexes
+    ]
+    results = allocate_weekly_demand(
+        [*offers, *competitor_product_offers(state)],
         studio_macro_snapshot(state.studio),
         state.studio.seed + state.clock.week * 31_337,
-    )[0]
-    units = result.units
+    )
+    result = results[0]
+    units = sum(result.units for result in results[: len(offers)])
     gross = units * project.price
     refund_rate = max(0.05, min(0.34, 0.30 - project.early_access_rating / 500 + project.known_defects / 250))
     receipts = gross * (1 - refund_rate) * (1 - project.platform_cut)
@@ -4523,7 +4632,8 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0, 
                 if stale_weeks in (1, 5, 9):
                     state.log(f"Players are losing patience with {game.title}: the {game.release_strategy.lower()} promise needs new content.")
             game.patch_fatigue *= 0.92
-            game.press_rating += (game.score - game.press_rating) * 0.03
+            if game.press_rating:
+                game.press_rating += (game.score - game.press_rating) * 0.03
             game.sales_history.append(round(week_units))
             game.peak_weekly_sales = max(game.peak_weekly_sales, round(week_units))
             del game.sales_history[:-260]
@@ -4596,14 +4706,24 @@ def process_sales(state: GameState, week_end: bool = True, day_number: int = 0, 
                     add_expense(studio, rent, "Server rent")
                     game.post_launch_cost += rent
 
-        result = player_demand_result(market_results, game.game_id)
-        if result:
-            sale.weekly_units = max(0, result.units)
-            sale.weekly_result_by_cohort = dict(result.units_by_cohort)
-            sale.interested_by_cohort = dict(result.interested_by_cohort)
-            sale.wishlists_by_cohort = dict(result.wishlists_by_cohort)
-            sale.unmet_potential = result.unmet_potential
-            sale.demand_drivers = list(result.explanation_drivers)
+        results = player_demand_results(market_results, game.game_id)
+        if results:
+            sale.weekly_units = max(0, sum(result.units for result in results))
+            merged_units: dict[str, int] = {}
+            merged_interested: dict[str, int] = {}
+            merged_wishlists: dict[str, int] = {}
+            for result in results:
+                for key, value in result.units_by_cohort.items():
+                    merged_units[key] = merged_units.get(key, 0) + value
+                for key, value in result.interested_by_cohort.items():
+                    merged_interested[key] = merged_interested.get(key, 0) + value
+                for key, value in result.wishlists_by_cohort.items():
+                    merged_wishlists[key] = merged_wishlists.get(key, 0) + value
+            sale.weekly_result_by_cohort = merged_units
+            sale.interested_by_cohort = merged_interested
+            sale.wishlists_by_cohort = merged_wishlists
+            sale.unmet_potential = sum(result.unmet_potential for result in results)
+            sale.demand_drivers = list(max(results, key=lambda result: result.units).explanation_drivers)
         else:
             sale.weekly_units = 0
         sale.age_weeks += 1
@@ -5329,6 +5449,7 @@ def state_to_data(state: GameState) -> dict:
             "selected_genre": state.selected_genre,
             "selected_topic": state.selected_topic,
             "selected_channel": state.selected_channel,
+            "selected_platforms": list(state.selected_platforms),
             "selected_scope": state.selected_scope,
             "selected_marketing": state.selected_marketing,
             "selected_secondary_genre": state.selected_secondary_genre,
@@ -5429,6 +5550,7 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         selected_genre=ui.get("selected_genre", 0),
         selected_topic=ui.get("selected_topic", 0),
         selected_channel=ui.get("selected_channel", 0),
+        selected_platforms=list(ui.get("selected_platforms", [])),
         selected_scope=ui.get("selected_scope", 0),
         selected_marketing=ui.get("selected_marketing", 0),
         selected_secondary_genre=ui.get("selected_secondary_genre", ui.get("selected_genre", 0)),

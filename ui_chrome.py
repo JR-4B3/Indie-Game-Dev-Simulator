@@ -166,6 +166,8 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             if state.new_game_step in (0, 1):
                 actions.append(("[B]", "toggle_blend"))
             actions.extend([("[E]", "type_title"), ("[R]", "random_title")])
+            if state.new_game_step == 3:
+                actions.append(("[T]", "toggle_platform"))
             actions.append((control_label("Enter", "Green" if state.new_game_step == 3 else "Next"), "confirm"))
         else:
             actions = [(control_label("Backspace", "Previous"), "back"), (control_label("Up/Down", panel_names[state.new_game_step]), "new_game_selection")]
@@ -174,6 +176,8 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
                 actions.append((control_label("B", "Blend"), "toggle_blend"))
             elif state.new_game_step == 2:
                 actions.append((control_label("</>", "Change"), "new_game_adjust_right"))
+            if state.new_game_step == 3:
+                actions.append((control_label("T", "Multi-platform"), "toggle_platform"))
             actions.extend([(control_label("E", "Edit title"), "type_title"), (control_label("R", "Random"), "random_title"), (enter_label, "confirm")])
         return actions
     if state.modal == "team":

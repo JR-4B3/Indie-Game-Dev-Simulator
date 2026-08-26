@@ -52,6 +52,7 @@ from simulation import (
     has_research,
     research_requirement_for_channel,
     channel_lock_reason,
+    ensure_platform_selection,
     research_requirement_for_format,
     research_requirement_for_marketing,
     research_requirement_for_scope,
@@ -65,6 +66,7 @@ from simulation import (
     start_employee_vacation,
     start_project,
     take_community_action,
+    toggle_platform_selection,
     toggle_auto_contracts,
 )
 from ui_chrome import (
@@ -313,6 +315,9 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         launch_early_access(state)
     elif action == "production_option":
         state.selected_project_decision = (state.selected_project_decision + 1) % 2
+    elif action == "toggle_platform":
+        if state.new_game_step == 3:
+            toggle_platform_selection(state, state.selected_channel)
     elif action == "resolve_decision":
         resolve_project_decision(state, state.selected_project_decision)
     elif action == "enter_queue_cancellation":
@@ -534,6 +539,8 @@ def handle_new_game_key(state: GameState, key: int) -> None:
             close_blend(state, confirm=True)
         elif state.new_game_step < 3:
             state.new_game_step += 1
+            if state.new_game_step == 3:
+                ensure_platform_selection(state)
         else:
             start_project(state)
     elif key in (8, 127, curses.KEY_BACKSPACE):
@@ -568,6 +575,9 @@ def handle_new_game_key(state: GameState, key: int) -> None:
         state.selected_announcement = (state.selected_announcement + 1) % len(ANNOUNCEMENT_STRATEGIES)
     elif key in (ord("l"), ord("L")):
         state.selected_release_policy = (state.selected_release_policy + 1) % len(RELEASE_POLICIES)
+    elif key in (ord("t"), ord("T")):
+        if state.new_game_step == 3:
+            toggle_platform_selection(state, state.selected_channel)
     elif key == curses.KEY_UP:
         if state.new_game_step == 0:
             if state.mix_blend:
@@ -1064,8 +1074,9 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             if x < storefront_width and 0 <= row < storefront_height - 3:
                 start = list_start(state.selected_channel, len(CHANNELS), storefront_height - 3)
                 candidate = min(start + row, len(CHANNELS) - 1)
-                requirement = research_requirement_for_channel(candidate)
-                if not requirement or has_research(state.studio, requirement):
+                lock = channel_lock_reason(state.studio, candidate)
+                if not lock:
+                    ensure_platform_selection(state)
                     state.new_game_step = 3
                     state.selected_channel = candidate
                     if double_click:

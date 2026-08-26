@@ -312,7 +312,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_production_command_uses_game_and_plan_hierarchy(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertTrue(accept_contract(state))
         advance(state, 2)
@@ -328,7 +327,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_production_progress_keeps_fixed_bar_and_visible_percentage(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         bar_lengths = set()
@@ -451,11 +449,9 @@ class SimulationTests(unittest.TestCase):
 
     def test_promotion_panels_use_enter_and_backspace_while_arrows_adjust_speed(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.modal = "marketing"
         state.marketing_tab = 0
@@ -506,7 +502,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         state.modal = "new_game"
         state.new_game_step = 0
-        state.studio.itch_releases = 99
         genre_before = state.selected_genre
         top_height, genre_width, theme_width, plan_width, storefront_height = new_game_panel_geometry(190, 50)
         self.assertEqual((top_height, genre_width, theme_width, plan_width, storefront_height), (35, 28, 32, 128, 11))
@@ -526,8 +521,9 @@ class SimulationTests(unittest.TestCase):
             draw_new_game(screen, state, 190, 50)
         self.assertEqual([item.args for item in screen.derwin.call_args_list], [(35, 28, 2, 0), (35, 32, 2, 29), (46, 128, 2, 62), (11, 61, 37, 0)])
         storefront_text = [item.args[2] for item in storefront_panel.addstr.call_args_list]
-        self.assertTrue(any("STORE" in text and "|  CUT |" in text and "COST" in text for text in storefront_text))
-        self.assertTrue(any("> Steam" in text and "|  30% |" in text for text in storefront_text))
+        self.assertTrue(any("STORE" in text and "CUT" in text and "COST" in text for text in storefront_text))
+        self.assertTrue(any("Steam" in text and "30%" in text and "$" in text for text in storefront_text))
+        self.assertTrue(any("itch.io" in text for text in storefront_text))
 
         handle_new_game_key(state, curses.KEY_DOWN)
         self.assertNotEqual(state.selected_genre, genre_before)
@@ -731,7 +727,6 @@ class SimulationTests(unittest.TestCase):
             self.assertLessEqual(footer_button_ranges(state, 74)[-1][2], 73)
 
         game_state = GameState(modal="games")
-        game_state.studio.itch_releases = 99
         self.assertTrue(start_project(game_state))
         game_state.studio.current_project.work_done = game_state.studio.current_project.total_work - 1
         advance(game_state, 1)
@@ -865,7 +860,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_wide_games_screen_exposes_detailed_management_sections(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -898,7 +892,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_games_screen_still_renders_at_minimum_terminal_size(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -911,7 +904,6 @@ class SimulationTests(unittest.TestCase):
     def test_in_development_game_appears_in_catalogue_with_project_detail(self) -> None:
         state = GameState()
         game = self.release_first_game(state)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         state.modal = "games"
@@ -964,7 +956,6 @@ class SimulationTests(unittest.TestCase):
     def test_project_uses_variable_work_and_releases_to_store(self) -> None:
         state = GameState()
 
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertGreater(state.studio.current_project.planned_weeks, 8)
         advance(state, 40)
@@ -976,7 +967,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_testing_and_players_reveal_only_part_of_real_bug_count(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         advance(state, 5)
         project = state.studio.current_project
@@ -1001,7 +991,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_bug_fixing_phase_precedes_release_and_scales_with_defects(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         project.work_done = project.total_work - 1
@@ -1032,10 +1021,8 @@ class SimulationTests(unittest.TestCase):
 
     def test_bigger_teams_create_more_defects(self) -> None:
         solo = GameState()
-        solo.studio.itch_releases = 99
         self.assertTrue(start_project(solo))
         team = GameState()
-        team.studio.itch_releases = 99
         for index in range(3):
             member = deepcopy(team.studio.team[0])
             member.employee_id = 10 + index
@@ -1048,7 +1035,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_bug_fix_update_removes_existing_bugs_but_can_miss_hidden_ones(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1081,7 +1067,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         unlock(state, "targeted_marketing")
         state.selected_marketing = 2
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         advance(state, 40)
         game = state.studio.catalog[-1]
@@ -1098,7 +1083,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_released_game_keeps_selling_at_evergreen_floor(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         advance(state, 40)
         game = state.studio.catalog[-1]
@@ -1124,7 +1108,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_queued_update_ships_and_raises_live_game_activity(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         advance(state, 40)
         game = state.studio.catalog[-1]
@@ -1139,7 +1122,6 @@ class SimulationTests(unittest.TestCase):
     def test_update_size_changes_estimated_development_length(self) -> None:
         state = GameState()
         unlock(state, "content_updates", "expansion_pipeline")
-        state.studio.itch_releases = 99
         start_project(state)
         advance(state, 40)
         game = state.studio.catalog[-1]
@@ -1163,7 +1145,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         state.studio.cash = 5_000_000
         unlock(state, "content_updates")
-        state.studio.itch_releases = 99
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1199,7 +1180,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         state.studio.cash = 5_000_000
         unlock(state, "content_updates", "expansion_pipeline")
-        state.studio.itch_releases = 99
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1224,7 +1204,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         state.studio.cash = 5_000_000
         unlock(state, "content_updates", "expansion_pipeline")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1257,7 +1236,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_expanded_update_planner_shows_scope_area_qa_and_queue(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         start_project(state)
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1284,7 +1262,6 @@ class SimulationTests(unittest.TestCase):
         low = GameState()
         high = GameState()
         for state in (low, high):
-            state.studio.itch_releases = 99
             start_project(state)
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
             advance(state, 1)
@@ -1305,7 +1282,6 @@ class SimulationTests(unittest.TestCase):
         organic = GameState()
         hyped = GameState()
         for state, hype in ((organic, 5), (hyped, 180)):
-            state.studio.itch_releases = 99
             start_project(state)
             state.studio.current_project.hype = hype
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
@@ -1316,7 +1292,6 @@ class SimulationTests(unittest.TestCase):
     def test_promotions_queue_and_execute_one_at_a_time(self) -> None:
         state = GameState()
         unlock(state, "promotion_basics")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         before_cash = state.studio.cash
         before_hype = state.studio.current_project.hype
@@ -1338,7 +1313,6 @@ class SimulationTests(unittest.TestCase):
     def test_development_hype_decays_and_social_campaign_caps_at_thirty(self) -> None:
         state = GameState()
         unlock(state, "promotion_basics")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         project.hype = 30
@@ -1356,7 +1330,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_in_development_project_can_be_cancelled_with_twenty_percent_refund(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         spent = project.production_cost + project.marketing_cost
@@ -1386,7 +1359,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_cancel_project_popup_keep_leaves_project_intact(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         cash_before = state.studio.cash
@@ -1404,7 +1376,6 @@ class SimulationTests(unittest.TestCase):
     def test_waiting_promotions_can_be_cancelled_with_a_partial_refund(self) -> None:
         state = GameState()
         unlock(state, "promotion_basics", "targeted_marketing", "creator_relations")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -1434,7 +1405,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_game_tab_opens_promotion_for_current_project_without_releases(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertEqual(state.modal, "games")
 
@@ -1449,7 +1419,6 @@ class SimulationTests(unittest.TestCase):
     def test_only_enter_queues_updates_while_mouse_still_selects_games(self) -> None:
         state = GameState()
         unlock(state, "promotion_basics")
-        state.studio.itch_releases = 99
         start_project(state)
         advance(state, 40)
         state.modal = "games"
@@ -1527,7 +1496,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_contract_diverts_capacity_then_pays(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         # Build a paid reputation first: newcomers only get portfolio work.
         state.studio.contractor_reputation = 20
@@ -1665,7 +1633,6 @@ class SimulationTests(unittest.TestCase):
         metric_call = next(call for call in screen.addstr.call_args_list if call.args[2].startswith("$"))
         self.assertEqual(metric_call.args[0], 34)
 
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         with patch("main.curses.color_pair", return_value=0):
             rows = status_segments(state, 120)
@@ -1679,7 +1646,6 @@ class SimulationTests(unittest.TestCase):
     def test_current_save_round_trip(self) -> None:
         state = GameState()
         state.marketing_tab = 1
-        state.studio.itch_releases = 99
         start_project(state)
         advance(state, 3)
         with tempfile.TemporaryDirectory() as directory:
@@ -1705,7 +1671,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_accounting_preserves_expense_categories(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
 
         advance(state, 4)
@@ -1916,7 +1881,6 @@ class SimulationTests(unittest.TestCase):
         for character in "My First Commercial Game":
             handle_key(state, ord(character))
         handle_key(state, 10)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         advance(state, 40)
 
@@ -1932,7 +1896,6 @@ class SimulationTests(unittest.TestCase):
         handle_new_game_key(state, 10)
         self.assertEqual(state.draft_title, "My First Commercial Game II")
         self.assertEqual(state.new_game_step, 2)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertEqual(state.studio.current_project.sequel_of, original.game_id)
         self.assertEqual(state.studio.current_project.generation, 2)
@@ -1968,7 +1931,6 @@ class SimulationTests(unittest.TestCase):
         state.selected_format = 0
         solo_report = market_report(state)
         truth = market_truth(state)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         self.assertEqual((project.genre, project.secondary_genre), ("Extraction Shooter", "Roguelite"))
@@ -1987,7 +1949,6 @@ class SimulationTests(unittest.TestCase):
             hire.founder = False
             state.studio.team.append(hire)
         unlock(state, "small_production")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.modal = "analysis"
         self.assertEqual(len(state.studio.current_project.scheduled_decisions), 1)
@@ -2094,7 +2055,6 @@ class SimulationTests(unittest.TestCase):
         state.studio.cash = 5_000_000
         state.studio.completed_research = [node["key"] for node in RESEARCH_NODES]
         state.selected_release_strategy = 1
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -2133,7 +2093,6 @@ class SimulationTests(unittest.TestCase):
                 employee.founder = False
                 employee.annual_salary = 50_000
                 state.studio.team.append(employee)
-            state.studio.itch_releases = 99
             self.assertTrue(start_project(state))
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
             advance(state, 1)
@@ -2176,13 +2135,11 @@ class SimulationTests(unittest.TestCase):
             state.selected_release_strategy = strategy_index
             if strategy_index == 3:
                 state.selected_format = 1
-            state.studio.itch_releases = 99
             self.assertTrue(start_project(state))
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
             advance(state, 1)
             game = state.studio.catalog[-1]
             prepare_sequel(state, game)
-            state.studio.itch_releases = 99
             self.assertTrue(start_project(state))
             state.studio.current_project.work_done = state.studio.current_project.total_work - 1
             advance(state, 1)
@@ -2217,7 +2174,6 @@ class SimulationTests(unittest.TestCase):
     def test_overhyped_mid_game_faces_backlash(self) -> None:
         state = GameState()
         state.studio.cash = 5_000_000
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.hype = 190
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
@@ -2241,7 +2197,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         state.studio.cash = 5_000_000
         unlock(state, "promotion_basics", "targeted_marketing", "creator_relations")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.hype = 180
         self.assertTrue(buy_promotion(state, 0, 0))
@@ -2300,7 +2255,6 @@ class SimulationTests(unittest.TestCase):
         state.studio.cash = 5_000_000
         state.studio.followers = 500_000
         state.studio.reputation = 80
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.hype = 120
         state.studio.current_project.addressable_audience = 5_000_000
@@ -2330,7 +2284,6 @@ class SimulationTests(unittest.TestCase):
         for seed in range(40):
             state = GameState()
             state.studio.seed = seed
-            state.studio.itch_releases = 99
             self.assertTrue(start_project(state))
             project = state.studio.current_project
             project.pending_decision = 1
@@ -2358,7 +2311,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         state.studio.cash = 5_000_000
         unlock(state, "paid_dlc")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -2376,8 +2328,6 @@ class SimulationTests(unittest.TestCase):
         self.assertGreater(game.net_revenue, revenue_before)
 
     def release_first_game(self, state: GameState):
-        state.studio.itch_releases = 99  # tests bypass the itch.io storefront gate
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -2403,7 +2353,6 @@ class SimulationTests(unittest.TestCase):
         awareness_after_first = franchise.awareness
         from simulation import prepare_sequel
         prepare_sequel(state, game)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         state.studio.current_project.work_done = state.studio.current_project.total_work - 1
         advance(state, 1)
@@ -2425,7 +2374,6 @@ class SimulationTests(unittest.TestCase):
         handle_new_game_key(state, curses.KEY_DOWN)
         self.assertEqual(state.sequel_game_id, game.game_id)
         self.assertEqual(state.spinoff_franchise_id, franchise.franchise_id)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         self.assertEqual(project.franchise_id, franchise.franchise_id)
@@ -2504,7 +2452,6 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(prepare_spinoff(state, game))
         self.assertEqual(state.spinoff_franchise_id, franchise.franchise_id)
         self.assertIsNone(state.sequel_game_id)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         self.assertEqual(project.franchise_id, franchise.franchise_id)
@@ -2625,6 +2572,7 @@ class SimulationTests(unittest.TestCase):
 
     def test_user_rating_falls_with_bugs_while_press_stays_settled(self) -> None:
         state = GameState()
+        state.studio.followers = 20_000  # established enough for press coverage
         game = self.release_first_game(state)
         self.assertGreater(game.user_rating, 0)
         self.assertGreater(game.press_rating, 0)
@@ -2698,7 +2646,6 @@ class SimulationTests(unittest.TestCase):
                 employee.annual_salary = 50_000
                 state.studio.team.append(employee)
 
-            state.studio.itch_releases = 99
             self.assertTrue(start_project(state))
             weeks = 0
             while state.studio.current_project and weeks <= bands[scope["name"]][1]:
@@ -2718,7 +2665,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_activity_allocations_conserve_capacity_and_priorities(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertTrue(accept_contract(state))
         self.assertTrue(queue_research(state, "small_production"))
@@ -2739,7 +2685,6 @@ class SimulationTests(unittest.TestCase):
         state = GameState()
         employee = state.studio.team[0]
         employee.fatigue = 80
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertTrue(start_employee_vacation(state, employee))
         self.assertEqual(projected_weekly_output(state.studio, state.studio.current_project.focus), 0.1)
@@ -2762,7 +2707,6 @@ class SimulationTests(unittest.TestCase):
 
     def test_promotions_and_paid_dlc_require_research(self) -> None:
         state = GameState()
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         self.assertFalse(buy_promotion(state, 0, 0))
         state.studio.current_project.work_done = state.studio.current_project.total_work

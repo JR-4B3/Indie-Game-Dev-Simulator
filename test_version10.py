@@ -8,24 +8,24 @@ from sim_core.market import COHORTS, MacroSnapshot, ProductOffer, allocate_weekl
 from simulation import (
     CHANNELS,
     GAME_FORMATS,
-    ITCH_RELEASES_BEFORE_STEAM,
     MONETIZATION_MODELS,
     PRICE_POINTS,
     RESEARCH_NODES,
     GameState,
     accept_contract_offer,
     advance_game,
+    blended_platform_cut,
     channel_lock_reason,
     cycle_game_price,
     cycle_game_support,
     launch_early_access,
     load_game,
-    plan_requirements,
     process_sales,
     refresh_contract_offers,
     release_ready_project,
     save_game,
     selected_monetization_model,
+    selected_platform_indexes,
     start_project,
     state_from_data,
     state_to_data,
@@ -41,7 +41,6 @@ def advance(state: GameState, weeks: int = 1) -> None:
 
 
 def release_game(state: GameState):
-    state.studio.itch_releases = 99  # tests bypass the itch.io storefront gate
     assert start_project(state)
     state.studio.current_project.work_done = state.studio.current_project.total_work - 1
     advance(state)
@@ -119,7 +118,6 @@ class Version10Tests(unittest.TestCase):
         state.selected_announcement = 2
         state.selected_release_policy = 1
 
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         self.assertEqual(project.monetization, "premium_dlc")
@@ -130,7 +128,6 @@ class Version10Tests(unittest.TestCase):
 
     def test_manual_release_holds_gold_build_until_player_launches(self) -> None:
         state = GameState(selected_release_policy=1)
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         project.work_done = project.total_work
@@ -148,7 +145,6 @@ class Version10Tests(unittest.TestCase):
         state.studio.cash = 1_000_000
         state.studio.completed_research.append("content_updates")
         state.selected_monetization = next(index for index, model in enumerate(MONETIZATION_MODELS) if model["key"] == "paid_early_access")
-        state.studio.itch_releases = 99
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         project.work_done = project.total_work * 0.5
@@ -179,16 +175,54 @@ class Version10Tests(unittest.TestCase):
         state = GameState.new_campaign()
         self.assertEqual(CHANNELS[state.selected_channel]["name"], "itch.io")
         self.assertEqual(selected_monetization_model(state)["key"], "donationware")
-        self.assertIsNone(channel_lock_reason(state.studio, state.selected_channel))
-        self.assertIsNotNone(channel_lock_reason(state.studio, 0))
+        self.assertEqual(selected_platform_indexes(state), [state.selected_channel])
+        # Storefronts are never career-gated - only platform technology is.
+        self.assertIsNone(channel_lock_reason(state.studio, 0))
+        self.assertIsNotNone(channel_lock_reason(state.studio, 3))  # App Store
 
-    def test_steam_unlocks_after_ten_itchio_releases(self) -> None:
+    def test_storefronts_are_tech_gated_not_career_gated(self) -> None:
         state = GameState()
-        self.assertFalse(start_project(state))
-        self.assertTrue(any("itch.io releases before Steam" in message for message in state.logs))
-        state.studio.itch_releases = ITCH_RELEASES_BEFORE_STEAM
-        self.assertTrue(all("itch.io" not in requirement for requirement in plan_requirements(state)))
+        # A nobody can greenlight a Steam release from day one.
+        state.selected_platforms = [0]
         self.assertTrue(start_project(state))
+        self.assertEqual(state.studio.current_project.platforms, ["Steam"])
+        # But a phone release waits for the mobile SDK technology.
+        lock = channel_lock_reason(state.studio, 3)
+        self.assertIsNotNone(lock)
+        self.assertIn("research", lock)
+
+    def test_multi_platform_release_sums_fees_and_reach(self) -> None:
+        state = GameState()
+        state.studio.cash = 1_000_000
+        state.studio.completed_research.append("mobile_distribution")
+        state.selected_platforms = [0, 3]  # Steam + App Store
+        state.selected_price = next(index for index, point in enumerate(PRICE_POINTS) if point["price"] == 7.99)
+        self.assertTrue(start_project(state))
+        project = state.studio.current_project
+        self.assertEqual(project.platforms, ["Steam", "App Store"])
+        self.assertEqual(project.platform_cut, blended_platform_cut([0, 3]))
+        self.assertGreater(project.production_cost, 100)  # both store fees included
+        project.work_done = project.total_work - 1
+        project.defects = project.known_defects = 0
+        advance(state)
+        game = state.studio.catalog[-1]
+        sale = state.studio.active_sales[-1]
+        self.assertEqual(sale.platforms, ["Steam", "App Store"])
+        self.assertEqual(game.platforms, ["Steam", "App Store"])
+
+    def test_tiny_games_get_no_press_reviews_until_they_have_buzz(self) -> None:
+        state = GameState.new_campaign()
+        state.studio.cash = 1_000_000
+        game = release_game(state)
+        self.assertEqual(game.press_rating, 0)
+        self.assertFalse(game.press_reviewed)
+
+        hyped = GameState()
+        hyped.studio.cash = 1_000_000
+        hyped.studio.followers = 30_000
+        hyped_game = release_game(hyped)
+        self.assertGreater(hyped_game.press_rating, 0)
+        self.assertTrue(hyped_game.press_reviewed)
 
     def test_first_contracts_are_unpaid_portfolio_work(self) -> None:
         state = GameState()
@@ -217,7 +251,6 @@ class Version10Tests(unittest.TestCase):
         state.studio.cash = 3_000_000
         state.studio.followers = 300_000
         unlock_everything(state)
-        state.studio.itch_releases = ITCH_RELEASES_BEFORE_STEAM
         state.selected_format = next(
             index for index, item in enumerate(GAME_FORMATS) if item["name"] == "Online co-op"
         )

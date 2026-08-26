@@ -319,7 +319,7 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     topic_mix = game.topic if not game.secondary_topic or game.secondary_topic == game.topic else f"{game.topic} + {game.secondary_topic}"
     add_text(panel, 2, 2, f"{genre_mix} | {topic_mix}", inner)
     add_text(panel, 3, 2, f"{game.target_audience} | {game.game_format}", inner)
-    add_text(panel, 4, 2, f"{game.channel} | {game.scope} | {game.monetization} | {money(game.price)}", inner)
+    add_text(panel, 4, 2, f"{' + '.join(game.platforms) if game.platforms else game.channel} | {game.scope} | {game.monetization} | {money(game.price)}", inner)
     support_hint = " | [X] change" if has_research(state.studio, "portfolio_management") else ""
     add_text(panel, 5, 2, f"Support {game.support_level.upper()}{support_hint} | Trust {game.trust:.0f}", inner, curses.color_pair(4) if game.support_level == "Active" else curses.color_pair(5) if game.support_level == "Sunset" else curses.color_pair(3))
     meter_width = max(10, min(18, inner - 26))
@@ -331,7 +331,7 @@ def draw_game_overview(panel: curses.window, state: GameState, game, sale, panel
     add_text(panel, 10, 2, "CRITICS & PLAYERS", inner, curses.A_BOLD)
     user_label, user_color = satisfaction(game.user_rating)
     add_text(panel, 11, 2, f"USER  [{meter(game.user_rating, 100, meter_width)}] {game.user_rating:>4.0f}% {rating_trend(game.user_trend)} {user_label}", inner, curses.color_pair(user_color))
-    add_text(panel, 12, 2, f"PRESS [{meter(game.press_rating, 100, meter_width)}] {game.press_rating:>4.0f}/100", inner)
+    add_text(panel, 12, 2, f"PRESS [{meter(game.press_rating, 100, meter_width)}] {f'{game.press_rating:>4.0f}/100' if game.press_rating else 'no coverage'}", inner)
     add_text(panel, 13, 2, f"SCORE [{meter(game.score, 100, meter_width)}] {rating_text(game):>4}/100", inner, rating_attr)
     weekly_sales = sale.week_to_date if sale else 0
     retention = game.monthly_players / max(1, game.peak_monthly_players)

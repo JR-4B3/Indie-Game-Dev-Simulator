@@ -8,6 +8,9 @@ from game_data import GENRES, GOOD_MATCHES, TOPICS
 from simulation import (
     AUDIENCES,
     CHANNELS,
+    channel_lock_reason,
+    selected_platform_indexes,
+    toggle_platform_selection,
     CREATIVE_DIRECTIONS,
     GAME_FORMATS,
     MARKETING,
@@ -209,7 +212,7 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     genre_selected = available_genres.index(cursor_genre) if cursor_genre in available_genres else 0
     draw_selectable_list(genre, genre_rows, genre_selected, state.new_game_step == 0, y=2, width=genre_width - 4, visible=genre_visible)
     if genre_locked:
-        add_text(genre, top_height - 2, 2, f"+{genre_locked} unlock via Studio Dev", genre_width - 4, curses.color_pair(2))
+        add_text(genre, top_height - 2, 2, f"+{genre_locked} via Studio Dev", genre_width - 4, curses.color_pair(2))
 
     ordered_topics = topic_order(state)
     topic_blend_mode = state.mix_blend and state.new_game_step == 1
@@ -226,7 +229,7 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     topic_selected = next((index for index, (topic_name, _) in enumerate(ordered_topics) if topic_name == current_topic), 0)
     draw_selectable_list(topic, rows, topic_selected, state.new_game_step == 1, y=2, width=theme_width - 4, visible=topic_visible)
     if topic_locked:
-        add_text(topic, top_height - 2, 2, f"+{topic_locked} unlock via Studio Dev", theme_width - 4, curses.color_pair(2))
+        add_text(topic, top_height - 2, 2, f"+{topic_locked} via Studio Dev", theme_width - 4, curses.color_pair(2))
 
     scope = SCOPES[state.selected_scope]
     marketing = MARKETING[state.selected_marketing]
@@ -366,24 +369,34 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     storefront_width = genre_width + theme_width + 1
     storefront = screen.derwin(storefront_height, storefront_width, 2 + top_height, 0)
     draw_box(storefront, "4 Market & Store")
-    # A compact rising sparkline leaves the store, cut, and cost columns readable.
-    # Each step is separately colored so the yellow portion is the known reach.
-    # Let the price columns use the panel's full width instead of leaving an
-    # unused gutter on the right. The five strokes remain a compact meter.
-    store_width = max(8, storefront_width - 34)
-    # The compact five-cell meter is right-aligned against the cut divider.
-    popularity_x = 2 + 2 + store_width + 5
-    add_text(storefront, 1, 2, f"  {'STORE':<{store_width + 10}} | {'CUT':>4} | {'COST':>8}", storefront_width - 4, curses.A_BOLD)
+    # Columns: [x] marker, store name, cut, cost, then the five-cell reach
+    # meter (or a red "tech" tag when the platform technology is missing).
+    # The lock reason for the cursor store is explained below the list so the
+    # rows themselves never collide with the meter.
+    store_width = max(10, min(18, storefront_width - 30))
+    popularity_x = 2 + 6 + store_width + 2
+    add_text(storefront, 1, 2, f"  {'STORE':<{store_width + 1}} {'CUT':>5} {'COST':>9}", storefront_width - 4, curses.A_BOLD)
     visible = storefront_height - 3
     channel_rows = []
     for index, channel in enumerate(CHANNELS):
-        lock = channel_lock_reason(state.studio, index)
-        locked = bool(lock)
-        lock_note = lock[:9] if lock else ""
-        channel_rows.append((f"{channel['name']:<{store_width}} {lock_note:<9} | {channel['cut']:>4.0%} | {money(channel['fee']):>8}", curses.color_pair(5) if locked else 0))
+        locked = bool(channel_lock_reason(state.studio, index))
+        marker = "[x]" if index in selected_platform_indexes(state) else "[ ]"
+        attr = curses.color_pair(5) if locked else curses.color_pair(2) if index in state.selected_platforms and index != state.selected_channel else 0
+        channel_rows.append((f"{marker} {channel['name']:<{store_width}} {channel['cut']:>4.0%} {money(channel['fee']):>9}", attr))
     draw_selectable_list(storefront, channel_rows, state.selected_channel, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)
     if storefront_width >= 52:
         for row, channel in enumerate(CHANNELS[:visible], 2):
+            if channel_lock_reason(state.studio, row - 2):
+                add_text(storefront, row, popularity_x, "tech", 5, curses.color_pair(5) | curses.A_BOLD)
+                continue
             for block in range(5):
                 attr = curses.color_pair(3) | curses.A_BOLD if block < channel["visibility"] else curses.color_pair(6)
                 add_text(storefront, row, popularity_x + block, glyph("pop_steps")[block], 1, attr)
+    hint_row = min(visible + 2, storefront_height - 1)
+    lock = channel_lock_reason(state.studio, state.selected_channel)
+    if lock:
+        add_text(storefront, hint_row, 2, f"Needs {lock.replace('research: ', '')} research", storefront_width - 4, curses.color_pair(5))
+    else:
+        platforms = [CHANNELS[index]["name"] for index in selected_platform_indexes(state)]
+        fees = sum(int(CHANNELS[index]["fee"]) for index in selected_platform_indexes(state))
+        add_text(storefront, hint_row, 2, f"[T] multi-platform: {' + '.join(platforms)} | fees {money(fees)}", storefront_width - 4, curses.color_pair(2))
