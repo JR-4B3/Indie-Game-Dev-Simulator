@@ -52,7 +52,6 @@ from simulation import (
     has_research,
     research_requirement_for_channel,
     channel_lock_reason,
-    ensure_platform_selection,
     research_requirement_for_format,
     research_requirement_for_marketing,
     research_requirement_for_scope,
@@ -539,8 +538,6 @@ def handle_new_game_key(state: GameState, key: int) -> None:
             close_blend(state, confirm=True)
         elif state.new_game_step < 3:
             state.new_game_step += 1
-            if state.new_game_step == 3:
-                ensure_platform_selection(state)
         else:
             start_project(state)
     elif key in (8, 127, curses.KEY_BACKSPACE):
@@ -1076,7 +1073,6 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                 candidate = min(start + row, len(CHANNELS) - 1)
                 lock = channel_lock_reason(state.studio, candidate)
                 if not lock:
-                    ensure_platform_selection(state)
                     state.new_game_step = 3
                     state.selected_channel = candidate
                     if double_click:

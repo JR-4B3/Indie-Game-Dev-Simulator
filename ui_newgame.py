@@ -380,8 +380,9 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     channel_rows = []
     for index, channel in enumerate(CHANNELS):
         locked = bool(channel_lock_reason(state.studio, index))
-        marker = "[x]" if index in selected_platform_indexes(state) else "[ ]"
-        attr = curses.color_pair(5) if locked else curses.color_pair(2) if index in state.selected_platforms and index != state.selected_channel else 0
+        tagged = index in state.selected_platforms
+        marker = "[x]" if tagged or index == state.selected_channel else "[ ]"
+        attr = curses.color_pair(5) if locked else curses.color_pair(2) if tagged else 0
         channel_rows.append((f"{marker} {channel['name']:<{store_width}} {channel['cut']:>4.0%} {money(channel['fee']):>9}", attr))
     draw_selectable_list(storefront, channel_rows, state.selected_channel, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)
     if storefront_width >= 52:
@@ -399,4 +400,4 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     else:
         platforms = [CHANNELS[index]["name"] for index in selected_platform_indexes(state)]
         fees = sum(int(CHANNELS[index]["fee"]) for index in selected_platform_indexes(state))
-        add_text(storefront, hint_row, 2, f"[T] multi-platform: {' + '.join(platforms)} | fees {money(fees)}", storefront_width - 4, curses.color_pair(2))
+        add_text(storefront, hint_row, 2, f"Ships on: {' + '.join(platforms)} | fees {money(fees)} | [T] tags extra stores", storefront_width - 4, curses.color_pair(2))

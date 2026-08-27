@@ -42,13 +42,13 @@ TIME_SPEEDS = (0.0, 12.0, 24.0, 48.0)
 TIME_LABELS = ("||", "> 1x", ">> 2x", ">>> 4x")
 
 CHANNELS = (
-    {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00, "visibility": 5},
     {"name": "itch.io", "category": "PC", "fee": 0, "cut": 0.10, "reach": 0.18, "visibility": 1},
     {"name": "Epic Games Store", "category": "PC", "fee": 100, "cut": 0.12, "reach": 0.32, "visibility": 3},
     {"name": "App Store", "category": "Mobile", "fee": 99, "cut": 0.30, "reach": 0.70, "visibility": 4},
-    {"name": "Google Play", "category": "Mobile", "fee": 25, "cut": 0.30, "reach": 0.82, "visibility": 5},
-    {"name": "PlayStation 5", "category": "Console", "fee": 12_500, "cut": 0.30, "reach": 0.58, "visibility": 5},
     {"name": "Xbox Series", "category": "Console", "fee": 8_000, "cut": 0.30, "reach": 0.42, "visibility": 4},
+    {"name": "Google Play", "category": "Mobile", "fee": 25, "cut": 0.30, "reach": 0.82, "visibility": 5},
+    {"name": "Steam", "category": "PC", "fee": 100, "cut": 0.30, "reach": 1.00, "visibility": 5},
+    {"name": "PlayStation 5", "category": "Console", "fee": 12_500, "cut": 0.30, "reach": 0.58, "visibility": 5},
     {"name": "Switch 2", "category": "Handheld", "fee": 10_000, "cut": 0.30, "reach": 0.52, "visibility": 5},
 )
 
@@ -248,7 +248,7 @@ RESEARCH_NODES = (
     {"key": "promotion_basics", "branch": "Business", "tier": 1, "name": "Community Marketing", "cost": 6_500, "work": 350, "prereq": ("contract_basics",), "effect": "Unlock community launch plans and social promotion"},
     {"key": "market_research", "branch": "Business", "tier": 1, "name": "Market Research", "cost": 8_000, "work": 420, "prereq": ("contract_basics",), "effect": "+10 forecast confidence"},
     {"key": "targeted_marketing", "branch": "Business", "tier": 2, "name": "Targeted Marketing", "cost": 32_000, "work": 900, "prereq": ("promotion_basics",), "effect": "Unlock targeted campaigns and press outreach"},
-    {"key": "mobile_distribution", "branch": "Business", "tier": 2, "name": "Mobile Distribution", "cost": 45_000, "work": 1_000, "prereq": ("market_research",), "effect": "Unlock mobile storefronts"},
+    {"key": "mobile_distribution", "branch": "Business", "tier": 2, "name": "Mobile Distribution", "cost": 28_000, "work": 650, "prereq": ("market_research",), "effect": "Unlock mobile storefronts"},
     {"key": "creator_relations", "branch": "Business", "tier": 3, "name": "Creator Relations", "cost": 110_000, "work": 2_000, "prereq": ("targeted_marketing",), "effect": "Unlock creator and streamer campaigns"},
     {"key": "console_certification", "branch": "Business", "tier": 3, "name": "Console Certification", "cost": 220_000, "work": 2_500, "prereq": ("mobile_distribution", "qa"), "effect": "Unlock console storefronts"},
     {"key": "analytics", "branch": "Business", "tier": 3, "name": "Store Analytics", "cost": 75_000, "work": 1_600, "monthly": 350, "prereq": ("market_research",), "effect": "+2% weekly sales retention"},
@@ -994,7 +994,9 @@ class GameState:
     studio: Studio = field(default_factory=Studio)
     selected_genre: int = 0
     selected_topic: int = 0
-    selected_channel: int = 0
+    # Default to the classic Steam storefront; new_campaign() moves fresh
+    # studios to itch.io for the early-career loop.
+    selected_channel: int = next(index for index, channel in enumerate(CHANNELS) if channel["name"] == "Steam")
     selected_platforms: list[int] = field(default_factory=list)
     selected_scope: int = 0
     selected_marketing: int = 0
@@ -1101,9 +1103,8 @@ class GameState:
         seed = secrets.randbits(63) or 1
         state = cls(studio=Studio(seed=seed, name=studio_name), save_path=save_path)
         # New developers start where everyone starts: tiny free games on itch.io.
-        itch_index = next(index for index, channel in enumerate(CHANNELS) if channel["name"] == "itch.io")
-        state.selected_channel = itch_index
-        state.selected_platforms = [itch_index]
+        state.selected_channel = next(index for index, channel in enumerate(CHANNELS) if channel["name"] == "itch.io")
+        state.selected_platforms = []
         state.selected_monetization = next(index for index, model in enumerate(MONETIZATION_MODELS) if model["key"] == "donationware")
         state.selected_scope = next(index for index, scope in enumerate(SCOPES) if scope["name"] == "Bite-size")
         return state
@@ -1163,14 +1164,17 @@ def monetization_by_key(key: str) -> dict:
 
 
 def selected_platform_indexes(state: GameState) -> list[int]:
-    """Every storefront this release targets, in selection order.
+    """Every storefront this release targets.
 
-    The storefront cursor (``selected_channel``) only previews stores; the
-    actual platform set is chosen by toggling stores with [T].
+    The storefront under the cursor is always the primary platform; stores
+    tagged with [T] (``selected_platforms``) ride along and add their
+    audiences.
     """
-    if state.selected_platforms:
-        return list(state.selected_platforms)
-    return [state.selected_channel]
+    indexes = [state.selected_channel]
+    for index in state.selected_platforms:
+        if index not in indexes:
+            indexes.append(index)
+    return indexes
 
 
 def blended_platform_cut(platform_indexes: list[int]) -> float:
@@ -1180,17 +1184,8 @@ def blended_platform_cut(platform_indexes: list[int]) -> float:
     return sum(float(platform["cut"]) * float(platform["reach"]) for platform in platforms) / total_reach
 
 
-def ensure_platform_selection(state: GameState) -> None:
-    """Materialize the implicit platform choice so the cursor becomes pure
-    navigation afterwards: moving the storefront cursor no longer silently
-    changes which stores a release targets."""
-    if not state.selected_platforms:
-        state.selected_platforms = [state.selected_channel]
-
-
 def toggle_platform_selection(state: GameState, index: int) -> bool:
-    """Add or remove the storefront under the cursor from the release plan."""
-    ensure_platform_selection(state)
+    """Tag or untag the storefront under the cursor as an extra platform."""
     lock = channel_lock_reason(state.studio, index)
     if lock and index in state.selected_platforms:
         state.selected_platforms.remove(index)
@@ -1199,9 +1194,6 @@ def toggle_platform_selection(state: GameState, index: int) -> bool:
         state.log(f"{CHANNELS[index]['name']} needs {lock.replace('research: ', '')} research before you can ship there.")
         return False
     if index in state.selected_platforms:
-        if len(state.selected_platforms) == 1:
-            state.log("A release needs at least one storefront.")
-            return False
         state.selected_platforms.remove(index)
     else:
         state.selected_platforms.append(index)
@@ -2061,14 +2053,14 @@ def channel_lock_reason(studio: Studio, index: int) -> str | None:
 
 
 def research_requirement_for_channel(index: int) -> str | None:
+    # PC storefronts are open to everyone; phones need the mobile SDK
+    # technology, consoles/handhelds the expensive certification track.
     category = CHANNELS[index]["category"]
-    if index in (0, 1):
-        return None
     if category == "Mobile":
         return "mobile_distribution"
     if category in ("Console", "Handheld"):
         return "console_certification"
-    return "market_research"
+    return None
 
 
 def research_requirement_for_marketing(index: int) -> str | None:

@@ -30,6 +30,7 @@ from simulation import (
     state_from_data,
     state_to_data,
     take_community_action,
+    toggle_platform_selection,
 )
 
 
@@ -51,6 +52,10 @@ def unlock_everything(state: GameState) -> None:
     for node in RESEARCH_NODES:
         if node["key"] not in state.studio.completed_research:
             state.studio.completed_research.append(node["key"])
+
+
+def store(name: str) -> int:
+    return next(index for index, channel in enumerate(CHANNELS) if channel["name"] == name)
 
 
 class Version10Tests(unittest.TestCase):
@@ -176,18 +181,19 @@ class Version10Tests(unittest.TestCase):
         self.assertEqual(CHANNELS[state.selected_channel]["name"], "itch.io")
         self.assertEqual(selected_monetization_model(state)["key"], "donationware")
         self.assertEqual(selected_platform_indexes(state), [state.selected_channel])
-        # Storefronts are never career-gated - only platform technology is.
-        self.assertIsNone(channel_lock_reason(state.studio, 0))
-        self.assertIsNotNone(channel_lock_reason(state.studio, 3))  # App Store
+        # PC storefronts are never gated; phones and consoles need technology.
+        self.assertIsNone(channel_lock_reason(state.studio, store("itch.io")))
+        self.assertIsNone(channel_lock_reason(state.studio, store("Steam")))
+        self.assertIsNone(channel_lock_reason(state.studio, store("Epic Games Store")))
+        self.assertIsNotNone(channel_lock_reason(state.studio, store("App Store")))
 
-    def test_storefronts_are_tech_gated_not_career_gated(self) -> None:
+    def test_storefront_cursor_is_the_primary_platform(self) -> None:
         state = GameState()
-        # A nobody can greenlight a Steam release from day one.
-        state.selected_platforms = [0]
+        state.selected_channel = store("Steam")
         self.assertTrue(start_project(state))
         self.assertEqual(state.studio.current_project.platforms, ["Steam"])
         # But a phone release waits for the mobile SDK technology.
-        lock = channel_lock_reason(state.studio, 3)
+        lock = channel_lock_reason(state.studio, store("App Store"))
         self.assertIsNotNone(lock)
         self.assertIn("research", lock)
 
@@ -195,12 +201,13 @@ class Version10Tests(unittest.TestCase):
         state = GameState()
         state.studio.cash = 1_000_000
         state.studio.completed_research.append("mobile_distribution")
-        state.selected_platforms = [0, 3]  # Steam + App Store
+        state.selected_channel = store("Steam")
+        state.selected_platforms = [store("App Store")]
         state.selected_price = next(index for index, point in enumerate(PRICE_POINTS) if point["price"] == 7.99)
         self.assertTrue(start_project(state))
         project = state.studio.current_project
         self.assertEqual(project.platforms, ["Steam", "App Store"])
-        self.assertEqual(project.platform_cut, blended_platform_cut([0, 3]))
+        self.assertEqual(project.platform_cut, blended_platform_cut([store("Steam"), store("App Store")]))
         self.assertGreater(project.production_cost, 100)  # both store fees included
         project.work_done = project.total_work - 1
         project.defects = project.known_defects = 0
@@ -209,6 +216,19 @@ class Version10Tests(unittest.TestCase):
         sale = state.studio.active_sales[-1]
         self.assertEqual(sale.platforms, ["Steam", "App Store"])
         self.assertEqual(game.platforms, ["Steam", "App Store"])
+
+    def test_toggling_platforms_tags_extras_and_respects_tech_locks(self) -> None:
+        state = GameState()
+        state.selected_channel = store("itch.io")
+        # Cursor store always ships; [T] tags extras on top.
+        self.assertTrue(toggle_platform_selection(state, store("Epic Games Store")))
+        self.assertEqual(selected_platform_indexes(state), [store("itch.io"), store("Epic Games Store")])
+        # Untag again.
+        self.assertTrue(toggle_platform_selection(state, store("Epic Games Store")))
+        self.assertEqual(selected_platform_indexes(state), [store("itch.io")])
+        # Tech-locked stores refuse to be tagged.
+        self.assertFalse(toggle_platform_selection(state, store("Google Play")))
+        self.assertEqual(selected_platform_indexes(state), [store("itch.io")])
 
     def test_tiny_games_get_no_press_reviews_until_they_have_buzz(self) -> None:
         state = GameState.new_campaign()
