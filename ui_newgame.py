@@ -6,14 +6,19 @@ import curses
 
 from game_data import GENRES, GOOD_MATCHES, TOPICS
 from simulation import (
+    ANNOUNCEMENT_STRATEGIES,
     AUDIENCES,
     CHANNELS,
     channel_lock_reason,
     selected_platform_indexes,
+    storefront_display_order,
     toggle_platform_selection,
     CREATIVE_DIRECTIONS,
     GAME_FORMATS,
     MARKETING,
+    MONETIZATION_MODELS,
+    PRICE_POINTS,
+    RELEASE_POLICIES,
     RELEASE_STRATEGIES,
     SCOPES,
     GameState,
@@ -26,10 +31,10 @@ from simulation import (
     publisher_by_name,
     projected_weekly_output,
     research_requirement_for_channel,
-    channel_lock_reason,
     research_requirement_for_format,
     research_requirement_for_genre,
     research_requirement_for_marketing,
+    research_requirement_for_monetization,
     research_requirement_for_scope,
     research_requirement_for_strategy,
     research_requirement_for_topic,
@@ -128,6 +133,10 @@ PLAN_FIELDS = (
     ("Audience", "selected_audience", AUDIENCES),
     ("Lead bet", "selected_creative_primary", CREATIVE_DIRECTIONS),
     ("Support bet", "selected_creative_secondary", CREATIVE_DIRECTIONS),
+    ("Monetization", "selected_monetization", MONETIZATION_MODELS),
+    ("Price", "selected_price", PRICE_POINTS),
+    ("Announcement", "selected_announcement", ANNOUNCEMENT_STRATEGIES),
+    ("Release policy", "selected_release_policy", RELEASE_POLICIES),
     ("Launch life", "selected_release_strategy", RELEASE_STRATEGIES),
     ("Marketing", "selected_marketing", MARKETING),
 )
@@ -257,6 +266,10 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
         ("Audience", audience["name"], ""),
         ("Lead bet", primary_direction["name"], ""),
         ("Support bet", secondary_direction["name"], ""),
+        ("Monetization", monetization["name"], f"{money(int(monetization['setup_cost']))} setup | friction {float(monetization['monetization_friction']):.0%}"),
+        ("Price", f"Auto ({float(price_point['price']):.2f})" if state.selected_price < 0 else price_point["name"], "best fit for scope/audience" if state.selected_price < 0 else "per copy"),
+        ("Announcement", announcement["name"], f"hype decay {float(announcement['hype_decay']):.0%}/wk"),
+        ("Release policy", release_policy["name"], f"promise risk {float(release_policy['promise_risk']):.0%}"),
         ("Launch life", release_strategy["name"], release_strategy["tradeoff"]),
         ("Marketing", marketing["name"], f"{money(marketing['cost'])} | hype {5 + marketing['boost'] / 25:.0f}"),
     ]
@@ -269,17 +282,19 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
         elif index == 1:
             requirement = research_requirement_for_format(state.selected_format)
         elif index == 5:
+            requirement = research_requirement_for_monetization(state.selected_monetization)
+        elif index == 9:
             requirement = research_requirement_for_strategy(state.selected_release_strategy)
-        elif index == 6:
+        elif index == 10:
             requirement = research_requirement_for_marketing(state.selected_marketing)
         locked = bool(requirement and not has_research(state.studio, requirement))
         lock_text = " | LOCKED" if locked else ""
-        rows.append((f"{label:<11} {shown}" + (f" | {detail}" if detail else "") + lock_text, curses.color_pair(5) if locked else 0))
+        rows.append((f"{label:<15} {shown}" + (f" | {detail}" if detail else "") + lock_text, curses.color_pair(5) if locked else 0))
     draw_selectable_list(plan, rows, state.selected_focus, state.new_game_step == 2, y=4, width=inner, scroll=False)
-    if state.new_game_step == 2:
+    if state.new_game_step == 2 and plan_height >= 32:
         _, attribute, options = PLAN_FIELDS[state.selected_focus]
         current = getattr(state, attribute)
-        add_text(plan, 11, 2, "Options", inner, curses.A_BOLD)
+        add_text(plan, 16, 2, "Options", inner, curses.A_BOLD)
         chip_x = 11
         for index, option in enumerate(options):
             chip = option["name"]
@@ -291,17 +306,17 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
             elif state.selected_focus == 1:
                 requirement = research_requirement_for_format(index)
             elif state.selected_focus == 5:
+                requirement = research_requirement_for_monetization(index)
+            elif state.selected_focus == 9:
                 requirement = research_requirement_for_strategy(index)
-            elif state.selected_focus == 6:
+            elif state.selected_focus == 10:
                 requirement = research_requirement_for_marketing(index)
             locked = bool(requirement and not has_research(state.studio, requirement))
             attr = curses.color_pair(5) if locked else curses.color_pair(3) | curses.A_BOLD if index == current else curses.color_pair(2)
-            add_text(plan, 11, chip_x, chip, len(chip), attr)
+            add_text(plan, 16, chip_x, chip, len(chip), attr)
             chip_x += len(chip) + 2
-    else:
-        add_text(plan, 11, 2, f"Trade-off   {primary_direction['tradeoff']} + {secondary_direction['tradeoff']}", inner, curses.color_pair(2))
-    commercial = f"[M] {monetization['name']} | [P] {price_point['name']} | [A] {announcement['name']} | [L] {release_policy['name']}"
-    add_text(plan, 12, 2, commercial, inner, curses.color_pair(3) | curses.A_BOLD)
+    elif plan_height >= 32:
+        add_text(plan, 16, 2, f"Trade-off   {primary_direction['tradeoff']} + {secondary_direction['tradeoff']}", inner, curses.color_pair(2))
 
     fit_attr = curses.color_pair(COLOR_GOOD) if report["score_low"] >= 52 else curses.color_pair(5) if report["score_high"] < 38 else 0
     cost = scope["setup"] + game_format["setup"] + release_strategy["setup"] + marketing["cost"] + channel_data["fee"] + int(monetization["setup_cost"])
@@ -329,42 +344,41 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     topic_mix = topic_name if topic_name == TOPICS[state.selected_secondary_topic] else f"{topic_name} + {TOPICS[state.selected_secondary_topic]}"
     sequel = next((game for game in state.studio.catalog if game.game_id == state.sequel_game_id), None)
 
-    if plan_height < 28:
-        add_text(plan, 13, 2, f"MARKET Fit {report['score_low']}-{report['score_high']} | confidence {report['confidence']}%", inner, fit_attr | curses.A_BOLD)
-        add_text(plan, 14, 2, f"Interest {report['audience_low']:,}-{report['audience_high']:,} | {report['outlook']}", inner, fit_attr)
-        add_text(plan, 15, 2, f"WORKLOAD {report['work_low']:,}-{report['work_high']:,} | {week_low}-{week_high}w | ~{output:.0f}/wk", inner, curses.A_BOLD)
-        add_text(plan, 16, 2, f"Runway {runway_weeks:.0f}w | need {week_high}w | cash {money(funded_cost)}", inner, curses.color_pair(5) if runway_danger else 0)
-        add_text(plan, 17, 2, readiness, inner, readiness_attr)
-        add_text(plan, 18, 2, f"BRIEF {scope['name']} {game_format['name']} {genre_mix} | {topic_mix}", inner, curses.A_BOLD)
+    if plan_height < 32:
+        add_text(plan, 15, 2, f"MARKET Fit {report['score_low']}-{report['score_high']} | confidence {report['confidence']}% | {report['outlook']}", inner, fit_attr | curses.A_BOLD)
+        add_text(plan, 16, 2, f"WORKLOAD {report['work_low']:,}-{report['work_high']:,} | {week_low}-{week_high}w | ~{output:.0f}/wk", inner, curses.A_BOLD)
+        add_text(plan, 17, 2, f"Runway {runway_weeks:.0f}w | need {week_high}w | cash {money(funded_cost)}", inner, curses.color_pair(5) if runway_danger else 0)
+        add_text(plan, 18, 2, readiness, inner, readiness_attr)
+        add_text(plan, 19, 2, f"BRIEF {scope['name']} {game_format['name']} {genre_mix} | {topic_mix}", inner, curses.A_BOLD)
     else:
-        add_text(plan, 13, 2, "MARKET", inner, curses.A_BOLD)
-        add_text(plan, 14, 2, f"Fit        {range_meter(report['score_low'], report['score_high'], 100, meter_width)} {report['score_low']}-{report['score_high']}", inner, fit_attr)
-        add_text(plan, 15, 2, f"Interest   {report['audience_low']:,}-{report['audience_high']:,} players", inner)
-        add_text(plan, 16, 2, f"Confidence {meter(report['confidence'], 100, meter_width)} {report['confidence']}%", inner)
-        add_text(plan, 17, 2, f"Rivals     {report['competitors_low']}-{report['competitors_high']} | release pressure {report['release_pressure']:.1f} | research {report['research']}", inner)
-        add_text(plan, 18, 2, f"Store demand {report['open_market']:.0%} open: a rival hit claims this genre/storefront's attention.", inner, curses.color_pair(5) if report['open_market'] < 0.55 else 0)
-        add_text(plan, 19, 2, f"Outlook    {report['outlook']}", inner, fit_attr)
-        add_text(plan, 20, 2, "WORKLOAD", inner, curses.A_BOLD)
-        add_text(plan, 21, 2, f"Forecast   {report['work_low']:,}-{report['work_high']:,} work ≈ {week_low}-{week_high}w", inner)
-        add_text(plan, 22, 2, f"Runway     {meter(runway_weeks, week_scale, meter_width)} {runway_weeks:.0f}w", inner, curses.color_pair(5) if runway_danger else 0)
-        add_text(plan, 23, 2, f"Needed     {meter(week_high, week_scale, meter_width)} {week_high}w", inner)
-        add_text(plan, 24, 2, f"Capacity   ~{output:.0f}/wk | drains {drain_text}", inner, curses.color_pair(5) if drains else 0)
+        add_text(plan, 18, 2, "MARKET", inner, curses.A_BOLD)
+        add_text(plan, 19, 2, f"Fit        {range_meter(report['score_low'], report['score_high'], 100, meter_width)} {report['score_low']}-{report['score_high']}", inner, fit_attr)
+        add_text(plan, 20, 2, f"Interest   {report['audience_low']:,}-{report['audience_high']:,} players", inner)
+        add_text(plan, 21, 2, f"Confidence {meter(report['confidence'], 100, meter_width)} {report['confidence']}%", inner)
+        add_text(plan, 22, 2, f"Rivals     {report['competitors_low']}-{report['competitors_high']} | release pressure {report['release_pressure']:.1f} | research {report['research']}", inner)
+        add_text(plan, 23, 2, f"Store demand {report['open_market']:.0%} open: a rival hit claims this genre/storefront's attention.", inner, curses.color_pair(5) if report['open_market'] < 0.55 else 0)
+        add_text(plan, 24, 2, f"Outlook    {report['outlook']}", inner, fit_attr)
+        add_text(plan, 25, 2, "WORKLOAD", inner, curses.A_BOLD)
+        add_text(plan, 26, 2, f"Forecast   {report['work_low']:,}-{report['work_high']:,} work ≈ {week_low}-{week_high}w", inner)
+        add_text(plan, 27, 2, f"Runway     {meter(runway_weeks, week_scale, meter_width)} {runway_weeks:.0f}w", inner, curses.color_pair(5) if runway_danger else 0)
+        add_text(plan, 28, 2, f"Needed     {meter(week_high, week_scale, meter_width)} {week_high}w", inner)
+        add_text(plan, 29, 2, f"Capacity   ~{output:.0f}/wk | drains {drain_text}", inner, curses.color_pair(5) if drains else 0)
         funding = f" | publisher {money(publisher_advance)}" if publisher else ""
-        add_text(plan, 25, 2, f"Cash due   {money(cost)} | {money(funded_cost)} studio cash{funding}", inner)
-        add_text(plan, 27, 2, readiness, inner, readiness_attr)
-        if plan_height < 35:
-            add_text(plan, 29, 2, "BRIEF", inner, curses.A_BOLD)
-            add_text(plan, 30, 2, f"{scope['name']} {game_format['name']} {genre_mix} | {topic_mix} | {audience['name']}", inner)
+        add_text(plan, 30, 2, f"Cash due   {money(cost)} | {money(funded_cost)} studio cash{funding}", inner)
+        add_text(plan, 32, 2, readiness, inner, readiness_attr)
+        if plan_height < 40:
+            add_text(plan, 34, 2, "BRIEF", inner, curses.A_BOLD)
+            add_text(plan, 35, 2, f"{scope['name']} {game_format['name']} {genre_mix} | {topic_mix} | {audience['name']}", inner)
         else:
-            add_text(plan, 29, 2, "BRIEF", inner, curses.A_BOLD)
-            add_text(plan, 30, 2, f"{scope['name']} {game_format['name']} {genre_mix} game about {topic_mix}", inner)
-            add_text(plan, 31, 2, f"for {audience['name']}; lead {primary_direction['name']}, support {secondary_direction['name']};", inner)
-            add_text(plan, 32, 2, f"{release_strategy['name']}, {monetization['name']} at {price_point['name']}, on {channel_data['name']}.", inner)
+            add_text(plan, 34, 2, "BRIEF", inner, curses.A_BOLD)
+            add_text(plan, 35, 2, f"{scope['name']} {game_format['name']} {genre_mix} game about {topic_mix}", inner)
+            add_text(plan, 36, 2, f"for {audience['name']}; lead {primary_direction['name']}, support {secondary_direction['name']};", inner)
+            add_text(plan, 37, 2, f"{release_strategy['name']}, {monetization['name']} at {price_point['name']}, on {channel_data['name']}.", inner)
             if sequel:
                 score = f"{sequel.score}/100"
-                add_text(plan, 33, 2, f"Sequel to {sequel.title} ({score})", inner, curses.color_pair(2))
+                add_text(plan, 38, 2, f"Sequel to {sequel.title} ({score})", inner, curses.color_pair(2))
             elif publisher:
-                add_text(plan, 33, 2, f"{publisher['name']} deal: {money(publisher_advance)} advance; {publisher['recoup_share']:.0%} royalties until recouped.", inner, curses.color_pair(3))
+                add_text(plan, 38, 2, f"{publisher['name']} deal: {money(publisher_advance)} advance; {publisher['recoup_share']:.0%} royalties until recouped.", inner, curses.color_pair(3))
 
     storefront_width = genre_width + theme_width + 1
     storefront = screen.derwin(storefront_height, storefront_width, 2 + top_height, 0)
@@ -377,17 +391,21 @@ def draw_new_game(screen: curses.window, state: GameState, width: int, height: i
     popularity_x = 2 + 6 + store_width + 2
     add_text(storefront, 1, 2, f"  {'STORE':<{store_width + 1}} {'CUT':>5} {'COST':>9}", storefront_width - 4, curses.A_BOLD)
     visible = storefront_height - 3
+    order = storefront_display_order(state)
+    cursor_position = order.index(state.selected_channel) if state.selected_channel in order else 0
     channel_rows = []
-    for index, channel in enumerate(CHANNELS):
+    for index in order:
+        channel = CHANNELS[index]
         locked = bool(channel_lock_reason(state.studio, index))
         tagged = index in state.selected_platforms
         marker = "[x]" if tagged or index == state.selected_channel else "[ ]"
         attr = curses.color_pair(5) if locked else curses.color_pair(2) if tagged else 0
         channel_rows.append((f"{marker} {channel['name']:<{store_width}} {channel['cut']:>4.0%} {money(channel['fee']):>9}", attr))
-    draw_selectable_list(storefront, channel_rows, state.selected_channel, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)
+    draw_selectable_list(storefront, channel_rows, cursor_position, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)
     if storefront_width >= 52:
-        for row, channel in enumerate(CHANNELS[:visible], 2):
-            if channel_lock_reason(state.studio, row - 2):
+        for row, index in enumerate(order[:visible], 2):
+            channel = CHANNELS[index]
+            if channel_lock_reason(state.studio, index):
                 add_text(storefront, row, popularity_x, "tech", 5, curses.color_pair(5) | curses.A_BOLD)
                 continue
             for block in range(5):

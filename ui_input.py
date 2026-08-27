@@ -40,6 +40,7 @@ from simulation import (
     cycle_game_update_focus,
     cycle_game_update_size,
     cycle_game_support,
+    cycle_price_point,
     cycle_work_priority,
     dismiss_employee,
     franchise_for_game,
@@ -52,8 +53,11 @@ from simulation import (
     has_research,
     research_requirement_for_channel,
     channel_lock_reason,
+    storefront_display_order,
+    cycle_price_point,
     research_requirement_for_format,
     research_requirement_for_marketing,
+    research_requirement_for_monetization,
     research_requirement_for_scope,
     research_requirement_for_strategy,
     research_nodes_for_branch,
@@ -158,8 +162,9 @@ def plan_option_unlocked(state: GameState, field_index: int, option_index: int) 
     requirement_functions = {
         0: research_requirement_for_scope,
         1: research_requirement_for_format,
-        5: research_requirement_for_strategy,
-        6: research_requirement_for_marketing,
+        5: research_requirement_for_monetization,
+        9: research_requirement_for_strategy,
+        10: research_requirement_for_marketing,
     }
     requirement = requirement_functions.get(field_index, lambda _: None)(option_index)
     return not requirement or has_research(state.studio, requirement)
@@ -596,7 +601,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
                 if not had_blend:
                     state.selected_secondary_topic = state.selected_topic
         elif state.new_game_step == 2:
-            state.selected_focus = (state.selected_focus - 1) % 7
+            state.selected_focus = (state.selected_focus - 1) % len(PLAN_FIELDS)
         else:
             cycle_channel_selection(state, -1)
     elif key == curses.KEY_DOWN:
@@ -620,7 +625,7 @@ def handle_new_game_key(state: GameState, key: int) -> None:
                 if not had_blend:
                     state.selected_secondary_topic = state.selected_topic
         elif state.new_game_step == 2:
-            state.selected_focus = (state.selected_focus + 1) % 7
+            state.selected_focus = (state.selected_focus + 1) % len(PLAN_FIELDS)
         else:
             cycle_channel_selection(state, 1)
     elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step == 2:
@@ -631,11 +636,18 @@ def handle_new_game_key(state: GameState, key: int) -> None:
             ("selected_audience", len(AUDIENCES)),
             ("selected_creative_primary", len(CREATIVE_DIRECTIONS)),
             ("selected_creative_secondary", len(CREATIVE_DIRECTIONS)),
+            ("selected_monetization", len(MONETIZATION_MODELS)),
+            ("selected_price", len(PRICE_POINTS) + 1),
+            ("selected_announcement", len(ANNOUNCEMENT_STRATEGIES)),
+            ("selected_release_policy", len(RELEASE_POLICIES)),
             ("selected_release_strategy", len(RELEASE_STRATEGIES)),
             ("selected_marketing", len(MARKETING)),
         )
         attribute, count = fields[state.selected_focus]
-        cycle_plan_option(state, state.selected_focus, attribute, count, delta)
+        if attribute == "selected_price":
+            cycle_price_point(state, delta)
+        else:
+            cycle_plan_option(state, state.selected_focus, attribute, count, delta)
     if previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic):
         # Sequels/spin-offs keep their IP link even if genre/theme is remixed.
         if not state.sequel_game_id and not state.spinoff_franchise_id:
@@ -1069,8 +1081,10 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
             storefront_y = 2 + top_height
             row = y - (storefront_y + 2)
             if x < storefront_width and 0 <= row < storefront_height - 3:
-                start = list_start(state.selected_channel, len(CHANNELS), storefront_height - 3)
-                candidate = min(start + row, len(CHANNELS) - 1)
+                order = storefront_display_order(state)
+                position = order.index(state.selected_channel) if state.selected_channel in order else 0
+                start = list_start(position, len(order), storefront_height - 3)
+                candidate = order[min(start + row, len(order) - 1)]
                 lock = channel_lock_reason(state.studio, candidate)
                 if not lock:
                     state.new_game_step = 3

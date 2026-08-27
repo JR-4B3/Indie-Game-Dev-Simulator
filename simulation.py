@@ -1159,6 +1159,18 @@ def selected_release_policy(state: GameState) -> dict:
     return RELEASE_POLICIES[state.selected_release_policy % len(RELEASE_POLICIES)]
 
 
+def research_requirement_for_monetization(index: int) -> str | None:
+    requirement = MONETIZATION_MODELS[index].get("research_key")
+    return str(requirement) if requirement else None
+
+
+def cycle_price_point(state: GameState, delta: int) -> None:
+    """Cycle the manual price choice; -1 means auto (best fit for the plan)."""
+    choices = [-1, *range(len(PRICE_POINTS))]
+    current = choices.index(state.selected_price) if state.selected_price in choices else 0
+    state.selected_price = choices[(current + delta) % len(choices)]
+
+
 def monetization_by_key(key: str) -> dict:
     return monetization_model_by_key(key) or MONETIZATION_MODELS[0]
 
@@ -1362,6 +1374,25 @@ def game_platform_indexes(game_or_sale) -> list[int]:
 
 def channel_index_by_name(name: str) -> int | None:
     return next((index for index, channel in enumerate(CHANNELS) if channel["name"] == name), None)
+
+
+def storefront_display_order(state: GameState) -> list[int]:
+    """Storefront row order: unlocked stores by ascending popularity, then
+    every technology-locked store at the bottom. Display order only - the
+    indexes remain the canonical CHANNELS positions."""
+    def popularity(index: int) -> tuple[int, int]:
+        channel = CHANNELS[index]
+        return (int(channel["visibility"]), int(channel["fee"]))
+
+    unlocked = sorted(
+        (index for index in range(len(CHANNELS)) if not channel_lock_reason(state.studio, index)),
+        key=popularity,
+    )
+    locked = sorted(
+        (index for index in range(len(CHANNELS)) if channel_lock_reason(state.studio, index)),
+        key=popularity,
+    )
+    return unlocked + locked
 
 
 def allocate_weekly_market(state: GameState) -> dict[str, DemandResult]:
