@@ -689,6 +689,94 @@ class SimulationTests(unittest.TestCase):
             handle_mouse(state, (50, 190))
         self.assertEqual(state.selected_idea, 2)
 
+    def test_pipeline_screens_render_in_a_real_terminal(self) -> None:
+        """Mocked windows cannot catch curses geometry errors (derwin returns
+        NULL when a child window leaves its parent). This probe forks a pty,
+        runs a genuine curses session at several sizes including the 74x24
+        floor, and renders every pipeline screen state."""
+        import os
+        import pty
+        import struct
+        import fcntl
+        import termios
+
+        def build_cases():
+            from ui_newgame import draw_idea_shelf, draw_concept_screen, draw_design_review
+
+            cases = []
+            state = GameState()
+            state.studio.idea_shelf.append(force_idea(state))
+            state.modal = "ideas"
+            cases.append((draw_idea_shelf, state))
+
+            concept = GameState()
+            concept.studio.idea_shelf.append(force_idea(concept))
+            handle_ideas_key(concept, 10)
+            cases.append((draw_concept_screen, concept))
+            start_experiment(concept, "paper_prototype")
+            cases.append((draw_concept_screen, concept))
+            for day in range(6):
+                develop_project(concept, day, week_end=False, workday=True)
+            cases.append((draw_concept_screen, concept))
+
+            design = GameState()
+            design.studio.idea_shelf.append(force_idea(design))
+            handle_ideas_key(design, 10)
+            begin_design(design)
+            design.modal = "design_review"
+            cases.append((draw_design_review, design))
+            design.tweak_presentation = True
+            cases.append((draw_design_review, design))
+
+            games = GameState(modal="games")
+            self.assertTrue(start_project(games))
+            from ui_games import draw_games_screen
+            cases.append((draw_games_screen, games))
+            return cases
+
+        for rows, cols in ((24, 74), (30, 90), (40, 120), (50, 190)):
+            pid, fd = pty.fork()
+            if pid == 0:  # child: real tty, real curses
+                try:
+                    fcntl.ioctl(1, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+                    os.environ["TERM"] = "xterm-256color"
+                    import curses as real_curses
+
+                    cases = build_cases()
+
+                    def run(screen):
+                        real_curses.curs_set(0)
+                        from ui_theme import init_theme
+
+                        init_theme(screen, None, "auto")
+                        for drawer, state in cases:
+                            screen.erase()
+                            screen.refresh()
+                            drawer(screen, state, cols, rows)
+                        screen.refresh()
+
+                    real_curses.wrapper(run)
+                    os._exit(0)
+                except BaseException:
+                    import traceback
+
+                    traceback.print_exc()
+                    os._exit(1)
+            output = b""
+            try:
+                while True:
+                    chunk = os.read(fd, 65536)
+                    if not chunk:
+                        break
+                    output += chunk
+            except OSError:
+                pass
+            _, status = os.waitpid(pid, 0)
+            self.assertEqual(
+                os.waitstatus_to_exitcode(status), 0,
+                f"curses render failed at {cols}x{rows}:\n{output.decode(errors='replace')[-2000:]}",
+            )
+
     def test_large_roster_scrolls_and_mouse_uses_visible_window(self) -> None:
         state = GameState(modal="team", team_tab=1)
         founder = state.studio.team[0]

@@ -99,18 +99,23 @@ def shelf_rows(state: GameState) -> list[tuple[str, int]]:
 
 def draw_idea_shelf(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel = screen.derwin(height - 4, width, 2, 0)
+    panel_height = height - 4
     draw_box(panel, "Idea Shelf | Rough Pitches")
     add_text(panel, 1, 2, "Rested teammates jot down rough ideas over time. Choose one to explore in Concept.", width - 4, curses.color_pair(4))
     ideas = state.studio.idea_shelf
+    ordered = ordered_shelf(state)
     if not ideas:
         add_text(panel, 3, 2, "The shelf is empty. Give the team time to think; tired teams pitch nothing.", width - 4, curses.color_pair(2))
         add_text(panel, 4, 2, "Contracts, releases, and training can also spark ideas.", width - 4, curses.color_pair(6))
     state.selected_idea = min(state.selected_idea, max(0, len(ideas) - 1))
-    draw_selectable_list(panel, shelf_rows(state), state.selected_idea, bool(ideas), y=3, width=width - 4, visible=max(1, height - 9))
-    add_text(panel, height - 3, 2, "Enter: open concept   D: discard idea   Esc: back", width - 4, curses.color_pair(4))
+    # Reserve the bottom of the panel for the pitch preview and the hint line.
+    preview_rows = 5 if ideas else 0
+    list_bottom = panel_height - 2 - preview_rows
+    draw_selectable_list(panel, shelf_rows(state), state.selected_idea, bool(ideas), y=3, width=width - 4, visible=max(1, list_bottom - 3))
+    add_text(panel, panel_height - 2, 2, "Enter: open concept   D: discard idea   Esc: back", width - 4, curses.color_pair(4))
     if ideas:
-        idea = ordered_shelf(state)[state.selected_idea]
-        row = height - 5
+        idea = ordered[state.selected_idea]
+        row = panel_height - 2 - len(idea.pitch_lines()) - 1
         for index, line in enumerate(idea.pitch_lines()):
             add_text(panel, row + index, 2, line[: width - 4], width - 4, curses.A_BOLD)
         add_text(panel, row + len(idea.pitch_lines()), 2, f"Unanswered: {idea.uncertainty}", width - 4, curses.color_pair(3))
@@ -125,14 +130,28 @@ def draw_concept_screen(screen: curses.window, state: GameState, width: int, hei
         return
     draw_box(panel, f"Concept | {project.title}")
     draw_stage_ribbon(panel, 1, "concept", width)
+    panel_height = height - 4
+    # The two panes live at rows 3..panel_height-2 of the panel; a child
+    # derwin must fit inside its parent or curses returns NULL.
+    body_height = panel_height - 4
+    if body_height < 9:
+        add_text(panel, 2, 2, "Terminal too small for the concept workspace.", width - 4, curses.color_pair(5))
+        return
     gdd = project.gdd
     pitch_width = max(24, min(46, width // 3))
-    pitch = panel.derwin(height - 6, pitch_width, 3, 0)
+    work_width = max(20, width - pitch_width - 1)
+    pitch = panel.derwin(body_height, pitch_width, 3, 0)
+    work = panel.derwin(body_height, work_width, 3, pitch_width + 1)
     draw_box(pitch, "The Pitch")
+    draw_box(work, "Experiments")
+    inner_bottom = body_height - 2  # last usable row inside a box
+    # --- Pitch pane ---
     add_text(pitch, 1, 2, f'Fantasy: {gdd.get("fantasy", "")}', pitch_width - 4, curses.color_pair(3))
-    for index, line in enumerate(gdd.get("pitch_lines", [])):
-        add_text(pitch, 3 + index * 2, 2, line, pitch_width - 4, curses.A_BOLD)
-    uncertainty_row = 3 + len(gdd.get("pitch_lines", [])) * 2 + 1
+    line_row = 3
+    for line in gdd.get("pitch_lines", [])[:2]:
+        add_text(pitch, line_row, 2, line, pitch_width - 4, curses.A_BOLD)
+        line_row += 1
+    uncertainty_row = line_row + 1
     add_text(pitch, uncertainty_row, 2, "Unanswered:", pitch_width - 4, curses.color_pair(2) | curses.A_BOLD)
     add_text(pitch, uncertainty_row + 1, 2, gdd.get("uncertainty", ""), pitch_width - 4, curses.color_pair(2))
     clarity = float(gdd.get("clarity", 0.5))
@@ -147,31 +166,33 @@ def draw_concept_screen(screen: curses.window, state: GameState, width: int, hei
         signals.append("proven tech")
     if gdd.get("hook"):
         signals.append("unusual hook")
-    add_text(pitch, height - 9, 2, ", ".join(signals), pitch_width - 4, curses.color_pair(6))
+    add_text(pitch, inner_bottom - 1, 2, ", ".join(signals), pitch_width - 4, curses.color_pair(6))
     if gdd.get("findings"):
-        add_text(pitch, height - 8, 2, f"{len(gdd['findings'])} finding(s) recorded", pitch_width - 4, curses.color_pair(4))
+        add_text(pitch, inner_bottom, 2, f"{len(gdd['findings'])} finding(s) recorded", pitch_width - 4, curses.color_pair(4))
 
-    work_width = width - pitch_width - 1
-    work = panel.derwin(height - 6, work_width, 3, pitch_width + 1)
-    draw_box(work, "Experiments")
+    # --- Work pane ---
     if project.active_experiment:
         experiment = idea_engine.experiment_by_key(project.active_experiment)
         add_text(work, 1, 2, f"Running: {experiment.name}", work_width - 4, curses.color_pair(3) | curses.A_BOLD)
         add_text(work, 2, 2, f"~{project.experiment_days_left} workdays left", work_width - 4, curses.color_pair(2))
+    findings_row = inner_bottom - 6
+    if gdd.get("findings"):
+        add_text(work, findings_row, 2, "FINDINGS", work_width - 4, curses.A_BOLD)
+        recent = list(reversed(gdd.get("findings", [])))[:3]
+        for offset, finding in enumerate(recent):
+            add_text(work, findings_row + 1 + offset * 2, 2, f"W{finding['week']} {finding['experiment']} ({finding['confidence']}):", work_width - 4, curses.color_pair(6))
+            add_text(work, findings_row + 2 + offset * 2, 2, finding["text"], work_width - 4, curses.color_pair(4))
+        list_visible = max(1, findings_row - 3)
     else:
+        list_visible = max(1, inner_bottom - 1)
+    if not project.active_experiment:
         available = idea_engine.available_experiments(type("V", (), {"hook": gdd.get("hook", ""), "technical_doubt": gdd.get("technical_doubt", 0.0), "tags": gdd.get("tags", [])})())
         rows = []
         for index, experiment in enumerate(available):
             cursor = index == state.selected_experiment
             rows.append((f"{experiment.name}  ({experiment.weeks}w) - {experiment.blurb}", curses.color_pair(3) | curses.A_BOLD if cursor else 0))
-        draw_selectable_list(work, rows, state.selected_experiment, not project.active_experiment, y=1, width=work_width - 4, visible=height - 12)
-    findings_row = height - 10
-    add_text(work, findings_row, 2, "FINDINGS", work_width - 4, curses.A_BOLD)
-    recent = list(reversed(gdd.get("findings", [])))[:3]
-    for offset, finding in enumerate(recent):
-        add_text(work, findings_row + 1 + offset * 2, 2, f"W{finding['week']} {finding['experiment']} ({finding['confidence']}):", work_width - 4, curses.color_pair(6))
-        add_text(work, findings_row + 2 + offset * 2, 2, finding["text"], work_width - 4, curses.color_pair(4))
-    add_text(panel, height - 3, 2, "Enter: run selected experiment   E: end concept > design   S: shelve idea   Esc: games", width - 4, curses.color_pair(4))
+        draw_selectable_list(work, rows, state.selected_experiment, True, y=1, width=work_width - 4, visible=list_visible)
+    add_text(panel, panel_height - 2, 2, "Enter: run selected experiment   E: end concept > design   S: shelve idea   Esc: games", width - 4, curses.color_pair(4))
 
 
 def draw_design_review(screen: curses.window, state: GameState, width: int, height: int) -> None:
@@ -185,8 +206,10 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
     draw_stage_ribbon(panel, 1, "design", width)
     packages = project.gdd.get("presentation_options", [])
     advice = project.gdd.get("team_advice", [])
+    panel_height = height - 4
+    compact = panel_height < 30
     row = 3
-    if advice:
+    if advice and not compact:
         add_text(panel, row, 2, "TEAM ADVICE", width - 4, curses.A_BOLD)
         row += 1
         for entry in advice:
@@ -204,7 +227,7 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
             rows.append((f"{package['name']}  x{package['work']:.2f} work{marker}", attr))
         draw_selectable_list(panel, rows, state.selected_presentation, state.selected_design_focus == 0, y=row, width=width - 4, visible=min(len(packages) + 1, 5))
         row += len(packages) + 1
-        if 0 <= state.selected_presentation < len(packages):
+        if 0 <= state.selected_presentation < len(packages) and not compact:
             add_text(panel, row, 2, packages[state.selected_presentation]["note"], width - 4, curses.color_pair(6))
             row += 1
     else:
@@ -232,8 +255,13 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
     )
     tweak_offset = 6 if state.tweak_presentation else 1
     add_text(panel, row, 2, "PRODUCTION PLAN", width - 4, curses.A_BOLD)
-    row += 1
-    plan_start = row
+    # Plan rows flow downward; the actionable block (storefront, commit,
+    # status) is pinned to the bottom of the panel and drawn last so it
+    # always stays visible and wins any overlap on short terminals.
+    plan_start = row + 1
+    store_row = panel_height - 4
+    commit_row = panel_height - 3
+    status_row = panel_height - 2
     for index, (label, attribute, options) in enumerate(plan_specs):
         value_index = getattr(state, attribute)
         value_index = value_index % len(options) if value_index >= 0 else value_index
@@ -255,23 +283,20 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
         locked = bool(requirement and not has_research(state.studio, requirement))
         if locked:
             attr = curses.color_pair(5)
-        add_text(panel, row + index, 2, f"{label:<15} <{shown}>{' | LOCKED' if locked else ''}", width - 4, attr)
-    row += len(plan_specs)
+        add_text(panel, plan_start + index, 2, f"{label:<15} <{shown}>{' | LOCKED' if locked else ''}", width - 4, attr)
     # Storefront line
     cursor_store = state.selected_design_focus == tweak_offset + len(plan_specs)
     attr = curses.color_pair(3) | curses.A_BOLD if cursor_store else 0
     platforms = [CHANNELS[i]["name"] for i in selected_platform_indexes(state)]
-    add_text(panel, row, 2, f"{'Storefronts':<15} {', '.join(platforms) or CHANNELS[state.selected_channel]['name']}  ([T] tags extra stores)", width - 4, attr)
-    row += 1
+    add_text(panel, store_row, 2, f"{'Storefronts':<15} {', '.join(platforms) or CHANNELS[state.selected_channel]['name']}  ([T] tags extra stores)", width - 4, attr)
     commit_cursor = state.selected_design_focus == tweak_offset + len(plan_specs) + 1
     attr = curses.color_pair(4) | curses.A_BOLD | curses.A_REVERSE if commit_cursor else curses.color_pair(4) | curses.A_BOLD
-    add_text(panel, row + 1, 2, "COMMIT TO PRODUCTION", width - 4, attr)
+    add_text(panel, commit_row, 2, "COMMIT TO PRODUCTION", width - 4, attr)
     requirements = plan_requirements(state)
     if requirements:
-        add_text(panel, row + 2, 2, f"Blocked: needs {', '.join(requirements)}", width - 4, curses.color_pair(5))
+        add_text(panel, status_row, 2, f"Blocked: needs {', '.join(requirements)}", width - 4, curses.color_pair(5))
     else:
         report = market_report(state)
         output = projected_weekly_output(state.studio, concept_focus(state))
         weeks = max(4, round(report["work"] / output))
-        add_text(panel, row + 2, 2, f"Forecast {report['score_low']}-{report['score_high']} score | {weeks}w | confidence {report['confidence']}%", width - 4, curses.color_pair(6))
-    add_text(panel, height - 3, 2, "Up/Down: move   Left/Right: change   Enter: confirm   T: tweak presentation   Esc: back to concept", width - 4, curses.color_pair(4))
+        add_text(panel, status_row, 2, f"Forecast {report['score_low']}-{report['score_high']} score | {weeks}w | confidence {report['confidence']}%", width - 4, curses.color_pair(6))
