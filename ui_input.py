@@ -47,8 +47,6 @@ from simulation import (
     game_by_id,
     hire_candidate,
     load_game,
-    prepare_sequel,
-    prepare_spinoff,
     queue_game_update,
     has_research,
     research_requirement_for_channel,
@@ -67,10 +65,12 @@ from simulation import (
     resolve_project_decision,
     selected_roster_employee,
     start_employee_vacation,
-    start_project,
     take_community_action,
     toggle_platform_selection,
     toggle_auto_contracts,
+    start_concept_project,
+    commit_design_plan,
+    idea_engine,
 )
 from ui_chrome import (
     CANCEL_PROJECT_ACTION_ROWS,
@@ -103,7 +103,7 @@ from ui_chrome import (
 from ui_common import catalogue_entries, list_start, live_games, promotion_targets
 from ui_contracts import contract_board_width
 from ui_games import catalogue_table_height, catalogue_table_width, games_list_width, summary_panel_width
-from ui_newgame import PLAN_FIELDS, available_genre_indices, base_game_choices, cycle_genre_index, locked_topic_count, new_game_panel_geometry, project_kind_choices, select_topic_at, topic_order, topic_position
+from ui_newgame import shelf_rows, ordered_shelf, stage_banner_line
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
 from ui_title import TITLE_MENU, title_layout
@@ -131,18 +131,202 @@ def toggle_pause(state: GameState) -> None:
         state.time_speed_index = 0
 
 
-def open_new_game(state: GameState) -> None:
+def open_idea_shelf(state: GameState, origin: str = "main") -> None:
     if state.studio.current_project:
-        state.log("Ship or cancel the current project before planning another.")
+        if state.studio.current_project.stage == "concept":
+            state.modal = "concept"
+            return
+        state.log("Ship or cancel the current project before starting another.")
         return
-    state.modal = "new_game"
-    state.new_game_step = -1
-    state.selected_focus = 0
-    state.selected_sequel_choice = 0
-    state.new_game_kind = ""
+    state.modal = "ideas"
+    state.shelf_origin = origin
+    state.selected_idea = 0
     state.sequel_game_id = None
     state.spinoff_franchise_id = None
-    state.mix_blend = False
+    state.new_game_kind = ""
+
+
+# Backwards-compatible name used by older call sites and tests.
+open_new_game = open_idea_shelf
+
+
+def design_review_row_count(state: GameState) -> int:
+    packages = state.studio.current_project.gdd.get("presentation_options", []) if state.studio.current_project else []
+    tweak_axes = 5 if state.tweak_presentation else 0
+    plan_fields = 11
+    return 1 + tweak_axes + plan_fields + 1 + 1  # presentation + axes + plan + storefront + commit
+
+
+def handle_ideas_key(state: GameState, key: int) -> None:
+    ideas = ordered_shelf(state)
+    if key in (8, 127, curses.KEY_BACKSPACE, 27):
+        state.modal = state.shelf_origin if state.shelf_origin in ("main", "games") else "main"
+    elif key == curses.KEY_UP and ideas:
+        state.selected_idea = (state.selected_idea - 1) % len(ideas)
+    elif key == curses.KEY_DOWN and ideas:
+        state.selected_idea = (state.selected_idea + 1) % len(ideas)
+    elif key in (ord("d"), ord("D")) and ideas:
+        idea = ideas[state.selected_idea]
+        state.studio.idea_shelf.remove(idea)
+        state.log(f"Discarded the idea {idea.title}.")
+        state.selected_idea = min(state.selected_idea, max(0, len(ideas) - 1))
+    elif key in (10, 13, curses.KEY_ENTER) and ideas:
+        idea = ideas[state.selected_idea]
+        if start_concept_project(state, idea):
+            state.selected_experiment = 0
+
+
+def handle_concept_key(state: GameState, key: int) -> None:
+    project = state.studio.current_project
+    if key in (8, 127, curses.KEY_BACKSPACE, 27):
+        state.modal = "games"
+        return
+    if project is None or project.stage != "concept":
+        state.modal = "games"
+        return
+    experiments = available_concept_experiments(state)
+    if project.pending_decision is not None:
+        return
+    if key == curses.KEY_UP and experiments and not project.active_experiment:
+        state.selected_experiment = (state.selected_experiment - 1) % len(experiments)
+    elif key == curses.KEY_DOWN and experiments and not project.active_experiment:
+        state.selected_experiment = (state.selected_experiment + 1) % len(experiments)
+    elif key in (10, 13, curses.KEY_ENTER) and experiments and not project.active_experiment:
+        start_experiment(state, experiments[state.selected_experiment].key)
+    elif key in (ord("e"), ord("E")):
+        begin_design_review(state)
+    elif key in (ord("s"), ord("S")):
+        shelve_concept(state)
+    elif key in (ord("x"), ord("X")):
+        open_cancel_project(state)
+
+
+def available_concept_experiments(state: GameState):
+    project = state.studio.current_project
+    if project is None or project.stage != "concept":
+        return []
+    gdd = project.gdd
+
+    class _View:
+        hook = gdd.get("hook", "")
+        technical_doubt = float(gdd.get("technical_doubt", 0.0))
+        tags = gdd.get("tags", [])
+
+    return idea_engine.available_experiments(_View())
+
+
+def design_review_rows(state: GameState) -> list[tuple[str, str]]:
+    """(kind, key) rows for the design review; drives cursor behavior."""
+    rows = [("presentation", "")]
+    if state.tweak_presentation:
+        rows += [("tweak", key) for key in ("form", "style", "camera", "movement", "density")]
+    rows += [
+        ("plan", "selected_scope"),
+        ("plan", "selected_format"),
+        ("plan", "selected_audience"),
+        ("plan", "selected_creative_primary"),
+        ("plan", "selected_creative_secondary"),
+        ("plan", "selected_monetization"),
+        ("plan", "selected_price"),
+        ("plan", "selected_announcement"),
+        ("plan", "selected_release_policy"),
+        ("plan", "selected_release_strategy"),
+        ("plan", "selected_marketing"),
+        ("store", ""),
+        ("commit", ""),
+    ]
+    return rows
+
+
+def handle_design_review_key(state: GameState, key: int) -> None:
+    project = state.studio.current_project
+    if project is None or project.stage != "design":
+        state.modal = "games"
+        return
+    rows = design_review_rows(state)
+    state.selected_design_focus = max(0, min(state.selected_design_focus, len(rows) - 1))
+    kind, row_key = rows[state.selected_design_focus]
+    packages = project.gdd.get("presentation_options", [])
+    if key in (ord("e"), ord("E")):
+        state.naming_game = True
+        state.draft_title = ""
+        return
+    if key in (ord("r"), ord("R")):
+        state.title_roll += 1
+        refresh_draft_title(state)
+        return
+    if key in (8, 127, curses.KEY_BACKSPACE, 27):
+        project.stage = "concept"
+        state.modal = "concept"
+        if state.time_speed_index == 0:
+            state.time_speed_index = state.resume_speed_index
+        return
+    if key == curses.KEY_UP:
+        state.selected_design_focus = (state.selected_design_focus - 1) % len(rows)
+        return
+    if key == curses.KEY_DOWN:
+        state.selected_design_focus = (state.selected_design_focus + 1) % len(rows)
+        return
+    delta = -1 if key in (curses.KEY_LEFT, ord("<")) else 1 if key in (curses.KEY_RIGHT, ord(">")) else 0
+    if key in (ord("t"), ord("T")):
+        state.tweak_presentation = not state.tweak_presentation
+        state.selected_design_focus = 0
+        return
+    if kind == "presentation":
+        if delta:
+            if packages:
+                state.selected_presentation = (state.selected_presentation + delta) % len(packages)
+        elif key in (10, 13, curses.KEY_ENTER):
+            state.tweak_presentation = True
+            state.selected_design_focus = 1
+        return
+    if kind == "tweak":
+        from sim_core import ideas as idea_axes
+        axes = {"form": idea_axes.FORMS, "style": idea_axes.STYLES, "camera": idea_axes.CAMERAS, "movement": idea_axes.MOVEMENTS, "density": idea_axes.DENSITIES}
+        values = axes[row_key]
+        if delta:
+            current = state.design_tweaks.get(row_key) or (packages[state.selected_presentation][row_key] if packages else values[0])
+            index = values.index(current) if current in values else 0
+            state.design_tweaks[row_key] = values[(index + delta) % len(values)]
+        return
+    if kind == "plan":
+        fields = (
+            ("selected_scope", len(SCOPES)),
+            ("selected_format", len(GAME_FORMATS)),
+            ("selected_audience", len(AUDIENCES)),
+            ("selected_creative_primary", len(CREATIVE_DIRECTIONS)),
+            ("selected_creative_secondary", len(CREATIVE_DIRECTIONS)),
+            ("selected_monetization", len(MONETIZATION_MODELS)),
+            ("selected_price", len(PRICE_POINTS) + 1),
+            ("selected_announcement", len(ANNOUNCEMENT_STRATEGIES)),
+            ("selected_release_policy", len(RELEASE_POLICIES)),
+            ("selected_release_strategy", len(RELEASE_STRATEGIES)),
+            ("selected_marketing", len(MARKETING)),
+        )
+        plan_attributes = [row[1] for row in rows if row[0] == "plan"]
+        attribute, count = fields[plan_attributes.index(row_key)]
+        if attribute == "selected_price":
+            if delta:
+                cycle_price_point(state, delta)
+        elif delta:
+            cycle_plan_option(state, plan_attributes.index(row_key), attribute, count, delta)
+        elif key in (10, 13, curses.KEY_ENTER):
+            cycle_plan_option(state, plan_attributes.index(row_key), attribute, count, 1)
+        return
+    if kind == "store":
+        if delta:
+            cycle_channel_selection(state, delta)
+        elif key in (ord("x"), ord("X")):
+            toggle_platform_selection(state, state.selected_channel)
+        return
+    if kind == "commit" and key in (10, 13, curses.KEY_ENTER):
+        commit_design_plan(state)
+
+
+def handle_new_game_key(state: GameState, key: int) -> None:
+    """Legacy name kept for old call sites: route to the new pipeline."""
+    if state.modal == "ideas":
+        handle_ideas_key(state, key)
 
 
 def cycle_contract_selection(state: GameState, delta: int) -> None:
@@ -236,7 +420,28 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     if action == "quit":
         return False
     if action == "new":
-        open_new_game(state)
+        open_idea_shelf(state, "games" if state.modal == "games" else "main")
+    elif action == "open_concept":
+        if state.modal == "ideas":
+            handle_ideas_key(state, 10)
+    elif action == "discard_idea":
+        if state.modal == "ideas":
+            handle_ideas_key(state, ord("d"))
+    elif action == "run_experiment":
+        if state.modal == "concept":
+            handle_concept_key(state, 10)
+    elif action == "end_concept":
+        if state.modal == "concept":
+            handle_concept_key(state, ord("e"))
+    elif action == "shelve_concept":
+        if state.modal == "concept":
+            handle_concept_key(state, ord("s"))
+    elif action == "toggle_tweak":
+        if state.modal == "design_review":
+            handle_design_review_key(state, ord("t"))
+    elif action == "commit_design":
+        if state.modal == "design_review":
+            handle_design_review_key(state, 10)
     elif action == "contracts":
         state.modal = "contracts"
     elif action == "finance":
@@ -320,7 +525,7 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "production_option":
         state.selected_project_decision = (state.selected_project_decision + 1) % 2
     elif action == "toggle_platform":
-        if state.new_game_step == 3:
+        if state.modal == "design_review":
             toggle_platform_selection(state, state.selected_channel)
     elif action == "resolve_decision":
         resolve_project_decision(state, state.selected_project_decision)
@@ -385,8 +590,12 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "save":
         save_state(state)
     elif action == "back":
-        if state.modal == "new_game":
-            handle_new_game_key(state, curses.KEY_BACKSPACE)
+        if state.modal == "ideas":
+            handle_ideas_key(state, curses.KEY_BACKSPACE)
+        elif state.modal == "concept":
+            handle_concept_key(state, curses.KEY_BACKSPACE)
+        elif state.modal == "design_review":
+            handle_design_review_key(state, 27)
         elif state.modal == "marketing":
             if state.marketing_tab in (1, 2, 3):
                 state.marketing_tab = 0
@@ -400,7 +609,12 @@ def perform_footer_action(state: GameState, action: str) -> bool:
         else:
             state.modal = "main"
     elif action == "confirm":
-        handle_new_game_key(state, 10)
+        if state.modal == "ideas":
+            handle_ideas_key(state, 10)
+        elif state.modal == "concept":
+            handle_concept_key(state, 10)
+        elif state.modal == "design_review":
+            handle_design_review_key(state, 10)
     elif action == "accept_title":
         if state.draft_title.strip():
             state.draft_title = state.draft_title.strip()
@@ -408,16 +622,17 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "cancel_title":
         state.naming_game = False
     elif action == "project_choice":
-        handle_new_game_key(state, curses.KEY_DOWN)
+        if state.modal == "ideas":
+            handle_ideas_key(state, curses.KEY_DOWN)
     elif action == "new_game_selection":
-        handle_new_game_key(state, curses.KEY_DOWN)
-    elif action == "toggle_blend":
-        if state.modal == "new_game" and state.new_game_step in (0, 1):
-            handle_new_game_key(state, ord("b"))
+        if state.modal == "ideas":
+            handle_ideas_key(state, curses.KEY_DOWN)
     elif action == "new_game_adjust_left":
-        handle_new_game_key(state, curses.KEY_LEFT)
+        if state.modal == "design_review":
+            handle_design_review_key(state, curses.KEY_LEFT)
     elif action == "new_game_adjust_right":
-        handle_new_game_key(state, curses.KEY_RIGHT)
+        if state.modal == "design_review":
+            handle_design_review_key(state, curses.KEY_RIGHT)
     elif action == "random_title":
         state.naming_game = False
         state.title_roll += 1
@@ -469,190 +684,13 @@ def perform_footer_action(state: GameState, action: str) -> bool:
 
 
 def open_blend(state: GameState) -> None:
-    """Enter blend picking: remember the current mix so B can cancel it."""
-    attribute = "selected_secondary_genre" if state.new_game_step == 0 else "selected_secondary_topic"
-    state.mix_blend_backup = (state.new_game_step, getattr(state, attribute))
-    state.mix_blend = True
-
-
-def close_blend(state: GameState, confirm: bool) -> None:
-    """Leave blend picking: Enter keeps the new mix, B restores the old one."""
-    if not state.mix_blend:
-        return
-    if not confirm:
-        step, value = state.mix_blend_backup
-        attribute = "selected_secondary_genre" if step == 0 else "selected_secondary_topic"
-        setattr(state, attribute, value)
+    """Deprecated: the genre/theme blend mechanic left with the wizard."""
     state.mix_blend = False
 
 
-def handle_new_game_key(state: GameState, key: int) -> None:
-    if state.new_game_step == -1:
-        choices = project_kind_choices(state)
-        if key in (10, 13, curses.KEY_ENTER):
-            kind, _, enabled = choices[state.selected_sequel_choice]
-            if not enabled:
-                if kind == "engine":
-                    state.log("Building your own engine is not available yet.")
-                else:
-                    state.log("Release a game first to unlock this option.")
-                return
-            if kind == "new":
-                state.new_game_kind = ""
-                state.sequel_game_id = None
-                state.spinoff_franchise_id = None
-                state.selected_secondary_genre = state.selected_genre
-                state.selected_secondary_topic = state.selected_topic
-                state.new_game_step = 0
-                state.title_roll += 1
-                refresh_draft_title(state)
-            else:
-                state.new_game_kind = kind
-                state.new_game_step = -2
-                state.selected_sequel_choice = 0
-        elif key in (8, 127, curses.KEY_BACKSPACE):
-            state.modal = "games"
-        elif key == curses.KEY_UP:
-            state.selected_sequel_choice = (state.selected_sequel_choice - 1) % len(choices)
-        elif key == curses.KEY_DOWN:
-            state.selected_sequel_choice = (state.selected_sequel_choice + 1) % len(choices)
-        return
-    if state.new_game_step == -2:
-        choices = base_game_choices(state)
-        if not choices:
-            state.new_game_step = -1
-            return
-        if key in (10, 13, curses.KEY_ENTER):
-            choice = choices[state.selected_sequel_choice]
-            if state.new_game_kind == "spinoff":
-                if not prepare_spinoff(state, choice):
-                    return
-            else:
-                prepare_sequel(state, choice)
-        elif key in (8, 127, curses.KEY_BACKSPACE):
-            state.new_game_step = -1
-            state.selected_sequel_choice = 0
-        elif key == curses.KEY_UP:
-            state.selected_sequel_choice = (state.selected_sequel_choice - 1) % len(choices)
-        elif key == curses.KEY_DOWN:
-            state.selected_sequel_choice = (state.selected_sequel_choice + 1) % len(choices)
-        return
-    previous_concept = (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
-    if key in (10, 13, curses.KEY_ENTER):
-        if state.mix_blend and state.new_game_step in (0, 1):
-            close_blend(state, confirm=True)
-        elif state.new_game_step < 3:
-            state.new_game_step += 1
-        else:
-            start_project(state)
-    elif key in (8, 127, curses.KEY_BACKSPACE):
-        if state.mix_blend:
-            close_blend(state, confirm=False)
-        else:
-            state.new_game_step = max(-1, state.new_game_step - 1)
-    elif key in (ord("b"), ord("B")) and state.new_game_step in (0, 1):
-        if state.mix_blend:
-            close_blend(state, confirm=False)
-        else:
-            open_blend(state)
-    elif key in (ord("e"), ord("E")):
-        state.naming_game = True
-        state.draft_title = ""
-    elif key in (ord("r"), ord("R")):
-        state.title_roll += 1
-        refresh_draft_title(state)
-    elif key in (ord("m"), ord("M")):
-        for offset in range(1, len(MONETIZATION_MODELS) + 1):
-            candidate = (state.selected_monetization + offset) % len(MONETIZATION_MODELS)
-            requirement = MONETIZATION_MODELS[candidate].get("research_key")
-            if not requirement or has_research(state.studio, str(requirement)):
-                state.selected_monetization = candidate
-                state.selected_price = -1
-                break
-    elif key in (ord("p"), ord("P")):
-        choices = [-1, *range(len(PRICE_POINTS))]
-        current = choices.index(state.selected_price) if state.selected_price in choices else 0
-        state.selected_price = choices[(current + 1) % len(choices)]
-    elif key in (ord("a"), ord("A")):
-        state.selected_announcement = (state.selected_announcement + 1) % len(ANNOUNCEMENT_STRATEGIES)
-    elif key in (ord("l"), ord("L")):
-        state.selected_release_policy = (state.selected_release_policy + 1) % len(RELEASE_POLICIES)
-    elif key in (ord("t"), ord("T")):
-        if state.new_game_step == 3:
-            toggle_platform_selection(state, state.selected_channel)
-    elif key == curses.KEY_UP:
-        if state.new_game_step == 0:
-            if state.mix_blend:
-                cycle_genre_index(state, "selected_secondary_genre", -1)
-            else:
-                had_blend = state.selected_secondary_genre != state.selected_genre
-                cycle_genre_index(state, "selected_genre", -1)
-                if not had_blend:
-                    state.selected_secondary_genre = state.selected_genre
-        elif state.new_game_step == 1:
-            order = topic_order(state)
-            if state.mix_blend:
-                current = TOPICS[state.selected_secondary_topic]
-                position = next((index for index, (topic, _) in enumerate(order) if topic == current), 0)
-                state.selected_secondary_topic = TOPICS.index(order[(position - 1) % len(order)][0])
-            else:
-                had_blend = state.selected_secondary_topic != state.selected_topic
-                select_topic_at(state, order, topic_position(state, order) - 1)
-                if not had_blend:
-                    state.selected_secondary_topic = state.selected_topic
-        elif state.new_game_step == 2:
-            state.selected_focus = (state.selected_focus - 1) % len(PLAN_FIELDS)
-        else:
-            cycle_channel_selection(state, -1)
-    elif key == curses.KEY_DOWN:
-        if state.new_game_step == 0:
-            if state.mix_blend:
-                cycle_genre_index(state, "selected_secondary_genre", 1)
-            else:
-                had_blend = state.selected_secondary_genre != state.selected_genre
-                cycle_genre_index(state, "selected_genre", 1)
-                if not had_blend:
-                    state.selected_secondary_genre = state.selected_genre
-        elif state.new_game_step == 1:
-            order = topic_order(state)
-            if state.mix_blend:
-                current = TOPICS[state.selected_secondary_topic]
-                position = next((index for index, (topic, _) in enumerate(order) if topic == current), 0)
-                state.selected_secondary_topic = TOPICS.index(order[(position + 1) % len(order)][0])
-            else:
-                had_blend = state.selected_secondary_topic != state.selected_topic
-                select_topic_at(state, order, topic_position(state, order) + 1)
-                if not had_blend:
-                    state.selected_secondary_topic = state.selected_topic
-        elif state.new_game_step == 2:
-            state.selected_focus = (state.selected_focus + 1) % len(PLAN_FIELDS)
-        else:
-            cycle_channel_selection(state, 1)
-    elif key in (curses.KEY_LEFT, curses.KEY_RIGHT) and state.new_game_step == 2:
-        delta = -1 if key == curses.KEY_LEFT else 1
-        fields = (
-            ("selected_scope", len(SCOPES)),
-            ("selected_format", len(GAME_FORMATS)),
-            ("selected_audience", len(AUDIENCES)),
-            ("selected_creative_primary", len(CREATIVE_DIRECTIONS)),
-            ("selected_creative_secondary", len(CREATIVE_DIRECTIONS)),
-            ("selected_monetization", len(MONETIZATION_MODELS)),
-            ("selected_price", len(PRICE_POINTS) + 1),
-            ("selected_announcement", len(ANNOUNCEMENT_STRATEGIES)),
-            ("selected_release_policy", len(RELEASE_POLICIES)),
-            ("selected_release_strategy", len(RELEASE_STRATEGIES)),
-            ("selected_marketing", len(MARKETING)),
-        )
-        attribute, count = fields[state.selected_focus]
-        if attribute == "selected_price":
-            cycle_price_point(state, delta)
-        else:
-            cycle_plan_option(state, state.selected_focus, attribute, count, delta)
-    if previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic):
-        # Sequels/spin-offs keep their IP link even if genre/theme is remixed.
-        if not state.sequel_game_id and not state.spinoff_franchise_id:
-            state.title_roll += 1
-            refresh_draft_title(state)
+def close_blend(state: GameState, confirm: bool) -> None:
+    """Deprecated: the genre/theme blend mechanic left with the wizard."""
+    state.mix_blend = False
 
 
 def handle_team_key(state: GameState, key: int) -> None:
@@ -721,8 +759,8 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     state.selected_stat = (state.selected_stat + (-1 if wheel_up else 1)) % item_count
             else:
                 state.analysis_view = (state.analysis_view + (-1 if wheel_up else 1)) % len(ANALYSIS_TABS)
-        elif state.modal == "new_game" and state.new_game_step == 2:
-            handle_new_game_key(state, curses.KEY_LEFT if wheel_up else curses.KEY_RIGHT)
+        elif state.modal == "design_review":
+            handle_design_review_key(state, curses.KEY_LEFT if wheel_up else curses.KEY_RIGHT)
         elif state.modal == "team":
             handle_team_key(state, key)
         elif state.modal == "contracts" and state.studio.contract_offers:
@@ -742,8 +780,10 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         elif state.modal == "upgrades":
             nodes = research_nodes_for_branch(RESEARCH_BRANCHES[state.selected_research_branch])
             state.selected_upgrade = (state.selected_upgrade + (-1 if wheel_up else 1)) % len(nodes)
-        elif state.modal == "new_game":
-            handle_new_game_key(state, key)
+        elif state.modal == "ideas" and state.studio.idea_shelf:
+            handle_ideas_key(state, key)
+        elif state.modal == "concept":
+            handle_concept_key(state, key)
         elif state.modal == "main":
             perform_footer_action(state, "faster" if wheel_up else "slower")
         return
@@ -989,108 +1029,41 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
                     hire_candidate(state)
         return
 
-    if state.modal == "new_game":
-        if state.new_game_step in (-2, -1):
-            choices = base_game_choices(state) if state.new_game_step == -2 else project_kind_choices(state)
-            visible = height - 8
-            row = y - 5
-            if row >= 0:
-                start = list_start(state.selected_sequel_choice, len(choices), visible)
-                index = start + row
-                if 0 <= index < len(choices):
-                    state.selected_sequel_choice = index
-                    if double_click:
-                        handle_new_game_key(state, 10)
+    if state.modal == "ideas":
+        ideas = ordered_shelf(state)
+        row = y - 5
+        if row >= 0 and row < len(ideas):
+            state.selected_idea = row
+            if double_click:
+                handle_ideas_key(state, 10)
+        return
+
+    if state.modal == "concept":
+        project = state.studio.current_project
+        if project is None or project.stage != "concept" or project.active_experiment:
             return
-        top_height, genre_width, theme_width, plan_width, storefront_height = new_game_panel_geometry(width, height)
-        plan_x = genre_width + theme_width + 2
-        if 4 <= y < 2 + top_height - 1:
-            visible = top_height - 3
-            row = y - 4
-            previous_concept = (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
-            target_step = 0 if x < genre_width else 1 if genre_width < x < plan_x else 2
-            if state.mix_blend and target_step != state.new_game_step:
-                close_blend(state, confirm=False)
-            if x < genre_width:
-                was_blend = state.mix_blend
-                state.new_game_step = 0
-                available = available_genre_indices(state)
-                genre_visible = visible - (1 if len(available) < len(GENRES) else 0)
-                cursor = state.selected_secondary_genre if was_blend else state.selected_genre
-                position = available.index(cursor) if cursor in available else 0
-                index = list_start(position, len(available), genre_visible) + row
-                picked = available[min(index, len(available) - 1)]
-                if was_blend:
-                    state.selected_secondary_genre = picked
-                else:
-                    had_blend = state.selected_secondary_genre != state.selected_genre
-                    state.selected_genre = picked
-                    if not had_blend:
-                        state.selected_secondary_genre = state.selected_genre
-            elif genre_width < x < plan_x:
-                was_blend = state.mix_blend
-                state.new_game_step = 1
-                order = topic_order(state)
-                topic_visible = visible - (1 if locked_topic_count(state) else 0)
-                if was_blend:
-                    current = TOPICS[state.selected_secondary_topic]
-                    position = next((i for i, (topic, _) in enumerate(order) if topic == current), 0)
-                    start = list_start(position, len(order), topic_visible)
-                    state.selected_secondary_topic = TOPICS.index(order[min(start + row, len(order) - 1)][0])
-                else:
-                    had_blend = state.selected_secondary_topic != state.selected_topic
-                    start = list_start(topic_position(state, order), len(order), topic_visible)
-                    select_topic_at(state, order, min(start + row, len(order) - 1))
-                    if not had_blend:
-                        state.selected_secondary_topic = state.selected_topic
-            elif x >= plan_x:
-                was_step = state.new_game_step
-                state.new_game_step = 2
-                if y == 3:
-                    state.naming_game = True
-                    state.draft_title = ""
-                    return
-                if y == 13 and was_step == 2:
-                    _, attribute, options = PLAN_FIELDS[state.selected_focus]
-                    chip_x = 11
-                    for index, option in enumerate(options):
-                        chip = option["name"]
-                        if chip_x + len(chip) > plan_width - 2:
-                            break
-                        if plan_x + chip_x <= x < plan_x + chip_x + len(chip):
-                            if plan_option_unlocked(state, state.selected_focus, index):
-                                setattr(state, attribute, index)
-                            break
-                        chip_x += len(chip) + 2
-                    return
-                field = y - 6
-                if 0 <= field < 7:
-                    state.selected_focus = field
-                    if double_click:
-                        handle_new_game_key(state, 10)
-            if (
-                state.new_game_step in (0, 1)
-                and previous_concept != (state.selected_genre, state.selected_secondary_genre, state.selected_topic, state.selected_secondary_topic)
-                and not state.sequel_game_id
-                and not state.spinoff_franchise_id
-            ):
-                state.title_roll += 1
-                refresh_draft_title(state)
-        else:
-            storefront_width = genre_width + theme_width + 1
-            storefront_y = 2 + top_height
-            row = y - (storefront_y + 2)
-            if x < storefront_width and 0 <= row < storefront_height - 3:
-                order = storefront_display_order(state)
-                position = order.index(state.selected_channel) if state.selected_channel in order else 0
-                start = list_start(position, len(order), storefront_height - 3)
-                candidate = order[min(start + row, len(order) - 1)]
-                lock = channel_lock_reason(state.studio, candidate)
-                if not lock:
-                    state.new_game_step = 3
-                    state.selected_channel = candidate
-                    if double_click:
-                        handle_new_game_key(state, 10)
+        pitch_width = max(24, min(46, width // 3))
+        if x > pitch_width:
+            experiments = available_concept_experiments(state)
+            row = y - 6
+            if 0 <= row < len(experiments):
+                state.selected_experiment = row
+                if double_click:
+                    handle_concept_key(state, 10)
+        return
+
+    if state.modal == "design_review":
+        # Wheel adjusts the focused value; plain clicks move the cursor row.
+        project = state.studio.current_project
+        if project is None or project.stage != "design":
+            return
+        rows = design_review_rows(state)
+        row = y - 4
+        if 0 <= row < len(rows):
+            state.selected_design_focus = row
+        return
+
+
 
 
 def activate_title_choice(state: GameState) -> bool:
@@ -1234,7 +1207,7 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
         state.naming_game = False
         cycle_top_tab(state)
         return True
-    if state.modal == "new_game" and state.naming_game:
+    if state.modal in ("new_game", "design_review") and state.naming_game:
         if key in (10, 13, curses.KEY_ENTER):
             if state.draft_title.strip():
                 state.draft_title = state.draft_title.strip()
@@ -1272,8 +1245,12 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
         return True
     if key == curses.KEY_MOUSE and dimensions is not None:
         return handle_mouse(state, dimensions) is not False
-    if state.modal == "new_game":
-        handle_new_game_key(state, key)
+    if state.modal == "ideas":
+        handle_ideas_key(state, key)
+    elif state.modal == "concept":
+        handle_concept_key(state, key)
+    elif state.modal == "design_review":
+        handle_design_review_key(state, key)
     elif state.modal == "team":
         handle_team_key(state, key)
     elif state.modal == "contracts":
@@ -1317,7 +1294,9 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.modal = "update_planner"
             state.games_tab = 0
         elif key in (ord("n"), ord("N")):
-            open_new_game(state)
+            open_idea_shelf(state, "games")
+        elif key in (ord("c"), ord("C")) and project and project.stage == "concept" and state.selected_game == 0:
+            state.modal = "concept"
         elif key == curses.KEY_UP and entry_count:
             state.selected_game = (state.selected_game - 1) % entry_count
         elif key == curses.KEY_DOWN and entry_count:
@@ -1447,11 +1426,14 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
                 state.selected_stat = (state.selected_stat + (-1 if key == curses.KEY_UP else 1)) % count
     elif state.modal == "main":
         if key in (ord("n"), ord("N")):
-            open_new_game(state)
+            open_idea_shelf(state, "main")
         elif key in (ord("u"), ord("U")):
             state.modal = "upgrades"
         elif key in (ord("c"), ord("C")):
-            toggle_auto_contracts(state)
+            if state.studio.current_project and state.studio.current_project.stage == "concept":
+                state.modal = "concept"
+            else:
+                toggle_auto_contracts(state)
         elif key in (ord("j"), ord("J")):
             state.modal = "contracts"
     return True

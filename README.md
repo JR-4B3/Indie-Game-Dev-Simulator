@@ -36,16 +36,17 @@ Use a different save path for a new run:
 python main.py --save-file saves/my_studio.json
 ```
 
-Use `Ctrl+S` in-game to save. Saves are compatible with the current release only.
+Use `Ctrl+S` in-game to save. Saves are compatible with the current release only. Version 11 replaces the genre/theme wizard with the idea-driven pipeline; older saves cannot be migrated.
 
 ## Quick Tutorial
 
 1. Start on the **Hub**. Watch cash and runway: monthly payroll and operations are real costs.
 2. Press `J` for **Jobs**. Contracts provide early survival income, but use team capacity and can cause fatigue.
-3. Press `N` to plan a game. Begin with a Micro or Compact project, choose a genre, theme, plan, and storefront, then greenlight it.
-4. Press `U` for **Studio Development**. Research unlocks larger scopes, more genres/themes, promotion, online formats, DLC, better staffing, and automation.
-5. Press `T` for **Team**. Hire carefully, train people with `L`, and give tired staff a one-week vacation with `V`.
-6. After release, use the **Game** page for updates, promotion, sequels, spin-offs, and support level.
+3. Press `N` to open the **Idea Shelf**. Your team jots down rough game ideas over time; pick one and explore it in **Concept** by running experiments that produce findings.
+4. End Concept to review the **Design & Technical Plan**: choose a presentation direction, adjust the axes if you disagree with the team's advice, set scope, platforms, and monetization, then commit to production.
+5. Press `U` for **Studio Development**. Research unlocks larger scopes, more formats, promotion, online capabilities, better staffing, and automation.
+6. Press `T` for **Team**. Hire carefully, train people with `L`, and give tired staff a one-week vacation with `V`. Team skill and morale shape both the ideas they pitch and the advice they give.
+7. After release, use the **Game** page for updates, promotion, sequels, spin-offs, and support level. Releases spark follow-up ideas on the shelf.
 
 Micro games take roughly 3–6 months with a healthy minimum team. Blockbusters take roughly 6–7 years. Do not overcommit: games, contracts, updates, promotions, R&D, and live support share one studio capacity budget.
 
@@ -53,7 +54,7 @@ Micro games take roughly 3–6 months with a healthy minimum team. Blockbusters 
 
 - `Tab`: cycle Hub, Game, Team, Statistics
 - `H` / `G` / `T` / `S`: jump to a top-level page
-- `N`: new game, sequel, or spin-off
+- `N`: Idea Shelf (start a new game from a team idea; sequels and spin-offs grow from releases)
 - `J`: Jobs / contract board
 - `U`: Studio Development
 - `P`: Promotion Planning from Game

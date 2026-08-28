@@ -88,7 +88,7 @@ def draw_dashboard(screen: curses.window, state: GameState, width: int) -> int:
     if project is None:
         add_text(project_panel, 1, 2, "GAME", 4, curses.A_BOLD)
         add_text(project_panel, 1, 8, "No original game in production", right_width - 10)
-        add_text(project_panel, 2, 2, "Press N here or open Game with G to plan a release", right_width - 4)
+        add_text(project_panel, 2, 2, "Press N for the Idea Shelf; your team pitches rough ideas over time", right_width - 4)
         add_text(project_panel, 3, 2, f"Game Catalogue {len(studio.catalog)} | Promotion queue {len(studio.active_promotions)} | Update queue {len(studio.update_queue) + bool(studio.active_update)}", right_width - 4)
     else:
         phase_labels = {

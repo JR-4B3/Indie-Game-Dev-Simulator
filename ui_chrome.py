@@ -55,6 +55,9 @@ MODAL_TAB_INDEX = {
     "games": 1,
     "update_planner": 1,
     "new_game": 1,
+    "ideas": 1,
+    "concept": 1,
+    "design_review": 1,
     "marketing": 1,
     "team": 2,
     "analysis": 3,
@@ -153,32 +156,37 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
         return [("[N]" if compact else control_label("N", "New Game"), "new"), ("[J]" if compact else control_label("J", "Jobs"), "contracts"), ("[U]" if compact else control_label("U", "Upgrades"), "upgrades")]
     if state.modal == "finance":
         return [("[Bksp]" if compact else control_label("Backspace", "Hub"), "back"), ("[Up/Dn]" if compact else control_label("Up/Down", "Offer"), "finance_selection"), ("[Enter]" if compact else control_label("Enter", "Accept"), "finance_accept")]
-    if state.modal == "new_game":
+    if state.modal in ("new_game", "ideas"):
         if state.naming_game:
             return [("[Enter]" if compact else control_label("Enter", "Accept title"), "accept_title")]
-        if state.new_game_step == -2:
-            return [("[Bksp]" if compact else control_label("Backspace", "Project type"), "back"), ("[Up/Dn]" if dense else control_label("Up/Down", "Game"), "project_choice"), ("[Enter]" if compact else control_label("Enter", "Choose"), "confirm")]
-        if state.new_game_step == -1:
-            return [("[Bksp]" if compact else control_label("Backspace", "Catalogue"), "back"), ("[Up/Dn]" if dense else control_label("Up/Down", "Option"), "project_choice"), ("[Enter]" if compact else control_label("Enter", "Choose"), "confirm")]
-        panel_names = ("Genre", "Theme", "Production Plan", "Storefront")
-        if compact:
-            actions = [(control_label("Bksp", "Prev"), "back"), ("[Up/Dn]", "new_game_selection")]
-            if state.new_game_step in (0, 1):
-                actions.append(("[B]", "toggle_blend"))
-            actions.extend([("[E]", "type_title"), ("[R]", "random_title")])
-            if state.new_game_step == 3:
-                actions.append(("[T]", "toggle_platform"))
-            actions.append((control_label("Enter", "Green" if state.new_game_step == 3 else "Next"), "confirm"))
-        else:
-            actions = [(control_label("Backspace", "Previous"), "back"), (control_label("Up/Down", panel_names[state.new_game_step]), "new_game_selection")]
-            enter_label = control_label("Enter", "Greenlight" if state.new_game_step == 3 else "Next")
-            if state.new_game_step in (0, 1):
-                actions.append((control_label("B", "Blend"), "toggle_blend"))
-            elif state.new_game_step == 2:
-                actions.append((control_label("</>", "Change"), "new_game_adjust_right"))
-            if state.new_game_step == 3:
-                actions.append((control_label("T", "Multi-platform"), "toggle_platform"))
-            actions.extend([(control_label("E", "Edit title"), "type_title"), (control_label("R", "Random"), "random_title"), (enter_label, "confirm")])
+        actions = [("[Bksp]" if compact else control_label("Backspace", "Back"), "back")]
+        if state.studio.idea_shelf:
+            actions.append(("[Up/Dn]" if dense else control_label("Up/Down", "Idea"), "project_choice"))
+            actions.append(("[Enter]" if compact else control_label("Enter", "Open concept"), "open_concept"))
+            actions.append(("[D]" if compact else control_label("D", "Discard"), "discard_idea"))
+        return actions
+    if state.modal == "concept":
+        project = state.studio.current_project
+        actions = [("[Bksp]" if compact else control_label("Backspace", "Games"), "back")]
+        if project and project.stage == "concept":
+            if project.active_experiment:
+                actions.append(("[...]", "confirm"))
+            else:
+                actions.append(("[Up/Dn]" if dense else control_label("Up/Down", "Experiment"), "new_game_selection"))
+                actions.append(("[Enter]" if compact else control_label("Enter", "Run"), "run_experiment"))
+            actions.append(("[E]" if compact else control_label("E", "Design"), "end_concept"))
+            actions.append(("[S]" if compact else control_label("S", "Shelve"), "shelve_concept"))
+        return actions
+    if state.modal == "design_review":
+        if state.naming_game:
+            return [("[Enter]" if compact else control_label("Enter", "Accept title"), "accept_title")]
+        actions = [("[Bksp]" if compact else control_label("Backspace", "Concept"), "back"), ("[Up/Dn]" if dense else control_label("Up/Down", "Decision"), "new_game_selection")]
+        if state.tweak_presentation:
+            actions.append((control_label("</>", "Change"), "new_game_adjust_right"))
+        actions.extend([("[T]" if compact else control_label("T", "Tweak look"), "toggle_tweak"), ("[E]" if compact else control_label("E", "Title"), "type_title"), ("[R]" if compact else control_label("R", "Random"), "random_title")])
+        if not state.tweak_presentation:
+            actions.append(("[T]", "toggle_platform"))
+        actions.append((control_label("Enter", "Commit"), "commit_design"))
         return actions
     if state.modal == "team":
         hiring = state.team_tab == 0
@@ -285,7 +293,7 @@ def bottom_date_text(state: GameState, width: int) -> str:
 
 def horizontal_actions(state: GameState) -> tuple[str, str]:
     """What </> and Left/Right mean in the current context."""
-    if state.modal == "new_game" and state.new_game_step == 2:
+    if state.modal == "design_review":
         return "new_game_adjust_left", "new_game_adjust_right"
     if state.modal == "analysis":
         return "previous_view", "next_view"

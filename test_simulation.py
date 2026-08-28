@@ -1,4 +1,5 @@
 import curses
+import random
 import tempfile
 import unittest
 from copy import deepcopy
@@ -7,8 +8,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from game_data import GENRES, GOOD_MATCHES, TOPICS
-from main import CTRL_S, active_top_tab, bottom_time_layout, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_insolvency_popup, draw_main_content, draw_marketing_screen, draw_new_game, draw_screen, draw_settings_popup, draw_team_screen, footer_button_ranges, footer_layout, global_action_layout, handle_key, handle_mouse, handle_new_game_key, new_game_panel_geometry, open_new_game, parse_args, status_segments, team_layout, top_context_uses_second_row, top_control_layout, top_tab_actions, top_tab_layout
-from ui_newgame import topic_order
+from main import CTRL_S, active_top_tab, bottom_time_layout, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_insolvency_popup, draw_main_content, draw_marketing_screen, draw_idea_shelf, draw_concept_screen, draw_design_review, draw_screen, draw_settings_popup, draw_team_screen, footer_button_ranges, footer_layout, global_action_layout, handle_key, handle_mouse, open_idea_shelf, parse_args, status_segments, team_layout, top_context_uses_second_row, top_control_layout, top_tab_actions, top_tab_layout
+from ui_input import handle_ideas_key, handle_concept_key, handle_design_review_key, design_review_rows
+from simulation import start_experiment as _start_experiment  # noqa: F401
+from ui_newgame import shelf_rows
 from ui_upgrades import draw_upgrades
 from simulation import (
     ActiveSale,
@@ -28,16 +31,20 @@ from simulation import (
     activity_allocations,
     advance_days,
     advance_game,
+    begin_design_review,
     bump_version,
     buy_media_venture,
     buy_promotion,
     capacity_drains,
     chart_positions,
+    commit_design_plan,
+    concept_idea_view,
     contract_offer_eta_weeks,
     contract_weekly_output,
     cycle_work_priority,
     cycle_game_update_size,
     cycle_game_support,
+    develop_project,
     estimated_contract_weeks,
     estimated_update_weeks,
     franchise_by_id,
@@ -45,6 +52,7 @@ from simulation import (
     game_total_cost,
     hire_candidate,
     has_research,
+    idea_engine,
     load_game,
     market_chart,
     market_report,
@@ -61,12 +69,32 @@ from simulation import (
     research_by_key,
     research_work_requirement,
     save_game,
+    shelve_concept,
+    start_concept_project,
+    start_experiment,
     start_project,
     start_employee_vacation,
     state_from_data,
     state_to_data,
     toggle_auto_contracts,
 )
+
+
+def force_idea(state: GameState, genre: str = "Action", topic: str = "Ninjas", **kwargs):
+    """Deterministic shelf idea for tests (replaces the old genre/theme wizard)."""
+    import random as _random
+    idea = idea_engine.force_idea(state.studio, state.clock.week, _random.Random(state.studio.seed + state.clock.week + state.studio.next_idea_id), genre, topic)
+    for key, value in kwargs.items():
+        setattr(idea, key, value)
+    return idea
+
+
+def begin_design(state: GameState) -> None:
+    """Push the standing concept project into the design stage (headless)."""
+    project = state.studio.current_project
+    project.stage = "design"
+    project.gdd["presentation_options"] = idea_engine.presentation_packages(concept_idea_view(project))
+    project.gdd["team_advice"] = []
 
 
 def advance(state: GameState, weeks: int) -> None:
@@ -146,6 +174,25 @@ def rendered_new_game_text(state: GameState, width: int, height: int) -> list[st
     return [call.args[2] for window in windows for call in window.addstr.call_args_list]
 
 
+def rendered_pipeline_text(state: GameState, width: int, height: int) -> list[str]:
+    """Render whichever pipeline screen the modal points at."""
+    windows = []
+
+    def create_window(panel_height, panel_width, _y=0, _x=0):
+        window = MagicMock()
+        window.getmaxyx.return_value = (panel_height, panel_width)
+        window.derwin.side_effect = create_window
+        windows.append(window)
+        return window
+
+    screen = create_window(height, width)
+    drawers = {"ideas": draw_idea_shelf, "concept": draw_concept_screen, "design_review": draw_design_review}
+    drawer = drawers[state.modal]
+    with patch("main.curses.color_pair", return_value=0):
+        drawer(screen, state, width, height)
+    return [call.args[2] for window in windows for call in window.addstr.call_args_list]
+
+
 def rendered_main_content_text(state: GameState, width: int, height: int) -> list[str]:
     screen = MagicMock()
     windows = []
@@ -196,7 +243,7 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(hub_labels, {"new": "[N]ew Game", "contracts": "[J]obs", "upgrades": "[U]pgrades"})
         hub_new_game = GameState()
         handle_key(hub_new_game, ord("n"))
-        self.assertEqual((hub_new_game.modal, hub_new_game.new_game_step), ("new_game", -1))
+        self.assertEqual(hub_new_game.modal, "ideas")
         handle_key(state, 9)
         self.assertEqual(state.modal, "games")
         self.assertEqual([label for label, _ in top_tab_actions(state)], ["[H]ub", ">[G]ame<", "[T]eam", "[S]tatistics"])
@@ -498,192 +545,149 @@ class SimulationTests(unittest.TestCase):
         handle_key(state, 9)
         self.assertEqual(state.modal, "team")
 
-    def test_new_game_uses_enter_next_and_backspace_previous_before_greenlight(self) -> None:
+    def test_shelf_concept_and_design_pipeline_replaces_the_wizard(self) -> None:
         state = GameState()
-        state.modal = "new_game"
-        state.new_game_step = 0
-        genre_before = state.selected_genre
-        top_height, genre_width, theme_width, plan_width, storefront_height = new_game_panel_geometry(190, 50)
-        self.assertEqual((top_height, genre_width, theme_width, plan_width, storefront_height), (35, 28, 32, 128, 11))
-        self.assertGreater(plan_width, genre_width + theme_width)
+        idea = force_idea(state, genre="Action", topic="Ninjas")
+        state.studio.idea_shelf.append(idea)
+        state.studio.next_idea_id += 1
+        state.modal = "ideas"
 
-        screen = MagicMock()
-        genre_panel = MagicMock()
-        theme_panel = MagicMock()
-        plan_panel = MagicMock()
-        storefront_panel = MagicMock()
-        genre_panel.getmaxyx.return_value = (35, 28)
-        theme_panel.getmaxyx.return_value = (35, 32)
-        plan_panel.getmaxyx.return_value = (46, 128)
-        storefront_panel.getmaxyx.return_value = (11, 61)
-        screen.derwin.side_effect = [genre_panel, theme_panel, plan_panel, storefront_panel]
-        with patch("main.curses.color_pair", return_value=0):
-            draw_new_game(screen, state, 190, 50)
-        self.assertEqual([item.args for item in screen.derwin.call_args_list], [(35, 28, 2, 0), (35, 32, 2, 29), (46, 128, 2, 62), (11, 61, 37, 0)])
-        storefront_text = [item.args[2] for item in storefront_panel.addstr.call_args_list]
-        self.assertTrue(any("STORE" in text and "CUT" in text and "COST" in text for text in storefront_text))
-        self.assertTrue(any("Steam" in text and "30%" in text and "$" in text for text in storefront_text))
-        self.assertTrue(any("itch.io" in text for text in storefront_text))
+        footer = {action: label for label, action, _ in footer_layout(state, 190)}
+        self.assertEqual(footer["open_concept"], "[Enter] Open concept")
 
-        handle_new_game_key(state, curses.KEY_DOWN)
-        self.assertNotEqual(state.selected_genre, genre_before)
-        handle_new_game_key(state, ord(","))
-        handle_new_game_key(state, ord("."))
-        self.assertEqual(state.new_game_step, 0)
-        handle_new_game_key(state, 10)
-        self.assertEqual(state.new_game_step, 1)
-        labels = {action: label for label, action, _ in footer_layout(state, 190)}
-        self.assertEqual(labels["back"], "[Backspace] Previous")
-        self.assertEqual(labels["new_game_selection"], "[Up/Down] Theme")
-        self.assertEqual(labels["confirm"], "[Enter] Next")
-        self.assertEqual(labels["type_title"], "[E]dit title")
-        self.assertEqual(labels["random_title"], "[R]andom")
-        self.assertNotIn("next_new_game_panel", labels)
-        self.assertNotIn("previous_new_game_panel", labels)
+        # Selecting an idea opens the concept stage and removes it from the shelf.
+        handle_ideas_key(state, 10)
+        project = state.studio.current_project
+        self.assertIsNotNone(project)
+        self.assertEqual(project.stage, "concept")
+        self.assertEqual(state.modal, "concept")
+        self.assertEqual(len(state.studio.idea_shelf), 0)
 
-        handle_new_game_key(state, 10)
-        self.assertEqual(state.new_game_step, 2)
-        self.assertIsNone(state.studio.current_project)
+        # Concept renders the pitch and the experiment list.
+        text = rendered_pipeline_text(state, 190, 50)
+        self.assertTrue(any("The Pitch" in line for line in text))
+        self.assertTrue(any("Unanswered" in line for line in text))
+        self.assertTrue(any("Paper prototype" in line for line in text))
+
+        # Running an experiment produces a finding, not a guaranteed boost.
+        start_experiment(state, "paper_prototype")
+        self.assertTrue(project.active_experiment)
+        for day in range(6):
+            develop_project(state, day, week_end=False, workday=True)
+        self.assertFalse(project.active_experiment)
+        self.assertEqual(len(project.gdd["findings"]), 1)
+
+        # Ending concept opens the paused design review.
         labels = {action: label for label, action, _ in footer_layout(state, 190)}
-        self.assertEqual(labels["new_game_selection"], "[Up/Down] Production Plan")
-        self.assertEqual(labels["confirm"], "[Enter] Next")
-        self.assertEqual([action for _, action, _ in bottom_time_layout(state, 190)], ["new_game_adjust_left", "pause", "new_game_adjust_right"])
-        speed_before = state.time_speed_index
-        scope_before = state.selected_scope
-        handle_key(state, curses.KEY_RIGHT)
-        self.assertNotEqual(state.selected_scope, scope_before)
-        self.assertEqual(state.time_speed_index, speed_before)
-        handle_new_game_key(state, 10)
-        self.assertEqual(state.new_game_step, 3)
-        self.assertIsNone(state.studio.current_project)
-        labels = {action: label for label, action, _ in footer_layout(state, 190)}
-        self.assertEqual(labels["new_game_selection"], "[Up/Down] Storefront")
-        self.assertEqual(labels["confirm"], "[Enter] Greenlight")
-        self.assertNotIn("new_game_adjust", labels)
-        self.assertEqual([action for _, action, _ in bottom_time_layout(state, 190)], ["slower", "pause", "faster"])
-        handle_new_game_key(state, curses.KEY_BACKSPACE)
-        self.assertEqual(state.new_game_step, 2)
-        state.selected_scope = 0
-        handle_new_game_key(state, 10)
-        handle_new_game_key(state, 10)
-        self.assertIsNotNone(state.studio.current_project)
+        self.assertEqual(labels["end_concept"], "[E] Design")
+        begin_design_review(state)
+        self.assertEqual(project.stage, "design")
+        self.assertEqual(state.modal, "design_review")
+        self.assertEqual(state.time_speed_index, 0)
+
+        # Design review shows presentation packages and team advice.
+        text = rendered_pipeline_text(state, 190, 50)
+        self.assertTrue(any("PRESENTATION DIRECTION" in line for line in text))
+        self.assertTrue(any("TEAM ADVICE" in line for line in text))
+        self.assertTrue(any("COMMIT TO PRODUCTION" in line for line in text))
+
+        # Committing moves the project into Development.
+        commit_design_plan(state)
+        self.assertEqual(project.stage, "development")
         self.assertEqual(state.modal, "games")
-        text = rendered_games_text(state, 190, 36)
-        self.assertTrue(any(state.studio.current_project.title in line and "dev" in line for line in text))
-        self.assertTrue(any("CAPACITY" in line for line in text))
-
-        chooser = GameState(modal="new_game", new_game_step=-1)
-        handle_new_game_key(chooser, curses.KEY_BACKSPACE)
-        self.assertEqual(chooser.modal, "games")
+        self.assertGreater(project.total_work, 0)
+        self.assertTrue(project.gdd["history"])
 
     def test_locked_planning_options_are_skipped(self) -> None:
-        state = GameState(modal="new_game", new_game_step=2)
-        state.selected_focus = 1  # Game format
+        state = GameState()
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+        begin_design(state)
+        state.modal = "design_review"
+
+        rows = design_review_rows(state)
+        format_row = next(index for index, (kind, key) in enumerate(rows) if key == "selected_format")
+        state.selected_design_focus = format_row
         selected_format = state.selected_format
-        handle_new_game_key(state, curses.KEY_RIGHT)
+        handle_design_review_key(state, curses.KEY_RIGHT)
         self.assertEqual(state.selected_format, selected_format)
 
-        state.selected_focus = 6  # Marketing
+        marketing_row = next(index for index, (kind, key) in enumerate(rows) if key == "selected_marketing")
+        state.selected_design_focus = marketing_row
         selected_marketing = state.selected_marketing
-        handle_new_game_key(state, curses.KEY_RIGHT)
+        handle_design_review_key(state, curses.KEY_RIGHT)
         self.assertEqual(state.selected_marketing, selected_marketing)
 
-    def test_blend_mode_switches_list_to_secondary_selection(self) -> None:
-        state = GameState(modal="new_game", new_game_step=0)
-        state.selected_genre = 0
-        state.selected_secondary_genre = 0
+        scope_row = next(index for index, (kind, key) in enumerate(rows) if key == "selected_scope")
+        state.selected_design_focus = scope_row
+        handle_design_review_key(state, curses.KEY_RIGHT)
+        self.assertNotEqual(state.selected_scope, 0)  # unlocked options cycle freely
 
-        handle_new_game_key(state, ord("b"))
-        self.assertTrue(state.mix_blend)
-        text = rendered_new_game_text(state, 190, 50)
-        self.assertTrue(any(line.startswith("BLEND") for line in text))
-        handle_new_game_key(state, curses.KEY_DOWN)
-        self.assertEqual(state.selected_genre, 0)
-        self.assertEqual(state.selected_secondary_genre, 1)
+    def test_idea_quality_reflects_fatigue_and_morale(self) -> None:
+        state = GameState()
+        founder = state.studio.team[0]
+        rested = force_idea(state)
+        self.assertGreaterEqual(rested.clarity, 0.4)
+        founder.fatigue = 95
+        founder.morale = 10
+        import random as _random
+        exhausted = [idea_engine.generate_idea(state.studio, 3, _random.Random(17 + attempt), founder) for attempt in range(6)]
+        self.assertLess(max(idea.clarity for idea in exhausted), rested.clarity)
 
-        handle_new_game_key(state, ord("b"))
-        self.assertFalse(state.mix_blend)
-        self.assertEqual(state.selected_secondary_genre, 0)
-        handle_new_game_key(state, curses.KEY_DOWN)
-        self.assertEqual(state.selected_genre, 1)
-        self.assertEqual(state.selected_secondary_genre, 1)
+    def test_shelf_ideas_cool_then_go_dormant(self) -> None:
+        state = GameState()
+        idea = force_idea(state)
+        idea.created_week = 0
+        idea.cool_at_week = 6
+        idea.status = "cooling"
+        state.studio.idea_shelf.append(idea)
+        state.clock.week = 8
+        rng = random.Random(1)
+        idea_engine.process_ideas_week(state.studio, state.clock.week, rng, state.log)
+        self.assertEqual(idea.status, "dormant")
+        self.assertTrue(any("cooled off" in entry for entry in state.logs))
+        self.assertIn("dormant", idea.signal_words())
 
-        handle_new_game_key(state, ord("b"))
-        handle_new_game_key(state, curses.KEY_DOWN)
-        handle_new_game_key(state, 10)
-        self.assertFalse(state.mix_blend)
-        self.assertEqual(state.new_game_step, 0)
-        self.assertEqual(state.selected_secondary_genre, GENRES.index("Platformer"))
-        handle_new_game_key(state, 10)
-        self.assertEqual(state.new_game_step, 1)
+    def test_concept_without_experiments_warns_on_design(self) -> None:
+        state = GameState()
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+        warnings_before = sum(1 for entry in state.logs if "untested concept" in entry)
+        begin_design_review(state)
+        self.assertEqual(sum(1 for entry in state.logs if "untested concept" in entry), warnings_before + 1)
 
-        handle_new_game_key(state, ord("b"))
-        primary_topic = state.selected_topic
-        handle_new_game_key(state, curses.KEY_DOWN)
-        self.assertEqual(state.selected_topic, primary_topic)
-        self.assertNotEqual(state.selected_secondary_topic, primary_topic)
-        handle_new_game_key(state, 10)
-        self.assertEqual(state.new_game_step, 1)
-        self.assertNotEqual(state.selected_secondary_topic, primary_topic)
+    def test_design_review_presentation_tweak_changes_work_multiplier(self) -> None:
+        state = GameState()
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+        begin_design(state)
+        packages = state.studio.current_project.gdd["presentation_options"]
+        base_work = packages[0]["work"]
+        state.design_tweaks = {"form": "Full 3D", "movement": "Free 3D"}
+        resolved = idea_engine.resolve_presentation_choice(state, packages)
+        self.assertEqual(resolved["form"], "Full 3D")
+        self.assertGreater(resolved["work"], base_work)
 
-        labels = {action: label for label, action, _ in footer_layout(GameState(modal="new_game", new_game_step=0), 190)}
-        self.assertEqual(labels["toggle_blend"], "[B]lend")
+    def test_shelve_concept_returns_idea_to_shelf(self) -> None:
+        state = GameState()
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+        project = state.studio.current_project
+        self.assertTrue(shelve_concept(state))
+        self.assertIsNone(state.studio.current_project)
+        self.assertEqual(len(state.studio.idea_shelf), 1)
+        self.assertEqual(state.studio.idea_shelf[0].title, project.title)
+        self.assertEqual(state.modal, "ideas")
 
-    def test_primary_navigation_does_not_create_a_blend(self) -> None:
-        state = GameState(modal="new_game", new_game_step=0)
-        handle_new_game_key(state, curses.KEY_DOWN)
-        self.assertEqual(state.selected_secondary_genre, state.selected_genre)
-        genre = state.selected_genre
-        handle_new_game_key(state, curses.KEY_RIGHT)
-        self.assertEqual((state.selected_genre, state.selected_secondary_genre), (genre, genre))
-
-        handle_new_game_key(state, 10)
-        handle_new_game_key(state, curses.KEY_DOWN)
-        self.assertEqual(state.selected_secondary_topic, state.selected_topic)
-        topic = state.selected_topic
-        handle_new_game_key(state, curses.KEY_RIGHT)
-        self.assertEqual((state.selected_topic, state.selected_secondary_topic), (topic, topic))
-
-    def test_long_confirmed_blend_keeps_plus_in_panel_border(self) -> None:
-        state = GameState(modal="new_game", new_game_step=0)
-        unlock(state, "genre_systems")
-        state.selected_genre = GENRES.index("Building Game")
-        state.selected_secondary_genre = GENRES.index("Economic Simulation")
-        text = rendered_new_game_text(state, 190, 50)
-        self.assertTrue(any(line.startswith("+ Economic") for line in text))
-
-    def test_plan_options_tray_lists_field_choices(self) -> None:
-        state = GameState(modal="new_game", new_game_step=2)
-        text = rendered_new_game_text(state, 190, 50)
-        self.assertTrue(any("Options" in line for line in text))
-        self.assertTrue(any("Blockbuster" in line for line in text))
-        self.assertTrue(any("<Micro>" in line for line in text))
-        state.selected_focus = 2
-        text = rendered_new_game_text(state, 190, 50)
-        self.assertTrue(any("Kids & families" in line for line in text))
-        self.assertFalse(any("Trade-off" in line for line in text))
-
-    def test_compact_new_game_keeps_readiness_workload_and_brief_visible(self) -> None:
-        state = GameState(modal="new_game", new_game_step=2)
-        text = rendered_new_game_text(state, 74, 24)
-        self.assertTrue(any("WORKLOAD" in line for line in text))
-        self.assertTrue(any("BRIEF" in line for line in text))
-        self.assertTrue(any(label in line for line in text for label in ("PRODUCTION READY", "HIGH FAILURE RISK", "LOCKED")))
-
-    def test_last_visible_genre_and_theme_rows_are_clickable(self) -> None:
-        state = GameState(modal="new_game", new_game_step=0)
-        unlock(state, "genre_story", "genre_systems", "genre_action", "genre_indie", "theme_library_1", "theme_library_2", "theme_library_3", "theme_library_4")
-        with patch("main.curses.getmouse", return_value=(0, 10, 34, 0, curses.BUTTON1_CLICKED)):
+    def test_shelf_rows_are_clickable(self) -> None:
+        state = GameState()
+        for index in range(3):
+            state.studio.idea_shelf.append(force_idea(state))
+            state.studio.next_idea_id += 1
+        state.modal = "ideas"
+        with patch("main.curses.getmouse", return_value=(0, 10, 7, 0, curses.BUTTON1_CLICKED)):
             handle_mouse(state, (50, 190))
-        self.assertEqual(state.selected_genre, len(GENRES) - 1)
-        self.assertEqual(state.selected_secondary_genre, len(GENRES) - 1)
-
-        state.new_game_step = 1
-        with patch("main.curses.getmouse", return_value=(0, 30, 35, 0, curses.BUTTON1_CLICKED)):
-            handle_mouse(state, (50, 190))
-        order = topic_order(state)
-        self.assertEqual(TOPICS[state.selected_topic], order[31][0])
-        self.assertEqual(state.selected_secondary_topic, state.selected_topic)
+        self.assertEqual(state.selected_idea, 2)
 
     def test_large_roster_scrolls_and_mouse_uses_visible_window(self) -> None:
         state = GameState(modal="team", team_tab=1)
@@ -999,7 +1003,8 @@ class SimulationTests(unittest.TestCase):
         advance(state, 1)
         project = state.studio.current_project
         self.assertIsNotNone(project, "defects found during development trigger a bug-fixing phase before release")
-        self.assertEqual(project.phase, "Bug fixing")
+        self.assertEqual(project.phase, "Testing")
+        self.assertEqual(project.stage, "testing")
         self.assertGreater(project.bug_work, 0)
         weeks_in_qa = 0
         while state.studio.current_project is not None and weeks_in_qa < 40:
@@ -1017,7 +1022,7 @@ class SimulationTests(unittest.TestCase):
             state.clock.week += 1
             advance_game(state, 1)
         self.assertGreater(game.known_bugs, known_after_launch, "hidden bugs surface quickly after release")
-        self.assertTrue(any("bug fixing" in message for message in state.logs))
+        self.assertTrue(any("entered testing" in message for message in state.logs))
 
     def test_bigger_teams_create_more_defects(self) -> None:
         solo = GameState()
@@ -1355,7 +1360,7 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(any("Cancelled" in line and "20%" in line for line in state.logs))
 
         handle_key(state, ord("n"))
-        self.assertEqual(state.modal, "new_game")
+        self.assertEqual(state.modal, "ideas")
 
     def test_cancel_project_popup_keep_leaves_project_intact(self) -> None:
         state = GameState()
@@ -1751,13 +1756,15 @@ class SimulationTests(unittest.TestCase):
         new_x, new_y = top_action_target(state, 120, "new")
         with patch("main.curses.getmouse", return_value=(0, new_x, new_y, 0, curses.BUTTON1_CLICKED)):
             handle_mouse(state, (36, 120))
-        self.assertEqual(state.modal, "new_game")
-        self.assertEqual(state.new_game_step, -1)
+        self.assertEqual(state.modal, "ideas")
 
-        choose_x, choose_y = top_action_target(state, 120, "confirm")
+        state.studio.idea_shelf.append(force_idea(state))
+        state.studio.next_idea_id += 1
+        choose_x, choose_y = top_action_target(state, 120, "open_concept")
         with patch("main.curses.getmouse", return_value=(0, choose_x, choose_y, 0, curses.BUTTON1_CLICKED)):
             handle_mouse(state, (36, 120))
-        self.assertEqual(state.new_game_step, 0)
+        self.assertEqual(state.modal, "concept")
+        self.assertIsNotNone(state.studio.current_project)
 
     def test_top_bar_mouse_can_open_board_and_accept_a_single_contract(self) -> None:
         state = GameState()
@@ -1852,51 +1859,49 @@ class SimulationTests(unittest.TestCase):
             self.assertTrue(screen.clear.called)
         game_main._LAYOUT_STATE = None
 
-    def test_theme_list_is_tiered_by_market_signal(self) -> None:
-        from ui_newgame import select_topic_at, topic_order, topic_position
-
+    def test_theme_ideas_carry_market_identity(self) -> None:
         state = GameState()
-        unlock(state, "theme_library_1", "theme_library_2", "theme_library_3", "theme_library_4")
-        state.selected_genre = GENRES.index("Action")
-        order = topic_order(state)
-        self.assertEqual(len(order), 303)
-        self.assertEqual(order[0][1], "fit")
-        self.assertEqual(order[-1][1], "rest")
-        self.assertNotIn(order[-1][0], GOOD_MATCHES["Action"])
-        self.assertEqual(topic_position(state, order), 0)
-
-        state.studio.topic_fans["Zombies"] = 5_000
-        state.studio.topic_fans["Ants"] = 1_200
-        order = topic_order(state)
-        self.assertEqual([topic for topic, _ in order[:2]], ["Zombies", "Ants"])
-        self.assertEqual(order[0][1], "strong")
-        position = next(index for index, (topic, _) in enumerate(order) if topic == "Zombies")
-        select_topic_at(state, order, position)
-        self.assertEqual(TOPICS[state.selected_topic], "Zombies")
+        idea = force_idea(state, genre="Action", topic="Zombies")
+        state.studio.idea_shelf.append(idea)
+        state.modal = "ideas"
+        text = rendered_pipeline_text(state, 190, 50)
+        self.assertTrue(any(idea.title in line for line in text))
+        self.assertTrue(any("clear fantasy" in line or "vague" in line or "incoherent" in line for line in text))
 
     def test_custom_title_and_sequel_lineage_are_persistent(self) -> None:
         state = GameState()
-        state.modal = "new_game"
-        handle_new_game_key(state, ord("e"))
+        state.studio.idea_shelf.append(force_idea(state))
+        state.modal = "design_review"  # naming happens during the design review
+        state.studio.current_project = None
+        # Start the first game through the shelf and rename it in design review.
+        handle_ideas_key(state, 10)
+        project = state.studio.current_project
+        project.stage = "design"
+        project.gdd["presentation_options"] = idea_engine.presentation_packages(concept_idea_view(project))
+        state.modal = "design_review"
+        handle_design_review_key(state, ord("e"))
         for character in "My First Commercial Game":
             handle_key(state, ord(character))
         handle_key(state, 10)
-        self.assertTrue(start_project(state))
+        commit_design_plan(state)
         advance(state, 40)
 
         original = state.studio.catalog[-1]
         self.assertEqual(original.title, "My First Commercial Game")
         self.assertGreater(state.studio.genre_fans[original.genre], 0)
 
-        open_new_game(state)
-        self.assertEqual(state.new_game_step, -1)
-        handle_new_game_key(state, curses.KEY_DOWN)
-        handle_new_game_key(state, 10)
-        self.assertEqual(state.new_game_step, -2)
-        handle_new_game_key(state, 10)
+        # The release plants an inspired idea on the shelf; selecting it
+        # continues the franchise with a drafted sequel title.
+        state.studio.idea_shelf.clear()
+        idea_engine.inspire_from_release(state.studio, state.clock.week, random.Random(5), original, state.log)
+        open_idea_shelf(state)
+        self.assertEqual(state.modal, "ideas")
+        self.assertTrue(any(idea.inspiration_game_id == original.game_id for idea in state.studio.idea_shelf))
+        inspired = next(index for index, item in enumerate(state.studio.idea_shelf) if item.inspiration_game_id == original.game_id)
+        state.selected_idea = inspired
+        handle_ideas_key(state, 10)
         self.assertEqual(state.draft_title, "My First Commercial Game II")
-        self.assertEqual(state.new_game_step, 2)
-        self.assertTrue(start_project(state))
+        self.assertTrue(commit_design_plan(state))
         self.assertEqual(state.studio.current_project.sequel_of, original.game_id)
         self.assertEqual(state.studio.current_project.generation, 2)
         with tempfile.TemporaryDirectory() as directory:
@@ -1908,11 +1913,6 @@ class SimulationTests(unittest.TestCase):
         loaded.studio.current_project.work_done = loaded.studio.current_project.total_work - 1
         advance(loaded, 1)
         self.assertEqual(loaded.studio.catalog[-1].title, "My First Commercial Game II")
-        open_new_game(loaded)
-        handle_new_game_key(loaded, curses.KEY_DOWN)
-        handle_new_game_key(loaded, 10)
-        handle_new_game_key(loaded, 10)
-        self.assertEqual(loaded.draft_title, "My First Commercial Game III")
 
     def test_modern_mixed_concept_has_market_position_and_capability_gates(self) -> None:
         state = GameState()
@@ -2370,8 +2370,6 @@ class SimulationTests(unittest.TestCase):
         state.draft_title = "The Toys Animal Story"
         state.selected_secondary_topic = (state.selected_topic + 1) % len(TOPICS)
         state.selected_creative_primary = (state.selected_creative_primary + 1) % 4
-        state.new_game_step = 0
-        handle_new_game_key(state, curses.KEY_DOWN)
         self.assertEqual(state.sequel_game_id, game.game_id)
         self.assertEqual(state.spinoff_franchise_id, franchise.franchise_id)
         self.assertTrue(start_project(state))

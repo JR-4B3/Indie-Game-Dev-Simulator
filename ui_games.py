@@ -505,20 +505,29 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
         right_x = 4 + left_inner
         right_inner = overview_width - right_x - 2
         add_text(overview, 1, 2, project.title, left_inner, curses.A_BOLD)
+        from ui_newgame import stage_banner_line
+        ribbon, ribbon_offset = stage_banner_line(project.stage, overview_width)
+        add_text(overview, 2, 2, ribbon, left_inner, curses.color_pair(6))
+        if ribbon_offset >= 0:
+            span = len(ribbon[ribbon_offset:].split(" > ")[0])
+            add_text(overview, 2, 2 + ribbon_offset, ribbon[ribbon_offset:ribbon_offset + span], min(span, left_inner - ribbon_offset), curses.color_pair(3) | curses.A_BOLD)
         genre_mix = project.genre if project.secondary_genre == project.genre else f"{project.genre} + {project.secondary_genre}"
         topic_mix = project.topic if project.secondary_topic == project.topic else f"{project.topic} + {project.secondary_topic}"
-        add_text(overview, 2, 2, f"{genre_mix} | {topic_mix}", left_inner)
+        add_text(overview, 3, 2, f"{genre_mix} | {topic_mix}", left_inner)
         bar_width = max(10, left_inner - len(project.phase) - 8)
         bar_value = project.bug_progress if project.bug_work else project.progress
-        add_text(overview, 3, 2, f"{project.phase} [{meter(bar_value, 1, bar_width)}] {bar_value:>4.0%}", left_inner, curses.color_pair(4))
+        add_text(overview, 4, 2, f"{project.phase} [{meter(bar_value, 1, bar_width)}] {bar_value:>4.0%}", left_inner, curses.color_pair(4))
         plan_text = f"PLAN  Week {project.weeks} | about {remaining}w left / {project.planned_weeks}w planned"
         if project.bug_work:
             plan_text += f" | {project.bugs_to_clear} bugs to clear"
-        add_text(overview, 4, 2, plan_text, left_inner)
-        add_text(overview, 5, 2, f"{project.scope} / {project.channel} / {project.monetization} / {money(project.price)} | {project.target_audience}", left_inner)
+        add_text(overview, 5, 2, plan_text, left_inner)
+        add_text(overview, 6, 2, f"{project.scope} / {project.channel} / {project.monetization} / {money(project.price)} | {project.target_audience}", left_inner)
         tracked_cost = project.production_cost + project.labor_cost + project.marketing_cost
-        add_text(overview, 6, 2, f"Tracked cost {money(tracked_cost)} | Marketing {money(project.marketing_cost)}", left_inner)
-        add_text(overview, 8, 2, "CAPACITY", left_inner, curses.A_BOLD)
+        add_text(overview, 7, 2, f"Tracked cost {money(tracked_cost)} | Marketing {money(project.marketing_cost)}", left_inner)
+        if project.stage == "concept":
+            add_text(overview, 8, 2, "CONCEPT: run experiments, then E ends concept and opens the design review.", left_inner, curses.color_pair(3) | curses.A_BOLD)
+        else:
+            add_text(overview, 8, 2, "CAPACITY", left_inner, curses.A_BOLD)
         add_text(overview, 9, 2, f"{weekly_output:.1f} work/wk | Team {len(state.studio.team)}", left_inner)
         shown_drains = drains[:4]
         if shown_drains:

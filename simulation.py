@@ -4,12 +4,14 @@ import json
 import math
 import random
 import secrets
+import types
 from dataclasses import asdict, dataclass, field, replace
 from datetime import date, timedelta
 from pathlib import Path
 
 from game_data import GENRES, GENRE_PROFILES, GOOD_MATCHES, TOPICS
 from sim_core.events import emit_event
+from sim_core import ideas as idea_engine
 from sim_core.finance import (
     financing_inflow,
     forward_runway_months,
@@ -19,6 +21,7 @@ from sim_core.finance import (
     record_transaction,
 )
 from sim_core.market import COHORTS, DemandResult, MacroSnapshot, ProductOffer, allocate_weekly_demand
+from sim_core.ideas import RoughIdea
 from sim_core.products import (
     ANNOUNCEMENT_STRATEGIES,
     COMMUNITY_ACTIONS,
@@ -32,7 +35,7 @@ from sim_core.products import (
 )
 
 
-SAVE_VERSION = 10
+SAVE_VERSION = 11
 START_DATE = date.today()
 SECONDS_PER_WEEK = 120.0
 SECONDS_PER_DAY = SECONDS_PER_WEEK / 7
@@ -535,10 +538,16 @@ class Project:
     cultural_resonance: dict[str, float] = field(default_factory=dict)
     forecast_work_low: int = 0
     forecast_work_high: int = 0
+    stage: str = "development"  # concept | design | development | testing | gold
+    gdd: dict = field(default_factory=dict)
+    idea_id: int = 0
+    inspiration_game_id: int | None = None
+    active_experiment: str = ""
+    experiment_days_left: int = 0
 
     @property
     def progress(self) -> float:
-        return min(1.0, self.work_done / self.total_work)
+        return min(1.0, self.work_done / max(1.0, self.total_work))
 
     @property
     def bug_progress(self) -> float:
@@ -556,8 +565,16 @@ class Project:
 
     @property
     def phase(self) -> str:
+        if self.stage == "concept":
+            return "Concept"
+        if self.stage == "design":
+            return "Design & Technical Plan"
+        if self.stage == "testing":
+            return "Testing"
+        if self.stage == "gold":
+            return "Ready for release"
         if self.bug_work > 0:
-            return "Bug fixing"
+            return "Testing"
         progress = self.progress
         if progress < 0.12:
             return "Prototype"
@@ -568,6 +585,22 @@ class Project:
         if progress < 0.90:
             return "Alpha / content lock"
         return "Beta / release prep"
+
+    def gdd_history(self, week: int, entry: str) -> None:
+        """Append a dated line to the living design document."""
+        history = self.gdd.setdefault("history", [])
+        history.append({"week": week, "entry": entry})
+
+    def add_finding(self, finding: dict) -> None:
+        self.gdd.setdefault("findings", []).append(finding)
+
+    def finding_flags(self) -> dict:
+        merged: dict = {}
+        for finding in self.gdd.get("findings", []):
+            for key, value in finding.get("flags", {}).items():
+                if value is not None:
+                    merged[key] = value
+        return merged
 
 
 @dataclass
@@ -986,6 +1019,8 @@ class Studio:
     active_community_actions: list[dict] = field(default_factory=list)
     community_cooldowns: dict[str, int] = field(default_factory=dict)
     itch_releases: int = 0
+    idea_shelf: list[RoughIdea] = field(default_factory=list)
+    next_idea_id: int = 1
 
 
 @dataclass
@@ -1060,6 +1095,13 @@ class GameState:
     sequel_game_id: int | None = None
     spinoff_franchise_id: int | None = None
     new_game_kind: str = ""
+    selected_idea: int = 0
+    selected_experiment: int = 0
+    selected_presentation: int = 0
+    selected_design_focus: int = 0
+    tweak_presentation: bool = False
+    design_tweaks: dict = field(default_factory=dict)
+    shelf_origin: str = "main"
     time_speed_index: int = 1
     resume_speed_index: int = 1
     save_path: str = "saves/gamedev_save.json"
@@ -1107,6 +1149,12 @@ class GameState:
         state.selected_platforms = []
         state.selected_monetization = next(index for index, model in enumerate(MONETIZATION_MODELS) if model["key"] == "donationware")
         state.selected_scope = next(index for index, scope in enumerate(SCOPES) if scope["name"] == "Bite-size")
+        # The founder starts with one rough idea so the first session has a choice.
+        founder = state.studio.team[0]
+        state.studio.idea_shelf.append(idea_engine.generate_idea(
+            state.studio, state.clock.week, random.Random(seed ^ 0x5EED), founder,
+        ))
+        state.studio.next_idea_id += 1
         return state
 
 
@@ -2014,12 +2062,19 @@ def plan_requirements(state: GameState) -> list[str]:
     unlock_requirements = (
         research_requirement_for_scope(state.selected_scope),
         research_requirement_for_format(state.selected_format),
-        research_requirement_for_genre(GENRES[state.selected_genre]),
-        research_requirement_for_topic(TOPICS[state.selected_topic]),
         research_requirement_for_channel(state.selected_channel),
         research_requirement_for_marketing(state.selected_marketing),
         research_requirement_for_strategy(state.selected_release_strategy),
     )
+    project = studio.current_project
+    if project is None or project.stage not in ("concept", "design"):
+        # Genre/theme unlocks only gate player-authored plans. Ideas that the
+        # team produced are the team's own capability, not a purchased option.
+        unlock_requirements = (
+            research_requirement_for_genre(GENRES[state.selected_genre]),
+            research_requirement_for_topic(TOPICS[state.selected_topic]),
+            *unlock_requirements,
+        )
     for node_key in unlock_requirements:
         if node_key and not has_research(studio, node_key):
             node = research_by_key(node_key)
@@ -2825,7 +2880,8 @@ def capacity_drains(studio: Studio) -> list[str]:
     return drains
 
 
-def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
+def apply_sequel_plan_defaults(state: GameState, game: ReleasedGame) -> None:
+    """Preselect plan fields from a released game (sequels and inspired ideas)."""
     state.selected_genre = GENRES.index(game.genre)
     state.selected_topic = TOPICS.index(game.topic)
     state.selected_secondary_genre = GENRES.index(game.secondary_genre) if game.secondary_genre in GENRES else state.selected_genre
@@ -2837,14 +2893,22 @@ def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
     state.selected_creative_primary = next((index for index, item in enumerate(CREATIVE_DIRECTIONS) if item["name"] == game.creative_primary), 0)
     state.selected_creative_secondary = next((index for index, item in enumerate(CREATIVE_DIRECTIONS) if item["name"] == game.creative_secondary), 3)
     state.selected_release_strategy = next((index for index, item in enumerate(RELEASE_STRATEGIES) if item["name"] == game.release_strategy), 0)
-    state.sequel_game_id = game.game_id
-    state.spinoff_franchise_id = game.franchise_id
+
+
+def sequel_title(state: GameState, game: ReleasedGame) -> str:
     base_title = game.title
     if game.generation > 1:
         current_suffix = f" {roman_number(game.generation)}"
         if base_title.endswith(current_suffix):
             base_title = base_title[: -len(current_suffix)]
-    state.draft_title = f"{base_title} {roman_number(game.generation + 1)}"
+    return f"{base_title} {roman_number(game.generation + 1)}"
+
+
+def prepare_sequel(state: GameState, game: ReleasedGame) -> None:
+    apply_sequel_plan_defaults(state, game)
+    state.sequel_game_id = game.game_id
+    state.spinoff_franchise_id = game.franchise_id
+    state.draft_title = sequel_title(state, game)
     state.modal = "new_game"
     state.new_game_step = 2
     state.selected_focus = 0
@@ -2869,10 +2933,240 @@ def adjust_focus(state: GameState, delta: int) -> None:
         state.focus[receiver] -= delta
 
 
-def start_project(state: GameState) -> bool:
+def concept_idea_view(project: Project):
+    """Duck-typed idea view backed by the project's living GDD."""
+    gdd = project.gdd
+    return types.SimpleNamespace(
+        hook=gdd.get("hook", ""),
+        activity=gdd.get("activity", ""),
+        setting=gdd.get("setting", ""),
+        uncertainty=gdd.get("uncertainty", ""),
+        tags=frozenset(gdd.get("tags", ())),
+        technical_doubt=float(gdd.get("technical_doubt", 0.2)),
+        clarity=float(gdd.get("clarity", 0.5)),
+        originality=float(gdd.get("originality", 0.5)),
+    )
+
+
+def start_concept_project(state: GameState, idea: RoughIdea) -> bool:
+    """Open a Concept stage from a shelf idea. No production commitments yet."""
     studio = state.studio
     if studio.closed or studio.current_project:
         state.log("The studio cannot start another project right now.")
+        return False
+    # Sync the planning selections with the idea so forecast helpers keep working.
+    state.selected_genre = GENRES.index(idea.genre)
+    state.selected_secondary_genre = GENRES.index(idea.secondary_genre)
+    state.selected_topic = TOPICS.index(idea.topic)
+    state.selected_secondary_topic = TOPICS.index(idea.secondary_topic)
+    state.draft_title = idea.title
+    if idea.origin == "release" and idea.inspiration_game_id:
+        parent = next((game for game in studio.catalog if game.game_id == idea.inspiration_game_id), None)
+        if parent:
+            apply_sequel_plan_defaults(state, parent)
+            state.draft_title = sequel_title(state, parent)
+    # Legacy sequel/spin-off context (prepare_sequel/prepare_spinoff callers)
+    # survives until the design commit, where it is consumed and cleared.
+    project_inspiration = idea.inspiration_game_id if idea.inspiration_game_id is not None else state.sequel_game_id
+    state.mix_blend = False
+    state.design_tweaks = {}
+    state.tweak_presentation = False
+    state.selected_presentation = 0
+    channel = CHANNELS[state.selected_channel]
+    gdd = {
+        "fantasy": idea.fantasy,
+        "activity": idea.activity,
+        "setting": idea.setting,
+        "hook": idea.hook,
+        "uncertainty": idea.uncertainty,
+        "pitch_lines": idea.pitch_lines(),
+        "tags": sorted(idea.tags),
+        "clarity": idea.clarity,
+        "originality": idea.originality,
+        "technical_doubt": idea.technical_doubt,
+        "source": idea.source,
+        "origin": idea.origin,
+        "pillars": [],
+        "findings": [],
+        "history": [],
+        "cuts": [],
+        "presentation": None,
+        "presentation_options": [],
+        "team_advice": [],
+    }
+    project = Project(
+        title=idea.title[:48],
+        genre=idea.genre,
+        topic=idea.topic,
+        channel=channel["name"],
+        category=channel["category"],
+        platform_cut=float(channel["cut"]),
+        reach=float(channel["reach"]),
+        scope=SCOPES[state.selected_scope]["name"],
+        price=float(selected_price_point(state)["price"]),
+        marketing_name=MARKETING[state.selected_marketing]["name"],
+        marketing_budget=MARKETING[state.selected_marketing]["cost"],
+        focus=concept_focus(state),
+        total_work=0.0,
+        secondary_genre=idea.secondary_genre,
+        secondary_topic=idea.secondary_topic,
+        target_audience=AUDIENCES[state.selected_audience]["name"],
+        game_format=GAME_FORMATS[state.selected_format]["name"],
+        creative_primary=CREATIVE_DIRECTIONS[state.selected_creative_primary]["name"],
+        creative_secondary=CREATIVE_DIRECTIONS[state.selected_creative_secondary]["name"],
+        release_strategy=RELEASE_STRATEGIES[state.selected_release_strategy]["name"],
+        monetization=str(selected_monetization_model(state)["key"]),
+        stage="concept",
+        gdd=gdd,
+        idea_id=idea.idea_id,
+        inspiration_game_id=project_inspiration,
+        platforms=[channel["name"]],
+        quality_dimensions={"gameplay": 0.0, "content": 0.0, "stability": 0.0, "performance": 0.0},
+        promises=[],
+    )
+    project.gdd_history(state.clock.week, f"Opened concept from {idea.source}'s rough idea.")
+    studio.idea_shelf = [item for item in studio.idea_shelf if item.idea_id != idea.idea_id]
+    studio.current_project = project
+    state.modal = "concept"
+    state.selected_experiment = 0
+    state.log(f"Concept opened: {project.title}. Run experiments before committing the team.")
+    emit_event(
+        state,
+        "concept_opened",
+        f"{project.title} entered concept: {idea.activity} in {idea.setting}.",
+        "info",
+        "project",
+        project.title,
+        {"origin": idea.origin, "source": idea.source},
+    )
+    return True
+
+
+def start_experiment(state: GameState, key: str) -> bool:
+    studio = state.studio
+    project = studio.current_project
+    if not project or project.stage != "concept" or project.active_experiment:
+        return False
+    experiment = idea_engine.experiment_by_key(key)
+    if experiment not in idea_engine.available_experiments(concept_idea_view(project)):
+        state.log("That experiment does not answer anything this idea is struggling with.")
+        return False
+    weeks = idea_engine.experiment_duration(concept_idea_view(project), experiment, studio.team)
+    project.active_experiment = experiment.key
+    project.experiment_days_left = weeks * 5
+    state.log(f"{project.title}: the team starts a {experiment.name.lower()} (about {weeks} week{'s' if weeks != 1 else ''}).")
+    return True
+
+
+def design_team_advice(state: GameState, project: Project, packages: list[dict]) -> list[dict]:
+    """1-2 team recommendations. Advice quality scales with employee stats."""
+    studio = state.studio
+    team = studio.team
+    if not team:
+        return []
+    flags = project.finding_flags()
+    skill = (sum(member.design for member in team) + sum(member.art for member in team) + sum(member.research for member in team)) / (3 * len(team)) / 100
+    advice: list[dict] = []
+    if packages:
+        rng = random.Random(studio.seed + state.clock.week * 31 + project.idea_id)
+        if skill >= 0.55:
+            best = max(range(len(packages)), key=lambda index: packages[index]["fit"] - packages[index]["work"] * 0.05)
+            verb = "recommends"
+        else:
+            best = rng.randrange(len(packages))
+            verb = "leans toward"
+        judge = max(team, key=lambda member: member.design + member.art)
+        advice.append({"who": judge.name, "text": f"{verb} {packages[best]['name']}: {packages[best]['note']}", "recommends": best, "reliable": skill >= 0.55})
+    judge = max(team, key=lambda member: member.design + member.research)
+    if flags.get("hook_strength") == "strong":
+        advice.append({"who": judge.name, "text": "The hook tested strongest — make it a design pillar.", "recommends": None, "reliable": skill >= 0.5})
+    elif flags.get("repetition"):
+        advice.append({"who": judge.name, "text": "Prototype feedback: plan the structure around repeatable sessions.", "recommends": None, "reliable": skill >= 0.5})
+    elif flags.get("fun_core") is False:
+        advice.append({"who": judge.name, "text": "The core activity tested weak. Rework it before committing to production.", "recommends": None, "reliable": skill >= 0.5})
+    elif flags.get("audience") == "warm":
+        advice.append({"who": judge.name, "text": "Pitch testers understood the fantasy — keep the pitch language.", "recommends": None, "reliable": skill >= 0.5})
+    elif flags.get("tech_risk") == "blocked":
+        advice.append({"who": judge.name, "text": "The technical spike failed. Simplify the design or research the capability first.", "recommends": None, "reliable": skill >= 0.5})
+    return advice[:2]
+
+
+def begin_design_review(state: GameState) -> bool:
+    """Close Concept and draft the design & technical plan (paused review)."""
+    studio = state.studio
+    project = studio.current_project
+    if not project or project.stage != "concept":
+        return False
+    if project.active_experiment:
+        state.log("The team is still mid-experiment. Wait for the finding.")
+        return False
+    view = concept_idea_view(project)
+    packages = idea_engine.presentation_packages(view)
+    project.gdd["presentation_options"] = packages
+    project.gdd["team_advice"] = design_team_advice(state, project, packages)
+    project.stage = "design"
+    project.gdd_history(state.clock.week, "Concept closed; design and technical plan drafted.")
+    if not project.gdd.get("findings"):
+        state.log("WARNING: committing an untested concept. No experiment has produced a finding.")
+    state.selected_presentation = 0
+    state.design_tweaks = {}
+    state.tweak_presentation = False
+    state.selected_focus = 0
+    state.modal = "design_review"
+    if state.time_speed_index:
+        state.resume_speed_index = state.time_speed_index
+        state.time_speed_index = 0
+    state.log(f"{project.title} moved to the design stage. Review the plan before production.")
+    return True
+
+
+def shelve_concept(state: GameState) -> bool:
+    """Put a concept-stage project back on the shelf as a rough idea."""
+    studio = state.studio
+    project = studio.current_project
+    if not project or project.stage != "concept":
+        return False
+    gdd = project.gdd
+    rng = random.Random(studio.seed + project.idea_id)
+    idea = RoughIdea(
+        idea_id=studio.next_idea_id,
+        title=project.title,
+        fantasy=gdd.get("fantasy", ""),
+        activity=gdd.get("activity", ""),
+        setting=gdd.get("setting", ""),
+        hook=gdd.get("hook", ""),
+        uncertainty=gdd.get("uncertainty", ""),
+        source=gdd.get("source", "You"),
+        origin=gdd.get("origin", "team"),
+        genre=project.genre,
+        secondary_genre=project.secondary_genre,
+        topic=project.topic,
+        secondary_topic=project.secondary_topic,
+        clarity=max(0.3, float(gdd.get("clarity", 0.5)) - 0.05),
+        originality=float(gdd.get("originality", 0.5)),
+        technical_doubt=float(gdd.get("technical_doubt", 0.2)),
+        trend_pull=0.3,
+        created_week=state.clock.week,
+        cool_at_week=state.clock.week + int(8 + rng.uniform(0, 10)),
+        inspiration_game_id=project.inspiration_game_id,
+        franchise_id=None,
+        tags=list(gdd.get("tags", ())),
+    )
+    studio.idea_shelf.append(idea)
+    studio.next_idea_id += 1
+    studio.current_project = None
+    state.modal = "ideas"
+    state.log(f"{project.title} returned to the idea shelf.")
+    emit_event(state, "concept_shelved", f"{project.title} was shelved; the idea stays on the shelf.", "info", "project", project.title)
+    return True
+
+
+def commit_design_plan(state: GameState) -> bool:
+    """Turn a reviewed design into a production commitment (Development stage)."""
+    studio = state.studio
+    project = studio.current_project
+    if project is None or project.stage not in ("concept", "design"):
+        state.log("No concept is waiting for a design plan.")
         return False
     channel = CHANNELS[state.selected_channel]
     scope = SCOPES[state.selected_scope]
@@ -2901,13 +3195,22 @@ def start_project(state: GameState) -> bool:
     if studio.cash + publisher_advance < cost + monthly_fixed_cost(studio):
         state.log(f"Plan rejected: ${cost:,} setup would leave less than one month of runway.")
         return False
+    packages = project.gdd.get("presentation_options") or idea_engine.presentation_packages(concept_idea_view(project))
+    presentation = idea_engine.resolve_presentation_choice(state, packages)
     focus = concept_focus(state)
     state.focus = list(focus)
     output = projected_weekly_output(studio, focus)
     truth = market_truth(state)
     report = market_report(state)
-    total_work = truth["work"]
-    planned_weeks = max(4, round(report["work"] / output))
+    flags = project.finding_flags()
+    total_work = truth["work"] * float(presentation["work"])
+    work_note = ""
+    if flags.get("repetition"):
+        total_work *= 1.12
+        work_note = " (structure work added after repetition findings)"
+    if flags.get("fun_core") is False:
+        work_note += " (unproven core — risk accepted)"
+    planned_weeks = max(4, round(report["work"] * float(presentation["work"]) / output))
     promised_release_week = state.clock.week + planned_weeks if release_policy["key"] == "announced_date" else 0
     initial_hype = 5 + marketing["boost"] / 25 + (publisher["hype"] if publisher else 0)
     awareness = initial_awareness_by_cohort(state, initial_hype, marketing["boost"], str(announcement["key"]))
@@ -2918,12 +3221,12 @@ def start_project(state: GameState) -> bool:
         promises.append({"kind": "update_cadence", "due_week": 0, "interval_weeks": strategy["expect_weeks"], "status": "planned", "risk": 0.20})
     if announcement["key"] == "public_roadmap":
         promises.append({"kind": "public_roadmap", "due_week": promised_release_week or state.clock.week + planned_weeks, "status": "open", "risk": announcement["promise_risk"]})
-    topic = TOPICS[state.selected_topic]
-    genre = GENRES[state.selected_genre]
-    secondary_topic = TOPICS[state.selected_secondary_topic]
-    secondary_genre = GENRES[state.selected_secondary_genre]
+    genre = project.genre
+    topic = project.topic
+    secondary_genre = project.secondary_genre
+    secondary_topic = project.secondary_topic
     audience = AUDIENCES[state.selected_audience]
-    event_rng = random.Random(studio.seed + state.clock.week * 409 + state.selected_scope * 37 + state.selected_genre * 19)
+    event_rng = random.Random(studio.seed + state.clock.week * 409 + state.selected_scope * 37 + GENRES.index(genre) * 19)
     if state.selected_scope <= 1:
         event_count = 1 if event_rng.random() < 0.45 else 0
     elif state.selected_scope <= 3:
@@ -2931,87 +3234,89 @@ def start_project(state: GameState) -> bool:
     else:
         event_count = 2 if event_rng.random() < 0.65 else 1
     scheduled_decisions = sorted(event_rng.sample(range(len(PRODUCTION_DECISIONS)), event_count))
-    previous_game = next((game for game in studio.catalog if game.game_id == state.sequel_game_id), None)
+    previous_game = next((game for game in studio.catalog if game.game_id == (project.inspiration_game_id or state.sequel_game_id)), None)
     generation = previous_game.generation + 1 if previous_game else 1
-    title = state.draft_title.strip() or generate_game_title(genre, topic, studio.seed + state.clock.week)
-    project = Project(
-        title=title[:48],
-        genre=genre,
-        topic=topic,
-        channel=CHANNELS[platform_indexes[0]]["name"],
-        category=channel["category"],
-        platform_cut=blended_platform_cut(platform_indexes),
-        reach=max(float(platform["reach"]) for platform in platform_list),
-        scope=scope["name"],
-        price=float(price_point["price"]),
-        marketing_name=marketing["name"],
-        marketing_budget=marketing["cost"],
-        focus=focus,
-        total_work=float(total_work),
-        planned_weeks=planned_weeks,
-        cash_cost=cost,
-        secondary_genre=secondary_genre,
-        secondary_topic=secondary_topic,
-        target_audience=audience["name"],
-        game_format=game_format["name"],
-        creative_primary=primary_direction["name"],
-        creative_secondary=secondary_direction["name"],
-        release_strategy=strategy["name"],
-        addressable_audience=truth["audience"],
-        competitors=truth["competitors"],
-        market_score=truth["score"],
-        market_score_start=truth["score"],
-        forecast_score_low=report["score_low"],
-        forecast_score_high=report["score_high"],
-        forecast_audience_low=report["audience_low"],
-        forecast_audience_high=report["audience_high"],
-        forecast_competitors_low=report["competitors_low"],
-        forecast_competitors_high=report["competitors_high"],
-        forecast_confidence=report["confidence"],
-        hosting_rate=game_format["hosting"],
-        scheduled_decisions=scheduled_decisions,
-        sequel_of=previous_game.game_id if previous_game else None,
-        generation=generation,
-        franchise_id=state.spinoff_franchise_id if state.spinoff_franchise_id else (previous_game.franchise_id if previous_game else None),
-        hype=initial_hype,
-        production_cost=scope["setup"] + store_fees + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"]),
-        platforms=platform_names,
-        marketing_cost=marketing["cost"],
-        publisher=publisher["name"] if publisher else "",
-        publisher_advance=publisher_advance,
-        publisher_recoup_share=publisher["recoup_share"] if publisher else 0.0,
-        publisher_post_recoup_share=publisher["post_recoup_share"] if publisher else 0.0,
-        publisher_visibility=publisher["visibility"] if publisher else 0,
-        monetization=str(monetization["key"]),
-        announcement_strategy=str(announcement["key"]),
-        release_policy=str(release_policy["key"]),
-        announced_week=state.clock.week if announcement["key"] != "stealth" else 0,
-        promised_release_week=promised_release_week,
-        awareness_by_cohort=awareness,
-        promises=promises,
-        quality_dimensions={"gameplay": 0.0, "content": 0.0, "stability": 0.0, "performance": 0.0},
-        trust=max(5.0, min(95.0, studio.studio_trust + float(announcement["trust"]))),
-        novelty=max(10.0, min(95.0, 50 + truth["trend"] + primary_direction["market"])),
-        cultural_resonance=truth["cultural_resonance"],
-        forecast_work_low=report["work_low"],
-        forecast_work_high=report["work_high"],
-    )
+    title = state.draft_title.strip() or project.title
+    pillars = [primary_direction["name"], secondary_direction["name"]]
+    if flags.get("hook_strength") == "strong" and project.gdd.get("hook"):
+        pillars.append(f"The hook: {project.gdd['hook']}")
+    project.gdd["pillars"] = pillars
+    project.gdd["presentation"] = {key: presentation[key] for key in ("name", "form", "style", "camera", "movement", "density", "note")}
+    project.gdd_history(state.clock.week, f"Committed design: {presentation['name']}, {scope['name']} {game_format['name']}.{work_note}")
+    # Apply the production plan to the standing project.
+    project.title = title[:48]
+    project.channel = CHANNELS[platform_indexes[0]]["name"]
+    project.category = channel["category"]
+    project.platform_cut = blended_platform_cut(platform_indexes)
+    project.reach = max(float(platform["reach"]) for platform in platform_list)
+    project.scope = scope["name"]
+    project.price = float(price_point["price"])
+    project.marketing_name = marketing["name"]
+    project.marketing_budget = marketing["cost"]
+    project.focus = focus
+    project.total_work = float(total_work)
+    project.planned_weeks = planned_weeks
+    project.cash_cost = cost
+    project.secondary_genre = secondary_genre
+    project.secondary_topic = secondary_topic
+    project.target_audience = audience["name"]
+    project.game_format = game_format["name"]
+    project.creative_primary = primary_direction["name"]
+    project.creative_secondary = secondary_direction["name"]
+    project.release_strategy = strategy["name"]
+    project.addressable_audience = truth["audience"]
+    project.competitors = truth["competitors"]
+    project.market_score = truth["score"]
+    project.market_score_start = truth["score"]
+    project.forecast_score_low = report["score_low"]
+    project.forecast_score_high = report["score_high"]
+    project.forecast_audience_low = report["audience_low"]
+    project.forecast_audience_high = report["audience_high"]
+    project.forecast_competitors_low = report["competitors_low"]
+    project.forecast_competitors_high = report["competitors_high"]
+    project.forecast_confidence = report["confidence"]
+    project.hosting_rate = game_format["hosting"]
+    project.scheduled_decisions = scheduled_decisions
+    project.next_decision = 0
+    project.sequel_of = previous_game.game_id if previous_game else None
+    project.generation = generation
+    project.franchise_id = state.spinoff_franchise_id if state.spinoff_franchise_id else (previous_game.franchise_id if previous_game else None)
+    project.hype = initial_hype
+    project.production_cost = scope["setup"] + store_fees + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"])
+    project.platforms = platform_names
+    project.marketing_cost = marketing["cost"]
+    project.publisher = publisher["name"] if publisher else ""
+    project.publisher_advance = publisher_advance
+    project.publisher_recoup_share = publisher["recoup_share"] if publisher else 0.0
+    project.publisher_post_recoup_share = publisher["post_recoup_share"] if publisher else 0.0
+    project.publisher_visibility = publisher["visibility"] if publisher else 0
+    project.monetization = str(monetization["key"])
+    project.announcement_strategy = str(announcement["key"])
+    project.release_policy = str(release_policy["key"])
+    project.announced_week = state.clock.week if announcement["key"] != "stealth" else 0
+    project.promised_release_week = promised_release_week
+    project.awareness_by_cohort = awareness
+    project.promises = promises
+    project.trust = max(5.0, min(95.0, studio.studio_trust + float(announcement["trust"])))
+    project.novelty = max(10.0, min(95.0, 50 + truth["trend"] + primary_direction["market"] + project.gdd.get("originality", 0.5) * 10 - 5))
+    project.cultural_resonance = truth["cultural_resonance"]
+    project.forecast_work_low = report["work_low"]
+    project.forecast_work_high = report["work_high"]
+    project.stage = "development"
     add_expense(studio, scope["setup"] + game_format["setup"] + strategy["setup"] + int(monetization["setup_cost"]), "Development")
     add_expense(studio, store_fees, "Store fees")
     add_expense(studio, marketing["cost"], "Marketing")
     if publisher:
         financing_inflow(studio, publisher_advance, "Publisher advance", date=state.clock.current_date, counterparty=publisher["name"], memo=f"Recoupable advance for {title[:48]}")
         studio.pending_publisher = ""
-    studio.current_project = project
     state.modal = "games"
-    state.new_game_step = 0
     state.naming_game = False
     state.sequel_game_id = None
     state.spinoff_franchise_id = None
     state.title_roll += 1
     refresh_draft_title(state)
     mix = genre if secondary_genre == genre else f"{genre} / {secondary_genre}"
-    state.log(f"Greenlit {project.title}, a {scope['name'].lower()} {mix} game for {audience['name']}.")
+    state.log(f"Greenlit {project.title}, a {scope['name'].lower()} {mix} game for {audience['name']} in {presentation['name']}.{work_note}")
     funding_note = f" {publisher['name']} advanced ${publisher_advance:,}; it recoups from sales." if publisher else ""
     state.log(f"Paid ${cost:,}. Research forecast: {report['audience_low']:,}-{report['audience_high']:,} interested, {report['competitors_low']}-{report['competitors_high']} rivals, about {planned_weeks} weeks.{funding_note}")
     emit_event(
@@ -3024,9 +3329,38 @@ def start_project(state: GameState) -> bool:
         {"price": project.price, "monetization": project.monetization, "release_policy": project.release_policy},
     )
     runway_weeks = studio.cash / max(1, monthly_fixed_cost(studio)) * 4.33
-    forecast_high_weeks = max(4, round(report["work_high"] / output))
+    forecast_high_weeks = max(4, round(report["work_high"] * float(presentation["work"]) / output))
     if runway_weeks < forecast_high_weeks:
         state.log(f"Runway warning: roughly {runway_weeks:.0f} funded weeks remain against a workload forecast reaching {forecast_high_weeks} weeks; overruns could kill the studio.")
+    return True
+
+
+def start_project(state: GameState) -> bool:
+    """Direct path used by tests and tooling: plan selections to production.
+
+    The interactive pipeline runs Idea > Concept > Design > Development; this
+    wrapper compresses it into one call using the currently selected plan.
+    """
+    studio = state.studio
+    if studio.closed or studio.current_project:
+        state.log("The studio cannot start another project right now.")
+        return False
+    rng = random.Random(studio.seed + state.clock.week * 97 + state.title_roll)
+    idea = idea_engine.force_idea(studio, state.clock.week, rng, GENRES[state.selected_genre], TOPICS[state.selected_topic])
+    if state.selected_secondary_genre != state.selected_genre:
+        idea.secondary_genre = GENRES[state.selected_secondary_genre]
+    if state.selected_secondary_topic != state.selected_topic:
+        idea.secondary_topic = TOPICS[state.selected_secondary_topic]
+    if not start_concept_project(state, idea):
+        return False
+    project = studio.current_project
+    project.stage = "design"
+    project.gdd["presentation_options"] = idea_engine.presentation_packages(concept_idea_view(project))
+    project.gdd["team_advice"] = []
+    if not commit_design_plan(state):
+        # Old callers expect all-or-nothing behavior: no orphaned concept.
+        studio.current_project = None
+        return False
     return True
 
 
@@ -3694,6 +4028,7 @@ def finish_project(state: GameState) -> None:
         game_id,
         {"units": units, "score": score, "viral_coefficient": viral_coefficient, "drivers": list(launch_result.explanation_drivers)},
     )
+    idea_engine.inspire_from_release(studio, state.clock.week, random.Random(studio.seed + state.clock.week * 3571), game, state.log)
     if units >= 40_000:
         copycat_rng = random.Random(studio.seed + state.clock.week * 911)
         candidates = [item for item in studio.competitors if item.size >= 4 and len(item.in_development) < 2]
@@ -3753,6 +4088,7 @@ def project_ready_for_launch(state: GameState) -> None:
         return
     project.ready_for_release = True
     project.ready_week = state.clock.week
+    project.stage = "gold"
     if project.release_policy == "announced_date" and project.promised_release_week and state.clock.week >= project.promised_release_week:
         finish_project(state)
         return
@@ -3869,11 +4205,51 @@ def money_text(amount: float) -> str:
     return f"${amount:,.0f}"
 
 
+def develop_concept(state: GameState, day_number: int, week_end: bool, workday: bool) -> None:
+    """Concept stage: experiments consume team time and produce findings."""
+    studio = state.studio
+    project = studio.current_project
+    weekly_salary = sum(employee.annual_salary / 52 for employee in studio.team)
+    weekly_burden = sum(employee.annual_salary / 52 for employee in studio.team if not employee.founder) * 0.13
+    project.labor_cost += (weekly_salary + weekly_burden) / 7 * activity_allocations(studio).get("project", 1.0)
+    if not workday:
+        if week_end:
+            project.weeks += 1
+        return
+    if project.active_experiment:
+        share = activity_allocations(studio).get("project", 1.0)
+        if share > 0.05:
+            project.experiment_days_left -= 1
+        if project.experiment_days_left <= 0:
+            experiment = idea_engine.experiment_by_key(project.active_experiment)
+            rng = random.Random(studio.seed + state.clock.week * 613 + project.idea_id * 17)
+            finding = idea_engine.resolve_experiment(concept_idea_view(project), experiment, studio.team, state.clock.week, rng)
+            project.add_finding(finding)
+            project.active_experiment = ""
+            project.experiment_days_left = 0
+            state.log(f"Concept finding: {finding['text']} ({finding['confidence']} confidence)")
+            emit_event(
+                state,
+                "concept_finding",
+                f"{project.title} — {finding['experiment']}: {finding['text']}",
+                "info",
+                "project",
+                project.title,
+                {"confidence": finding["confidence"], "flags": finding["flags"]},
+            )
+    if week_end:
+        project.weeks += 1
+
+
 def develop_project(state: GameState, day_number: int = 0, week_end: bool = True, workday: bool = True) -> None:
     studio = state.studio
     project = studio.current_project
     if project is None:
         return
+    if project.stage == "concept":
+        return develop_concept(state, day_number, week_end, workday)
+    if project.stage == "design":
+        return  # paused review stage; sim time is stopped while it is open
     if project.ready_for_release:
         if week_end:
             project.weeks += 1
@@ -4014,7 +4390,8 @@ def develop_project(state: GameState, day_number: int = 0, week_end: bool = True
     elif project.work_done >= project.total_work - 0.01:
         if project.defects > 0.5:
             project.bug_work = project.defects * BUG_FIX_WORK_PER_DEFECT * QA_CLEAR_FRACTION
-            state.log(f"{project.title} entered bug fixing: {project.defects:.0f} defects from development must be cleared before release.")
+            project.stage = "testing"
+            state.log(f"{project.title} entered testing: {project.defects:.0f} defects from development must be cleared before release.")
         else:
             project_ready_for_launch(state)
 
@@ -4940,6 +5317,7 @@ def process_contract(state: GameState, week_end: bool = True, workday: bool = Tr
         else:
             state.log(f"Delivered {contract.client}'s {contract.title} for free; they will vouch for you (reputation +{reputation_gain:.1f}).")
         studio.contract = None
+        idea_engine.inspire_from_contract(studio, state.clock.week, random.Random(studio.seed + state.clock.week * 131), contract.title, state.log)
         start_next_contract(state)
     elif contract.weeks_left <= 0:
         reputation_loss = max(2, contract.difficulty * 3)
@@ -4976,6 +5354,7 @@ def process_day(state: GameState, day_date: date) -> None:
         process_media_ventures_week(state)
         process_macro_week(state)
         process_market_week(state, weekly_market)
+        process_ideas_week(state)
     if studio.cash < 0:
         studio.insolvent_days += 1
         studio.insolvent_weeks = studio.insolvent_days // 7
@@ -4998,6 +5377,15 @@ def process_day(state: GameState, day_date: date) -> None:
     else:
         studio.insolvent_days = 0
         studio.insolvent_weeks = 0
+
+
+def process_ideas_week(state: GameState) -> None:
+    """Weekly idea lifecycle hook: generation, cooling, dormancy."""
+    studio = state.studio
+    if studio.closed:
+        return
+    rng = random.Random(studio.seed + state.clock.week * 8191)
+    idea_engine.process_ideas_week(studio, state.clock.week, rng, state.log)
 
 
 def process_week(state: GameState, week_date: date) -> None:
@@ -5514,6 +5902,7 @@ def studio_from_data(data: dict) -> Studio:
     values = dict(data)
     values["team"] = [employee_from_data(item) for item in values.get("team", [])]
     values["applicants"] = [employee_from_data(item) for item in values.get("applicants", [])]
+    values["idea_shelf"] = [RoughIdea(**item) for item in values.get("idea_shelf", [])]
     if values.get("current_project"):
         values["current_project"] = Project(**values["current_project"])
     values["active_sales"] = [ActiveSale(**item) for item in values.get("active_sales", [])]

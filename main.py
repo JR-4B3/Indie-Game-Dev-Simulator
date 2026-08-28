@@ -55,14 +55,15 @@ from ui_contracts import draw_contract_screen
 from ui_games import draw_games_screen, draw_marketing_screen, draw_update_planner_screen
 from ui_hub import draw_dashboard, draw_main_content
 from ui_finance import draw_finance_screen
-from ui_input import CTRL_S, handle_key, handle_mouse, handle_new_game_key, open_new_game
-from ui_newgame import draw_new_game, new_game_panel_geometry
+from ui_input import CTRL_S, handle_key, handle_mouse, handle_ideas_key, open_idea_shelf
+from ui_newgame import draw_idea_shelf, draw_concept_screen, draw_design_review
 from ui_stats import draw_analysis
 from ui_saves import draw_save_picker
 from ui_team import draw_team_screen, team_layout
 from ui_theme import init_theme
 from ui_title import draw_title_screen
 from ui_upgrades import draw_upgrades
+from ui_newgame import draw_idea_shelf, draw_concept_screen, draw_design_review
 
 
 DEFAULT_SAVE_FILE = "saves/gamedev_save.json"
@@ -72,7 +73,10 @@ IDLE_REDRAW_INTERVAL = 0.25
 
 
 SCREEN_DRAWERS = {
-    "new_game": draw_new_game,
+    "new_game": draw_idea_shelf,
+    "ideas": draw_idea_shelf,
+    "concept": draw_concept_screen,
+    "design_review": draw_design_review,
     "team": draw_team_screen,
     "contracts": draw_contract_screen,
     "games": draw_games_screen,

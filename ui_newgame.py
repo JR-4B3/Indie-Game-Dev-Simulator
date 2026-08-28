@@ -1,14 +1,17 @@
-"""New Game wizard: original/sequel chooser, genre/theme mix, creative\nbrief with market intelligence, and storefront selection."""
+"""Creative pipeline screens: the idea shelf, the concept workspace, and the
+design & technical plan review. Genre and theme are inferred from team ideas;
+the player never picks them from a list."""
 
 from __future__ import annotations
 
 import curses
 
-from game_data import GENRES, GOOD_MATCHES, TOPICS
+from game_data import GENRES, TOPICS
 from simulation import (
     ANNOUNCEMENT_STRATEGIES,
     AUDIENCES,
     CHANNELS,
+    RoughIdea,
     channel_lock_reason,
     selected_platform_indexes,
     storefront_display_order,
@@ -32,390 +35,243 @@ from simulation import (
     projected_weekly_output,
     research_requirement_for_channel,
     research_requirement_for_format,
-    research_requirement_for_genre,
     research_requirement_for_marketing,
     research_requirement_for_monetization,
     research_requirement_for_scope,
     research_requirement_for_strategy,
-    research_requirement_for_topic,
     selected_announcement_strategy,
     selected_monetization_model,
     selected_price_point,
     selected_release_policy,
+    commit_design_plan,
+    begin_design_review,
+    shelve_concept,
+    start_experiment,
+    idea_engine,
 )
-from ui_common import COLOR_GOOD, add_text, draw_box, draw_selectable_list, game_title, meter, money, range_meter, rating_text, update_status
+from ui_common import COLOR_GOOD, add_text, draw_box, draw_selectable_list, meter, money
 from ui_theme import glyph
 
 
-def project_kind_choices(state: GameState) -> list[tuple[str, str, bool]]:
-    """(key, description, enabled) rows for the new-project menu."""
-    has_releases = bool(state.studio.catalog)
-    return [
-        ("new", "Start a fresh genre/theme concept with a generated title", True),
-        ("sequel", "Continue one of your released games", has_releases),
-        ("spinoff", "New genre and theme inside one of your existing IPs", has_releases),
-        ("engine", "Build your own engine (not available yet)", False),
-    ]
+STAGE_BANNER = "IDEA > CONCEPT > DESIGN > DEVELOPMENT > TESTING > RELEASE"
 
 
-def base_game_choices(state: GameState) -> list:
-    return list(reversed(state.studio.catalog))
+def stage_banner_line(current: str, width: int) -> tuple[str, int]:
+    """One-line stage ribbon; returns (text, highlight_offset) or (text, -1)."""
+    stages = ("IDEA", "CONCEPT", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE")
+    key_map = {"concept": "CONCEPT", "design": "DESIGN", "development": "DEVELOPMENT",
+               "testing": "TESTING", "gold": "RELEASE"}
+    label = key_map.get(current, "")
+    text = STAGE_BANNER
+    offset = -1
+    if label:
+        prefix = " > ".join(stages[: stages.index(label)])
+        offset = len(prefix) + (3 if prefix else 0)
+    return text, offset
 
 
-def topic_available(state: GameState, topic: str) -> bool:
-    requirement = research_requirement_for_topic(topic)
-    return not requirement or has_research(state.studio, requirement)
+def draw_stage_ribbon(panel: curses.window, row: int, stage: str, width: int) -> None:
+    text, offset = stage_banner_line(stage, width)
+    add_text(panel, row, 2, text, width - 4, curses.color_pair(6))
+    if offset >= 0:
+        label = dict(zip(("IDEA", "CONCEPT", "DESIGN", "DEVELOPMENT", "TESTING", "RELEASE"), range(6)))
+        current = text[offset:offset + len(text[offset:].split(" > ")[0])]
+        span = len(current)
+        add_text(panel, row, 2 + offset, current, min(span, width - 4 - offset), curses.color_pair(3) | curses.A_BOLD | curses.A_REVERSE)
 
 
-def locked_topic_count(state: GameState) -> int:
-    return sum(1 for topic in TOPICS if not topic_available(state, topic))
+def ordered_shelf(state: GameState) -> list[RoughIdea]:
+    """Shelf order shown to the player: fresh first, newest on top."""
+    status_rank = {"fresh": 0, "cooling": 1, "dormant": 2}
+    return sorted(state.studio.idea_shelf, key=lambda item: (status_rank.get(item.status, 0), -item.created_week))
 
 
-def topic_order(state: GameState) -> list[tuple[str, str]]:
-    """The 300+ themes, tiered by signal for the currently selected genre.
-
-    Returns ``(topic, tier)`` rows ordered: ``"strong"`` proven audience
-    (your buyers, strongest first), then ``"fit"`` good genre fits, then
-    everything else (``"rest"``). This keeps promising themes at the top
-    instead of making the player scrub an alphabetical wall; ordering is
-    presentation-only — ``selected_topic`` remains an index into TOPICS.
-    Themes still locked behind Studio Development research are omitted.
-    """
-    genre = GENRES[state.selected_genre]
-    fans = state.studio.topic_fans
-    fits = GOOD_MATCHES.get(genre, set())
-    strong = sorted((topic for topic in TOPICS if topic_available(state, topic) and fans.get(topic, 0) > 0), key=lambda topic: -fans[topic])
-    good = sorted(topic for topic in TOPICS if topic_available(state, topic) and fans.get(topic, 0) <= 0 and topic in fits)
-    rest = sorted(topic for topic in TOPICS if topic_available(state, topic) and fans.get(topic, 0) <= 0 and topic not in fits)
-    return [(topic, "strong") for topic in strong] + [(topic, "fit") for topic in good] + [(topic, "rest") for topic in rest]
+def shelf_rows(state: GameState) -> list[tuple[str, int]]:
+    rows = []
+    for idea in ordered_shelf(state):
+        signals = ", ".join(idea.signal_words())
+        origin = {"release": "inspired by a release", "contract": "contract insight", "training": "training spark"}.get(idea.origin, f"{idea.source}'s idea")
+        cool = "dormant" if idea.status == "dormant" else f"cools in {max(0, idea.cool_at_week - state.clock.week)}w"
+        attr = curses.color_pair(6) if idea.status == "dormant" else curses.color_pair(2) if idea.status == "cooling" else 0
+        rows.append((f"{idea.title}  [{signals}]  {origin} | {cool}", attr))
+    return rows
 
 
-def topic_rows(state: GameState) -> list[tuple[str, int]]:
-    """Tiered topics as drawable ``(text, attr)`` rows."""
-    return [
-        (topic, (curses.color_pair(COLOR_GOOD) | curses.A_BOLD) if tier == "strong" else curses.color_pair(COLOR_GOOD) if tier == "fit" else 0)
-        for topic, tier in topic_order(state)
-    ]
-
-
-def available_genre_indices(state: GameState) -> list[int]:
-    return [
-        index
-        for index, name in enumerate(GENRES)
-        if not (requirement := research_requirement_for_genre(name)) or has_research(state.studio, requirement)
-    ]
-
-
-def locked_genre_count(state: GameState) -> int:
-    return len(GENRES) - len(available_genre_indices(state))
-
-
-def cycle_genre_index(state: GameState, attribute: str, delta: int) -> None:
-    available = available_genre_indices(state)
-    current = getattr(state, attribute)
-    position = available.index(current) if current in available else 0
-    setattr(state, attribute, available[(position + delta) % len(available)])
-
-
-def topic_position(state: GameState, order: list[tuple[str, int]]) -> int:
-    """Position of the currently selected topic inside the tiered order."""
-    current = TOPICS[state.selected_topic]
-    return next((index for index, (topic, _) in enumerate(order) if topic == current), 0)
-
-
-def select_topic_at(state: GameState, order: list[tuple[str, int]], position: int) -> None:
-    state.selected_topic = TOPICS.index(order[position % len(order)][0])
-
-
-PLAN_FIELDS = (
-    ("Scope", "selected_scope", SCOPES),
-    ("Game format", "selected_format", GAME_FORMATS),
-    ("Audience", "selected_audience", AUDIENCES),
-    ("Lead bet", "selected_creative_primary", CREATIVE_DIRECTIONS),
-    ("Support bet", "selected_creative_secondary", CREATIVE_DIRECTIONS),
-    ("Monetization", "selected_monetization", MONETIZATION_MODELS),
-    ("Price", "selected_price", PRICE_POINTS),
-    ("Announcement", "selected_announcement", ANNOUNCEMENT_STRATEGIES),
-    ("Release policy", "selected_release_policy", RELEASE_POLICIES),
-    ("Launch life", "selected_release_strategy", RELEASE_STRATEGIES),
-    ("Marketing", "selected_marketing", MARKETING),
-)
-
-
-def draw_project_type(screen: curses.window, state: GameState, width: int, height: int) -> None:
+def draw_idea_shelf(screen: curses.window, state: GameState, width: int, height: int) -> None:
     panel = screen.derwin(height - 4, width, 2, 0)
-    draw_box(panel, "Start Production | Project Type")
-    add_text(panel, 1, 2, "Choose what your studio builds next.", width - 4, curses.color_pair(4))
-    choices = project_kind_choices(state)
-    state.selected_sequel_choice = min(state.selected_sequel_choice, len(choices) - 1)
-    labels = {"new": "NEW GAME", "sequel": "SEQUEL", "spinoff": "SPIN-OFF", "engine": "ENGINE"}
-    rows = []
-    for key, description, enabled in choices:
-        attr = 0 if enabled else curses.color_pair(2)
-        suffix = "" if enabled else "  (requires a released game)" if key in ("sequel", "spinoff") else ""
-        rows.append((f"{labels[key]:<10} {description}{suffix}", attr))
-    draw_selectable_list(panel, rows, state.selected_sequel_choice, True, y=3, width=width - 4, visible=height - 8)
-    add_text(panel, height - 2, 2, "Enter or double-click to continue.", width - 4, curses.color_pair(4))
+    draw_box(panel, "Idea Shelf | Rough Pitches")
+    add_text(panel, 1, 2, "Rested teammates jot down rough ideas over time. Choose one to explore in Concept.", width - 4, curses.color_pair(4))
+    ideas = state.studio.idea_shelf
+    if not ideas:
+        add_text(panel, 3, 2, "The shelf is empty. Give the team time to think; tired teams pitch nothing.", width - 4, curses.color_pair(2))
+        add_text(panel, 4, 2, "Contracts, releases, and training can also spark ideas.", width - 4, curses.color_pair(6))
+    state.selected_idea = min(state.selected_idea, max(0, len(ideas) - 1))
+    draw_selectable_list(panel, shelf_rows(state), state.selected_idea, bool(ideas), y=3, width=width - 4, visible=max(1, height - 9))
+    add_text(panel, height - 3, 2, "Enter: open concept   D: discard idea   Esc: back", width - 4, curses.color_pair(4))
+    if ideas:
+        idea = ordered_shelf(state)[state.selected_idea]
+        row = height - 5
+        for index, line in enumerate(idea.pitch_lines()):
+            add_text(panel, row + index, 2, line[: width - 4], width - 4, curses.A_BOLD)
+        add_text(panel, row + len(idea.pitch_lines()), 2, f"Unanswered: {idea.uncertainty}", width - 4, curses.color_pair(3))
 
 
-def draw_base_game_picker(screen: curses.window, state: GameState, width: int, height: int) -> None:
+def draw_concept_screen(screen: curses.window, state: GameState, width: int, height: int) -> None:
+    project = state.studio.current_project
     panel = screen.derwin(height - 4, width, 2, 0)
-    noun = "Spin-off" if state.new_game_kind == "spinoff" else "Sequel"
-    draw_box(panel, f"Start Production | {noun} Base Game")
-    add_text(panel, 1, 2, f"Pick the released game this {noun.lower()} builds on.", width - 4, curses.color_pair(4))
-    choices = base_game_choices(state)
-    state.selected_sequel_choice = min(state.selected_sequel_choice, len(choices) - 1)
-    rows = []
-    for choice in choices:
-        label = game_title(choice, 34)
-        rows.append((f"{label:<34} {choice.genre[:13]:<13} rating {rating_text(choice):>3} | hype {choice.hype:.0f} | {choice.monthly_players:,} monthly players | {update_status(choice)}", 0))
-    draw_selectable_list(panel, rows, state.selected_sequel_choice, True, y=3, width=width - 4, visible=height - 8)
-    add_text(panel, height - 2, 2, "Enter or double-click to continue. Mouse wheel scrolls the release list.", width - 4, curses.color_pair(4))
-
-
-def new_game_panel_geometry(width: int, height: int) -> tuple[int, int, int, int, int]:
-    storefront_height = 11
-    top_height = max(9, height - 4 - storefront_height)
-    genre_width = max(16, min(28, width // 6))
-    theme_width = max(18, min(32, width // 5))
-    plan_width = width - genre_width - theme_width - 2
-    return top_height, genre_width, theme_width, plan_width, storefront_height
-
-
-def draw_new_game(screen: curses.window, state: GameState, width: int, height: int) -> None:
-    if state.new_game_step == -1:
-        draw_project_type(screen, state, width, height)
+    if project is None or project.stage != "concept":
+        draw_box(panel, "Concept")
+        add_text(panel, 1, 2, "No concept is open.", width - 4, curses.color_pair(2))
         return
-    if state.new_game_step == -2:
-        draw_base_game_picker(screen, state, width, height)
+    draw_box(panel, f"Concept | {project.title}")
+    draw_stage_ribbon(panel, 1, "concept", width)
+    gdd = project.gdd
+    pitch_width = max(24, min(46, width // 3))
+    pitch = panel.derwin(height - 6, pitch_width, 3, 0)
+    draw_box(pitch, "The Pitch")
+    add_text(pitch, 1, 2, f'Fantasy: {gdd.get("fantasy", "")}', pitch_width - 4, curses.color_pair(3))
+    for index, line in enumerate(gdd.get("pitch_lines", [])):
+        add_text(pitch, 3 + index * 2, 2, line, pitch_width - 4, curses.A_BOLD)
+    uncertainty_row = 3 + len(gdd.get("pitch_lines", [])) * 2 + 1
+    add_text(pitch, uncertainty_row, 2, "Unanswered:", pitch_width - 4, curses.color_pair(2) | curses.A_BOLD)
+    add_text(pitch, uncertainty_row + 1, 2, gdd.get("uncertainty", ""), pitch_width - 4, curses.color_pair(2))
+    clarity = float(gdd.get("clarity", 0.5))
+    doubt = float(gdd.get("technical_doubt", 0.2))
+    originality = float(gdd.get("originality", 0.5))
+    signals = ["clear fantasy" if clarity >= 0.75 else "interesting but vague" if clarity >= 0.45 else "incoherent pitch"]
+    if originality >= 0.8:
+        signals.append("striking concept")
+    if doubt >= 0.6:
+        signals.append("technically doubtful")
+    elif doubt <= 0.25:
+        signals.append("proven tech")
+    if gdd.get("hook"):
+        signals.append("unusual hook")
+    add_text(pitch, height - 9, 2, ", ".join(signals), pitch_width - 4, curses.color_pair(6))
+    if gdd.get("findings"):
+        add_text(pitch, height - 8, 2, f"{len(gdd['findings'])} finding(s) recorded", pitch_width - 4, curses.color_pair(4))
+
+    work_width = width - pitch_width - 1
+    work = panel.derwin(height - 6, work_width, 3, pitch_width + 1)
+    draw_box(work, "Experiments")
+    if project.active_experiment:
+        experiment = idea_engine.experiment_by_key(project.active_experiment)
+        add_text(work, 1, 2, f"Running: {experiment.name}", work_width - 4, curses.color_pair(3) | curses.A_BOLD)
+        add_text(work, 2, 2, f"~{project.experiment_days_left} workdays left", work_width - 4, curses.color_pair(2))
+    else:
+        available = idea_engine.available_experiments(type("V", (), {"hook": gdd.get("hook", ""), "technical_doubt": gdd.get("technical_doubt", 0.0), "tags": gdd.get("tags", [])})())
+        rows = []
+        for index, experiment in enumerate(available):
+            cursor = index == state.selected_experiment
+            rows.append((f"{experiment.name}  ({experiment.weeks}w) - {experiment.blurb}", curses.color_pair(3) | curses.A_BOLD if cursor else 0))
+        draw_selectable_list(work, rows, state.selected_experiment, not project.active_experiment, y=1, width=work_width - 4, visible=height - 12)
+    findings_row = height - 10
+    add_text(work, findings_row, 2, "FINDINGS", work_width - 4, curses.A_BOLD)
+    recent = list(reversed(gdd.get("findings", [])))[:3]
+    for offset, finding in enumerate(recent):
+        add_text(work, findings_row + 1 + offset * 2, 2, f"W{finding['week']} {finding['experiment']} ({finding['confidence']}):", work_width - 4, curses.color_pair(6))
+        add_text(work, findings_row + 2 + offset * 2, 2, finding["text"], work_width - 4, curses.color_pair(4))
+    add_text(panel, height - 3, 2, "Enter: run selected experiment   E: end concept > design   S: shelve idea   Esc: games", width - 4, curses.color_pair(4))
+
+
+def draw_design_review(screen: curses.window, state: GameState, width: int, height: int) -> None:
+    project = state.studio.current_project
+    panel = screen.derwin(height - 4, width, 2, 0)
+    if project is None or project.stage != "design":
+        draw_box(panel, "Design Review")
+        add_text(panel, 1, 2, "No design review is open.", width - 4, curses.color_pair(2))
         return
-    top_height, genre_width, theme_width, plan_width, storefront_height = new_game_panel_geometry(width, height)
-    plan_height = top_height + storefront_height
-    genre = screen.derwin(top_height, genre_width, 2, 0)
-    topic = screen.derwin(top_height, theme_width, 2, genre_width + 1)
-    plan = screen.derwin(plan_height, plan_width, 2, genre_width + theme_width + 2)
-    genre_blend = GENRES[state.selected_secondary_genre]
-    theme_blend = TOPICS[state.selected_secondary_topic]
-    draw_box(genre, "1 Genre")
-    draw_box(topic, "2 Theme")
-    draw_box(plan, "3 Creative Brief & Market")
-    if genre_blend != GENRES[state.selected_genre]:
-        add_text(genre, 0, 11, f"+ {genre_blend}", genre_width - 13, curses.color_pair(3) | curses.A_BOLD)
-    if theme_blend != TOPICS[state.selected_topic]:
-        add_text(topic, 0, 11, f"+ {theme_blend}", theme_width - 13, curses.color_pair(3) | curses.A_BOLD)
-    available_genres = available_genre_indices(state)
-    if state.selected_genre not in available_genres:
-        state.selected_genre = available_genres[0]
-    if state.selected_secondary_genre not in available_genres:
-        state.selected_secondary_genre = state.selected_genre
-    genre_rows = [(GENRES[index], curses.color_pair(COLOR_GOOD) if state.studio.genre_fans.get(GENRES[index], 0) > 0 else 0) for index in available_genres]
-    genre_blend_mode = state.mix_blend and state.new_game_step == 0
-    if genre_blend_mode:
-        genre_rows = [(name, curses.color_pair(3) if index == state.selected_genre else attr) for index, (name, attr) in zip(available_genres, genre_rows)]
-        add_text(genre, 1, 2, "BLEND (yellow = primary)", genre_width - 4, curses.color_pair(3) | curses.A_BOLD)
+    draw_box(panel, f"Design & Technical Plan | {project.title}")
+    draw_stage_ribbon(panel, 1, "design", width)
+    packages = project.gdd.get("presentation_options", [])
+    advice = project.gdd.get("team_advice", [])
+    row = 3
+    if advice:
+        add_text(panel, row, 2, "TEAM ADVICE", width - 4, curses.A_BOLD)
+        row += 1
+        for entry in advice:
+            marker = "  (experienced)" if entry.get("reliable") else "  (green team - may be off)"
+            add_text(panel, row, 2, f"{entry['who']} {marker}: {entry['text']}", width - 4, curses.color_pair(3) if entry.get("reliable") else curses.color_pair(2))
+            row += 1
+        row += 1
+    add_text(panel, row, 2, "PRESENTATION DIRECTION" + ("  [T: tweak axes]" if not state.tweak_presentation else "  [T: back to packages]"), width - 4, curses.A_BOLD)
+    row += 1
+    if not state.tweak_presentation:
+        rows = []
+        for index, package in enumerate(packages):
+            marker = " <" if index == state.selected_presentation else ""
+            attr = curses.color_pair(3) | curses.A_BOLD if index == state.selected_presentation else 0
+            rows.append((f"{package['name']}  x{package['work']:.2f} work{marker}", attr))
+        draw_selectable_list(panel, rows, state.selected_presentation, state.selected_design_focus == 0, y=row, width=width - 4, visible=min(len(packages) + 1, 5))
+        row += len(packages) + 1
+        if 0 <= state.selected_presentation < len(packages):
+            add_text(panel, row, 2, packages[state.selected_presentation]["note"], width - 4, curses.color_pair(6))
+            row += 1
     else:
-        add_text(genre, 1, 2, "PRIMARY" + (" (green = fans)" if state.studio.genre_fans else ""), genre_width - 4, curses.A_BOLD)
-    genre_locked = locked_genre_count(state)
-    genre_visible = max(1, top_height - (4 if genre_locked else 3))
-    cursor_genre = state.selected_secondary_genre if genre_blend_mode else state.selected_genre
-    genre_selected = available_genres.index(cursor_genre) if cursor_genre in available_genres else 0
-    draw_selectable_list(genre, genre_rows, genre_selected, state.new_game_step == 0, y=2, width=genre_width - 4, visible=genre_visible)
-    if genre_locked:
-        add_text(genre, top_height - 2, 2, f"+{genre_locked} via Studio Dev", genre_width - 4, curses.color_pair(2))
-
-    ordered_topics = topic_order(state)
-    topic_blend_mode = state.mix_blend and state.new_game_step == 1
-    rows = topic_rows(state)
-    if topic_blend_mode:
-        primary_topic = TOPICS[state.selected_topic]
-        rows = [(topic, curses.color_pair(3) if topic == primary_topic else attr) for topic, attr in rows]
-        add_text(topic, 1, 2, "BLEND (yellow = primary)", theme_width - 4, curses.color_pair(3) | curses.A_BOLD)
-    else:
-        add_text(topic, 1, 2, "PRIMARY (green = signal)", theme_width - 4, curses.A_BOLD)
-    topic_locked = locked_topic_count(state)
-    topic_visible = max(1, top_height - (4 if topic_locked else 3))
-    current_topic = TOPICS[state.selected_secondary_topic if topic_blend_mode else state.selected_topic]
-    topic_selected = next((index for index, (topic_name, _) in enumerate(ordered_topics) if topic_name == current_topic), 0)
-    draw_selectable_list(topic, rows, topic_selected, state.new_game_step == 1, y=2, width=theme_width - 4, visible=topic_visible)
-    if topic_locked:
-        add_text(topic, top_height - 2, 2, f"+{topic_locked} via Studio Dev", theme_width - 4, curses.color_pair(2))
-
-    scope = SCOPES[state.selected_scope]
-    marketing = MARKETING[state.selected_marketing]
-    channel_data = CHANNELS[state.selected_channel]
-    audience = AUDIENCES[state.selected_audience]
-    game_format = GAME_FORMATS[state.selected_format]
-    primary_direction = CREATIVE_DIRECTIONS[state.selected_creative_primary]
-    secondary_direction = CREATIVE_DIRECTIONS[state.selected_creative_secondary]
-    release_strategy = RELEASE_STRATEGIES[state.selected_release_strategy]
-    monetization = selected_monetization_model(state)
-    price_point = selected_price_point(state)
-    announcement = selected_announcement_strategy(state)
-    release_policy = selected_release_policy(state)
-    report = market_report(state)
-    publisher = publisher_by_name(state.studio.pending_publisher)
-    inner = plan_width - 4
-    meter_width = max(8, min(18, plan_width - 40))
-    title_mode = "TYPE NAME, ENTER TO ACCEPT" if state.naming_game else "E edit / R randomize"
-    add_text(plan, 1, 2, f"Title      {state.draft_title}_  [{title_mode}]" if state.naming_game else f"Title      {state.draft_title}  [{title_mode}]", inner, curses.color_pair(3) | curses.A_BOLD)
-
-    add_text(plan, 3, 2, "PLAN", inner, curses.A_BOLD)
-    field_specs = [
-        ("Scope", scope["name"], f"base {scope['work']:,} work | {money(scope['setup'])}"),
-        ("Game format", game_format["name"], f"+{game_format['work'] - 1:.0%} work | {money(game_format['setup'])} tech"),
-        ("Audience", audience["name"], ""),
-        ("Lead bet", primary_direction["name"], ""),
-        ("Support bet", secondary_direction["name"], ""),
-        ("Monetization", monetization["name"], f"{money(int(monetization['setup_cost']))} setup | friction {float(monetization['monetization_friction']):.0%}"),
-        ("Price", f"Auto ({float(price_point['price']):.2f})" if state.selected_price < 0 else price_point["name"], "best fit for scope/audience" if state.selected_price < 0 else "per copy"),
-        ("Announcement", announcement["name"], f"hype decay {float(announcement['hype_decay']):.0%}/wk"),
-        ("Release policy", release_policy["name"], f"promise risk {float(release_policy['promise_risk']):.0%}"),
-        ("Launch life", release_strategy["name"], release_strategy["tradeoff"]),
-        ("Marketing", marketing["name"], f"{money(marketing['cost'])} | hype {5 + marketing['boost'] / 25:.0f}"),
-    ]
-    rows = []
-    for index, (label, value, detail) in enumerate(field_specs):
-        shown = f"<{value}>" if state.new_game_step == 2 and index == state.selected_focus else value
+        from sim_core.ideas import FORMS, STYLES, CAMERAS, MOVEMENTS, DENSITIES
+        axes = [("form", "Form", FORMS), ("style", "Style", STYLES), ("camera", "Camera", CAMERAS), ("movement", "Movement", MOVEMENTS), ("density", "Density", DENSITIES)]
+        for axis_offset, (key, label, values) in enumerate(axes):
+            current = state.design_tweaks.get(key) or (packages[state.selected_presentation][key] if packages else values[0])
+            index = values.index(current) if current in values else 0
+            marker = " <" if state.selected_design_focus == axis_offset + 1 else ""
+            attr = curses.color_pair(3) | curses.A_BOLD if state.selected_design_focus == axis_offset + 1 else 0
+            add_text(panel, row + axis_offset, 2, f"{label:<10} <{current}>{marker}", width - 4, attr)
+        row += len(axes) + 1
+    plan_specs = (
+        ("Scope", "selected_scope", SCOPES),
+        ("Game format", "selected_format", GAME_FORMATS),
+        ("Audience", "selected_audience", AUDIENCES),
+        ("Lead pillar", "selected_creative_primary", CREATIVE_DIRECTIONS),
+        ("Support pillar", "selected_creative_secondary", CREATIVE_DIRECTIONS),
+        ("Monetization", "selected_monetization", MONETIZATION_MODELS),
+        ("Price", "selected_price", PRICE_POINTS),
+        ("Announcement", "selected_announcement", ANNOUNCEMENT_STRATEGIES),
+        ("Release policy", "selected_release_policy", RELEASE_POLICIES),
+        ("Launch life", "selected_release_strategy", RELEASE_STRATEGIES),
+        ("Marketing", "selected_marketing", MARKETING),
+    )
+    tweak_offset = 6 if state.tweak_presentation else 1
+    add_text(panel, row, 2, "PRODUCTION PLAN", width - 4, curses.A_BOLD)
+    row += 1
+    plan_start = row
+    for index, (label, attribute, options) in enumerate(plan_specs):
+        value_index = getattr(state, attribute)
+        value_index = value_index % len(options) if value_index >= 0 else value_index
+        option = options[value_index]
+        shown = option["name"]
+        cursor = state.selected_design_focus == tweak_offset + index
+        attr = curses.color_pair(3) | curses.A_BOLD if cursor else 0
         requirement = None
-        if index == 0:
-            requirement = research_requirement_for_scope(state.selected_scope)
-        elif index == 1:
-            requirement = research_requirement_for_format(state.selected_format)
-        elif index == 5:
-            requirement = research_requirement_for_monetization(state.selected_monetization)
-        elif index == 9:
-            requirement = research_requirement_for_strategy(state.selected_release_strategy)
-        elif index == 10:
-            requirement = research_requirement_for_marketing(state.selected_marketing)
+        if attribute == "selected_scope":
+            requirement = research_requirement_for_scope(value_index)
+        elif attribute == "selected_format":
+            requirement = research_requirement_for_format(value_index)
+        elif attribute == "selected_monetization":
+            requirement = research_requirement_for_monetization(value_index)
+        elif attribute == "selected_release_strategy":
+            requirement = research_requirement_for_strategy(value_index)
+        elif attribute == "selected_marketing":
+            requirement = research_requirement_for_marketing(value_index)
         locked = bool(requirement and not has_research(state.studio, requirement))
-        lock_text = " | LOCKED" if locked else ""
-        rows.append((f"{label:<15} {shown}" + (f" | {detail}" if detail else "") + lock_text, curses.color_pair(5) if locked else 0))
-    draw_selectable_list(plan, rows, state.selected_focus, state.new_game_step == 2, y=4, width=inner, scroll=False)
-    if state.new_game_step == 2 and plan_height >= 32:
-        _, attribute, options = PLAN_FIELDS[state.selected_focus]
-        current = getattr(state, attribute)
-        add_text(plan, 16, 2, "Options", inner, curses.A_BOLD)
-        chip_x = 11
-        for index, option in enumerate(options):
-            chip = option["name"]
-            if chip_x + len(chip) > plan_width - 2:
-                break
-            requirement = None
-            if state.selected_focus == 0:
-                requirement = research_requirement_for_scope(index)
-            elif state.selected_focus == 1:
-                requirement = research_requirement_for_format(index)
-            elif state.selected_focus == 5:
-                requirement = research_requirement_for_monetization(index)
-            elif state.selected_focus == 9:
-                requirement = research_requirement_for_strategy(index)
-            elif state.selected_focus == 10:
-                requirement = research_requirement_for_marketing(index)
-            locked = bool(requirement and not has_research(state.studio, requirement))
-            attr = curses.color_pair(5) if locked else curses.color_pair(3) | curses.A_BOLD if index == current else curses.color_pair(2)
-            add_text(plan, 16, chip_x, chip, len(chip), attr)
-            chip_x += len(chip) + 2
-    elif plan_height >= 32:
-        add_text(plan, 16, 2, f"Trade-off   {primary_direction['tradeoff']} + {secondary_direction['tradeoff']}", inner, curses.color_pair(2))
-
-    fit_attr = curses.color_pair(COLOR_GOOD) if report["score_low"] >= 52 else curses.color_pair(5) if report["score_high"] < 38 else 0
-    cost = scope["setup"] + game_format["setup"] + release_strategy["setup"] + marketing["cost"] + channel_data["fee"] + int(monetization["setup_cost"])
-    publisher_advance = publisher["advance"] if publisher else 0
-    funded_cost = max(0, cost - publisher_advance)
-    output = projected_weekly_output(state.studio, concept_focus(state))
-    week_low = max(4, round(report["work_low"] / output))
-    week_high = max(week_low, round(report["work_high"] / output))
-    runway_weeks = max(0, state.studio.cash - funded_cost) / max(1, monthly_fixed_cost(state.studio)) * 4.33
-    runway_danger = runway_weeks < week_high
-    week_scale = max(runway_weeks, week_high)
-    drains = capacity_drains(state.studio)
-    drain_text = " | ".join(drains) if drains else "full capacity"
+        if locked:
+            attr = curses.color_pair(5)
+        add_text(panel, row + index, 2, f"{label:<15} <{shown}>{' | LOCKED' if locked else ''}", width - 4, attr)
+    row += len(plan_specs)
+    # Storefront line
+    cursor_store = state.selected_design_focus == tweak_offset + len(plan_specs)
+    attr = curses.color_pair(3) | curses.A_BOLD if cursor_store else 0
+    platforms = [CHANNELS[i]["name"] for i in selected_platform_indexes(state)]
+    add_text(panel, row, 2, f"{'Storefronts':<15} {', '.join(platforms) or CHANNELS[state.selected_channel]['name']}  ([T] tags extra stores)", width - 4, attr)
+    row += 1
+    commit_cursor = state.selected_design_focus == tweak_offset + len(plan_specs) + 1
+    attr = curses.color_pair(4) | curses.A_BOLD | curses.A_REVERSE if commit_cursor else curses.color_pair(4) | curses.A_BOLD
+    add_text(panel, row + 1, 2, "COMMIT TO PRODUCTION", width - 4, attr)
     requirements = plan_requirements(state)
     if requirements:
-        readiness = f"LOCKED: needs {', '.join(requirements)}"
-    elif runway_danger:
-        readiness = f"HIGH FAILURE RISK: {runway_weeks:.0f}w runway vs forecast up to {week_high}w"
+        add_text(panel, row + 2, 2, f"Blocked: needs {', '.join(requirements)}", width - 4, curses.color_pair(5))
     else:
-        readiness = "PRODUCTION READY - forecast still carries uncertainty"
-    readiness_attr = curses.color_pair(5) if requirements or runway_danger else curses.color_pair(4) | curses.A_BOLD
-    genre_name = GENRES[state.selected_genre]
-    genre_mix = genre_name if genre_name == GENRES[state.selected_secondary_genre] else f"{genre_name}/{GENRES[state.selected_secondary_genre]}"
-    topic_name = TOPICS[state.selected_topic]
-    topic_mix = topic_name if topic_name == TOPICS[state.selected_secondary_topic] else f"{topic_name} + {TOPICS[state.selected_secondary_topic]}"
-    sequel = next((game for game in state.studio.catalog if game.game_id == state.sequel_game_id), None)
-
-    if plan_height < 32:
-        add_text(plan, 15, 2, f"MARKET Fit {report['score_low']}-{report['score_high']} | confidence {report['confidence']}% | {report['outlook']}", inner, fit_attr | curses.A_BOLD)
-        add_text(plan, 16, 2, f"WORKLOAD {report['work_low']:,}-{report['work_high']:,} | {week_low}-{week_high}w | ~{output:.0f}/wk", inner, curses.A_BOLD)
-        add_text(plan, 17, 2, f"Runway {runway_weeks:.0f}w | need {week_high}w | cash {money(funded_cost)}", inner, curses.color_pair(5) if runway_danger else 0)
-        add_text(plan, 18, 2, readiness, inner, readiness_attr)
-        add_text(plan, 19, 2, f"BRIEF {scope['name']} {game_format['name']} {genre_mix} | {topic_mix}", inner, curses.A_BOLD)
-    else:
-        add_text(plan, 18, 2, "MARKET", inner, curses.A_BOLD)
-        add_text(plan, 19, 2, f"Fit        {range_meter(report['score_low'], report['score_high'], 100, meter_width)} {report['score_low']}-{report['score_high']}", inner, fit_attr)
-        add_text(plan, 20, 2, f"Interest   {report['audience_low']:,}-{report['audience_high']:,} players", inner)
-        add_text(plan, 21, 2, f"Confidence {meter(report['confidence'], 100, meter_width)} {report['confidence']}%", inner)
-        add_text(plan, 22, 2, f"Rivals     {report['competitors_low']}-{report['competitors_high']} | release pressure {report['release_pressure']:.1f} | research {report['research']}", inner)
-        add_text(plan, 23, 2, f"Store demand {report['open_market']:.0%} open: a rival hit claims this genre/storefront's attention.", inner, curses.color_pair(5) if report['open_market'] < 0.55 else 0)
-        add_text(plan, 24, 2, f"Outlook    {report['outlook']}", inner, fit_attr)
-        add_text(plan, 25, 2, "WORKLOAD", inner, curses.A_BOLD)
-        add_text(plan, 26, 2, f"Forecast   {report['work_low']:,}-{report['work_high']:,} work ≈ {week_low}-{week_high}w", inner)
-        add_text(plan, 27, 2, f"Runway     {meter(runway_weeks, week_scale, meter_width)} {runway_weeks:.0f}w", inner, curses.color_pair(5) if runway_danger else 0)
-        add_text(plan, 28, 2, f"Needed     {meter(week_high, week_scale, meter_width)} {week_high}w", inner)
-        add_text(plan, 29, 2, f"Capacity   ~{output:.0f}/wk | drains {drain_text}", inner, curses.color_pair(5) if drains else 0)
-        funding = f" | publisher {money(publisher_advance)}" if publisher else ""
-        add_text(plan, 30, 2, f"Cash due   {money(cost)} | {money(funded_cost)} studio cash{funding}", inner)
-        add_text(plan, 32, 2, readiness, inner, readiness_attr)
-        if plan_height < 40:
-            add_text(plan, 34, 2, "BRIEF", inner, curses.A_BOLD)
-            add_text(plan, 35, 2, f"{scope['name']} {game_format['name']} {genre_mix} | {topic_mix} | {audience['name']}", inner)
-        else:
-            add_text(plan, 34, 2, "BRIEF", inner, curses.A_BOLD)
-            add_text(plan, 35, 2, f"{scope['name']} {game_format['name']} {genre_mix} game about {topic_mix}", inner)
-            add_text(plan, 36, 2, f"for {audience['name']}; lead {primary_direction['name']}, support {secondary_direction['name']};", inner)
-            add_text(plan, 37, 2, f"{release_strategy['name']}, {monetization['name']} at {price_point['name']}, on {channel_data['name']}.", inner)
-            if sequel:
-                score = f"{sequel.score}/100"
-                add_text(plan, 38, 2, f"Sequel to {sequel.title} ({score})", inner, curses.color_pair(2))
-            elif publisher:
-                add_text(plan, 38, 2, f"{publisher['name']} deal: {money(publisher_advance)} advance; {publisher['recoup_share']:.0%} royalties until recouped.", inner, curses.color_pair(3))
-
-    storefront_width = genre_width + theme_width + 1
-    storefront = screen.derwin(storefront_height, storefront_width, 2 + top_height, 0)
-    draw_box(storefront, "4 Market & Store")
-    # Columns: [x] marker, store name, cut, cost, then the five-cell reach
-    # meter (or a red "tech" tag when the platform technology is missing).
-    # The lock reason for the cursor store is explained below the list so the
-    # rows themselves never collide with the meter.
-    store_width = max(10, min(18, storefront_width - 30))
-    popularity_x = 2 + 6 + store_width + 2
-    add_text(storefront, 1, 2, f"  {'STORE':<{store_width + 1}} {'CUT':>5} {'COST':>9}", storefront_width - 4, curses.A_BOLD)
-    visible = storefront_height - 3
-    order = storefront_display_order(state)
-    cursor_position = order.index(state.selected_channel) if state.selected_channel in order else 0
-    channel_rows = []
-    for index in order:
-        channel = CHANNELS[index]
-        locked = bool(channel_lock_reason(state.studio, index))
-        tagged = index in state.selected_platforms
-        marker = "[x]" if tagged or index == state.selected_channel else "[ ]"
-        attr = curses.color_pair(5) if locked else curses.color_pair(2) if tagged else 0
-        channel_rows.append((f"{marker} {channel['name']:<{store_width}} {channel['cut']:>4.0%} {money(channel['fee']):>9}", attr))
-    draw_selectable_list(storefront, channel_rows, cursor_position, state.new_game_step == 3, y=2, width=storefront_width - 4, visible=visible)
-    if storefront_width >= 52:
-        for row, index in enumerate(order[:visible], 2):
-            channel = CHANNELS[index]
-            if channel_lock_reason(state.studio, index):
-                add_text(storefront, row, popularity_x, "tech", 5, curses.color_pair(5) | curses.A_BOLD)
-                continue
-            for block in range(5):
-                attr = curses.color_pair(3) | curses.A_BOLD if block < channel["visibility"] else curses.color_pair(6)
-                add_text(storefront, row, popularity_x + block, glyph("pop_steps")[block], 1, attr)
-    hint_row = min(visible + 2, storefront_height - 1)
-    lock = channel_lock_reason(state.studio, state.selected_channel)
-    if lock:
-        add_text(storefront, hint_row, 2, f"Needs {lock.replace('research: ', '')} research", storefront_width - 4, curses.color_pair(5))
-    else:
-        platforms = [CHANNELS[index]["name"] for index in selected_platform_indexes(state)]
-        fees = sum(int(CHANNELS[index]["fee"]) for index in selected_platform_indexes(state))
-        add_text(storefront, hint_row, 2, f"Ships on: {' + '.join(platforms)} | fees {money(fees)} | [T] tags extra stores", storefront_width - 4, curses.color_pair(2))
+        report = market_report(state)
+        output = projected_weekly_output(state.studio, concept_focus(state))
+        weeks = max(4, round(report["work"] / output))
+        add_text(panel, row + 2, 2, f"Forecast {report['score_low']}-{report['score_high']} score | {weeks}w | confidence {report['confidence']}%", width - 4, curses.color_pair(6))
+    add_text(panel, height - 3, 2, "Up/Down: move   Left/Right: change   Enter: confirm   T: tweak presentation   Esc: back to concept", width - 4, curses.color_pair(4))
