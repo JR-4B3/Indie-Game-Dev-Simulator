@@ -222,7 +222,11 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             ]
         actions = [("[N]" if compact else control_label("N", "New Game"), "new"), ("[U]" if compact else control_label("U", "Update Planner"), "open_update_planner"), ("[P]" if compact else control_label("P", "Promotion"), "game_marketing")]
         if project and state.selected_game == 0:
-            actions.append(("[C]" if compact else control_label("C", "Cancel project"), "open_cancel_project"))
+            if project.stage in ("concept", "design"):
+                label = "Resume concept" if project.stage == "concept" else "Resume design"
+                actions.append(("[Enter/C]" if compact else control_label("Enter/C", label), "resume_project"))
+            else:
+                actions.append(("[C]" if compact else control_label("C", "Cancel project"), "open_cancel_project"))
             if project.ready_for_release:
                 actions.append(("[R]" if compact else control_label("R", "Release"), "release_project"))
             if project.monetization == "paid_early_access" and not project.early_access:
@@ -363,7 +367,17 @@ def status_segments(state: GameState, width: int) -> list[tuple[str, int]]:
         dev_width, job_width = 8, 4
     project = studio.current_project
     if project is not None:
-        segments.append((f"DEV {meter(project.progress, 1, dev_width)}", curses.color_pair(4) | curses.A_BOLD))
+        if project.stage == "concept":
+            project_status = "CONCEPT OPEN"
+        elif project.stage == "design":
+            project_status = "DESIGN REVIEW"
+        elif project.stage == "testing":
+            project_status = f"TEST {meter(project.bug_progress, 1, dev_width)}"
+        elif project.stage == "gold":
+            project_status = "GOLD READY"
+        else:
+            project_status = f"DEV {meter(project.progress, 1, dev_width)}"
+        segments.append((project_status, curses.color_pair(4) | curses.A_BOLD))
     contract = studio.contract
     if contract is not None:
         progress = 0 if contract.required_work <= 0 else contract.work_done / contract.required_work

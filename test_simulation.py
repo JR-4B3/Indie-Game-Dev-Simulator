@@ -563,6 +563,21 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(state.modal, "concept")
         self.assertEqual(len(state.studio.idea_shelf), 0)
 
+        # Backspace only leaves the workspace. Games shows the true stage and
+        # provides an obvious way back instead of presenting a fake 0% dev.
+        handle_concept_key(state, curses.KEY_BACKSPACE)
+        self.assertEqual(project.stage, "concept")
+        self.assertEqual(state.modal, "games")
+        with patch("main.curses.color_pair", return_value=0):
+            status = " ".join(text for text, _ in status_segments(state, 120))
+        self.assertIn("CONCEPT OPEN", status)
+        self.assertNotIn("DEV ", status)
+        games_text = " ".join(rendered_games_text(state, 100, 30))
+        self.assertIn("Concept - resume", games_text)
+        self.assertIn("Enter or C: resume Concept", games_text)
+        handle_key(state, ord("c"))
+        self.assertEqual(state.modal, "concept")
+
         # Concept renders the pitch and the experiment list.
         text = rendered_pipeline_text(state, 190, 50)
         self.assertTrue(any("The Pitch" in line for line in text))
@@ -595,8 +610,36 @@ class SimulationTests(unittest.TestCase):
         commit_design_plan(state)
         self.assertEqual(project.stage, "development")
         self.assertEqual(state.modal, "games")
+        self.assertEqual(state.time_speed_index, 1)
         self.assertGreater(project.total_work, 0)
         self.assertTrue(project.gdd["history"])
+
+    def test_design_review_preserves_an_intentional_pause(self) -> None:
+        state = GameState(time_speed_index=0, resume_speed_index=3)
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+
+        self.assertTrue(begin_design_review(state))
+        self.assertFalse(state.design_review_resume_on_close)
+        self.assertTrue(commit_design_plan(state))
+        self.assertEqual(state.studio.current_project.stage, "development")
+        self.assertEqual(state.time_speed_index, 0)
+
+    def test_leaving_design_restores_only_its_automatic_pause(self) -> None:
+        running = GameState(time_speed_index=3)
+        running.studio.idea_shelf.append(force_idea(running))
+        handle_ideas_key(running, 10)
+        begin_design_review(running)
+        handle_design_review_key(running, curses.KEY_BACKSPACE)
+        self.assertEqual(running.time_speed_index, 3)
+        self.assertFalse(running.design_review_resume_on_close)
+
+        paused = GameState(time_speed_index=0, resume_speed_index=3)
+        paused.studio.idea_shelf.append(force_idea(paused))
+        handle_ideas_key(paused, 10)
+        begin_design_review(paused)
+        handle_design_review_key(paused, curses.KEY_BACKSPACE)
+        self.assertEqual(paused.time_speed_index, 0)
 
     def test_locked_planning_options_are_skipped(self) -> None:
         state = GameState()
@@ -702,6 +745,7 @@ class SimulationTests(unittest.TestCase):
 
         def build_cases():
             from ui_newgame import draw_idea_shelf, draw_concept_screen, draw_design_review
+            from ui_games import draw_games_screen
 
             cases = []
             state = GameState()
@@ -718,6 +762,7 @@ class SimulationTests(unittest.TestCase):
             for day in range(6):
                 develop_project(concept, day, week_end=False, workday=True)
             cases.append((draw_concept_screen, concept))
+            cases.append((draw_games_screen, concept))
 
             design = GameState()
             design.studio.idea_shelf.append(force_idea(design))
@@ -727,10 +772,10 @@ class SimulationTests(unittest.TestCase):
             cases.append((draw_design_review, design))
             design.tweak_presentation = True
             cases.append((draw_design_review, design))
+            cases.append((draw_games_screen, design))
 
             games = GameState(modal="games")
             self.assertTrue(start_project(games))
-            from ui_games import draw_games_screen
             cases.append((draw_games_screen, games))
             return cases
 

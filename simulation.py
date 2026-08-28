@@ -1101,6 +1101,7 @@ class GameState:
     selected_design_focus: int = 0
     tweak_presentation: bool = False
     design_tweaks: dict = field(default_factory=dict)
+    design_review_resume_on_close: bool = False
     shelf_origin: str = "main"
     time_speed_index: int = 1
     resume_speed_index: int = 1
@@ -3113,7 +3114,8 @@ def begin_design_review(state: GameState) -> bool:
     state.tweak_presentation = False
     state.selected_focus = 0
     state.modal = "design_review"
-    if state.time_speed_index:
+    state.design_review_resume_on_close = state.time_speed_index != 0
+    if state.design_review_resume_on_close:
         state.resume_speed_index = state.time_speed_index
         state.time_speed_index = 0
     state.log(f"{project.title} moved to the design stage. Review the plan before production.")
@@ -3310,6 +3312,9 @@ def commit_design_plan(state: GameState) -> bool:
         financing_inflow(studio, publisher_advance, "Publisher advance", date=state.clock.current_date, counterparty=publisher["name"], memo=f"Recoupable advance for {title[:48]}")
         studio.pending_publisher = ""
     state.modal = "games"
+    if state.design_review_resume_on_close and state.time_speed_index == 0:
+        state.time_speed_index = max(1, state.resume_speed_index)
+    state.design_review_resume_on_close = False
     state.naming_game = False
     state.sequel_game_id = None
     state.spinoff_franchise_id = None
@@ -5880,6 +5885,7 @@ def state_to_data(state: GameState) -> dict:
             "focus": state.focus,
             "time_speed_index": state.time_speed_index,
             "resume_speed_index": state.resume_speed_index,
+            "design_review_resume_on_close": state.design_review_resume_on_close,
             "draft_title": state.draft_title,
             "title_roll": state.title_roll,
             "sequel_game_id": state.sequel_game_id,
@@ -5982,6 +5988,7 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         focus=ui.get("focus", [30, 25, 15, 30]),
         time_speed_index=min(ui.get("time_speed_index", 1), len(TIME_SPEEDS) - 1),
         resume_speed_index=max(1, min(ui.get("resume_speed_index", 1), len(TIME_SPEEDS) - 1)),
+        design_review_resume_on_close=ui.get("design_review_resume_on_close", False),
         draft_title=ui.get("draft_title", ""),
         title_roll=ui.get("title_roll", 0),
         sequel_game_id=ui.get("sequel_game_id"),

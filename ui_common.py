@@ -271,7 +271,7 @@ def promotion_targets(state) -> list[tuple[int, str, float, str]]:
     targets = []
     if state.studio.current_project:
         project = state.studio.current_project
-        targets.append((0, project.title, project.hype, "In development"))
+        targets.append((0, project.title, project.hype, f"In {project.phase.lower()}"))
     for game in live_games(state):
         targets.append((game.game_id, game_title(game), game.hype, f"rating {rating_text(game)} | {game.monthly_players:,} monthly | {update_status(game)}"))
     return targets

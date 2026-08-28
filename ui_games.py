@@ -488,11 +488,26 @@ def draw_project_detail(screen: curses.window, state: GameState, project, bottom
     draw_box(overview, "Game")
     draw_box(promotion, "Promotion")
 
+    if project.stage in ("concept", "design"):
+        add_text(overview, 1, 2, project.title, overview_width - 4, curses.A_BOLD)
+        add_text(overview, 2, 2, project.phase.upper(), overview_width - 4, curses.color_pair(3) | curses.A_BOLD)
+        if project.stage == "concept":
+            add_text(overview, 4, 2, "This concept is waiting for experiments or a design decision.", overview_width - 4)
+            add_text(overview, 6, 2, "Press Enter or C to resume Concept.", overview_width - 4, curses.color_pair(4) | curses.A_BOLD)
+        else:
+            add_text(overview, 4, 2, "The paused design review is waiting for a production plan.", overview_width - 4)
+            add_text(overview, 6, 2, "Press Enter or C to resume Design.", overview_width - 4, curses.color_pair(4) | curses.A_BOLD)
+        add_text(promotion, 1, 2, "Promotion unlocks after production is committed.", promotion_width - 4, curses.color_pair(2))
+        if summary_height >= 5:
+            draw_economics_strip(screen, state, project.title, bottom_y + detail_height, summary_height, width, positions, campaign_load)
+        return
+
     weekly_output = projected_weekly_output(state.studio, project.focus)
     remaining = max(1, round(project.remaining_work / weekly_output))
     drains = capacity_drains(state.studio)
     if detail_height < 20 or width < 150:
-        add_text(overview, 1, 2, f"{project.phase} {project.progress:.0%} | week {project.weeks}/~{project.planned_weeks} | ~{remaining}w left", overview_width - 4, curses.color_pair(4))
+        bar_value = project.bug_progress if project.stage == "testing" else project.progress
+        add_text(overview, 1, 2, f"{project.phase} {bar_value:.0%} | week {project.weeks}/~{project.planned_weeks} | ~{remaining}w left", overview_width - 4, curses.color_pair(4))
         add_text(overview, 2, 2, f"Bugs {int(project.known_defects)} | Hype {project.hype:.0f}", overview_width - 4)
         recommendation, recommendation_color = project_recommendation(state, project)
         add_text(overview, 3, 2, recommendation, overview_width - 4, curses.color_pair(recommendation_color) if recommendation_color in (4, 5) else 0)
@@ -683,7 +698,17 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         rows = []
         for entry_id, entry in entries:
             if entry_id == 0:
-                rows.append((f"{entry.title[:20]:<20} dev {entry.phase} {entry.progress:.0%}", curses.color_pair(3)))
+                if entry.stage == "concept":
+                    status = "Concept - resume"
+                elif entry.stage == "design":
+                    status = "Design - resume"
+                elif entry.stage == "testing":
+                    status = f"Testing {entry.bug_progress:.0%}"
+                elif entry.stage == "gold":
+                    status = "Gold - ready"
+                else:
+                    status = f"Development {entry.progress:.0%}"
+                rows.append((f"{entry.title[:20]:<20} {status}", curses.color_pair(3)))
             else:
                 sale = sale_for_game(state.studio, entry.game_id)
                 title = game_title(entry, 20)
@@ -692,6 +717,12 @@ def draw_games_screen(screen: curses.window, state: GameState, width: int, heigh
         selected_id, selected = entries[state.selected_game]
         if selected_id == 0:
             add_text(detail, 1, 2, selected.title, detail_width - 4, curses.A_BOLD)
+            if selected.stage in ("concept", "design"):
+                add_text(detail, 3, 2, selected.phase.upper(), detail_width - 4, curses.color_pair(3) | curses.A_BOLD)
+                waiting = "experiments or Design" if selected.stage == "concept" else "a production commitment"
+                add_text(detail, 5, 2, f"Waiting for {waiting}; this stage does not auto-complete.", detail_width - 4)
+                add_text(detail, 7, 2, f"Enter or C: resume {selected.phase}", detail_width - 4, curses.color_pair(4) | curses.A_BOLD)
+                return
             genre_mix = selected.genre if selected.secondary_genre == selected.genre else f"{selected.genre} + {selected.secondary_genre}"
             add_text(detail, 2, 2, genre_mix, detail_width - 4)
             add_text(detail, 3, 2, f"{selected.target_audience} | {selected.game_format}", detail_width - 4)

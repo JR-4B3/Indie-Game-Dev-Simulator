@@ -180,6 +180,8 @@ def handle_concept_key(state: GameState, key: int) -> None:
     project = state.studio.current_project
     if key in (8, 127, curses.KEY_BACKSPACE, 27):
         state.modal = "games"
+        state.selected_game = 0
+        state.log("Concept remains open. Select it in Games and press Enter or C to resume.")
         return
     if project is None or project.stage != "concept":
         state.modal = "games"
@@ -258,8 +260,9 @@ def handle_design_review_key(state: GameState, key: int) -> None:
     if key in (8, 127, curses.KEY_BACKSPACE, 27):
         project.stage = "concept"
         state.modal = "concept"
-        if state.time_speed_index == 0:
-            state.time_speed_index = state.resume_speed_index
+        if state.design_review_resume_on_close and state.time_speed_index == 0:
+            state.time_speed_index = max(1, state.resume_speed_index)
+        state.design_review_resume_on_close = False
         return
     if key == curses.KEY_UP:
         state.selected_design_focus = (state.selected_design_focus - 1) % len(rows)
@@ -424,6 +427,12 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "open_concept":
         if state.modal == "ideas":
             handle_ideas_key(state, 10)
+    elif action == "resume_project":
+        project = state.studio.current_project
+        if project and project.stage == "concept":
+            state.modal = "concept"
+        elif project and project.stage == "design":
+            state.modal = "design_review"
     elif action == "discard_idea":
         if state.modal == "ideas":
             handle_ideas_key(state, ord("d"))
@@ -1295,8 +1304,8 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
             state.games_tab = 0
         elif key in (ord("n"), ord("N")):
             open_idea_shelf(state, "games")
-        elif key in (ord("c"), ord("C")) and project and project.stage == "concept" and state.selected_game == 0:
-            state.modal = "concept"
+        elif key in (10, 13, curses.KEY_ENTER, ord("c"), ord("C")) and project and project.stage in ("concept", "design") and state.selected_game == 0:
+            state.modal = "concept" if project.stage == "concept" else "design_review"
         elif key == curses.KEY_UP and entry_count:
             state.selected_game = (state.selected_game - 1) % entry_count
         elif key == curses.KEY_DOWN and entry_count:
