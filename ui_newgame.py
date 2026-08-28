@@ -86,6 +86,37 @@ def ordered_shelf(state: GameState) -> list[RoughIdea]:
     return sorted(state.studio.idea_shelf, key=lambda item: (status_rank.get(item.status, 0), -item.created_week))
 
 
+def design_review_layout(state: GameState, height: int) -> dict[str, int | bool]:
+    """Panel-relative rows shared by rendering and mouse hit-testing."""
+    project = state.studio.current_project
+    packages = project.gdd.get("presentation_options", []) if project else []
+    advice = project.gdd.get("team_advice", []) if project else []
+    panel_height = height - 4
+    compact = panel_height < 30
+    row = 3
+    if advice and not compact:
+        row += len(advice) + 2
+    presentation_heading = row
+    presentation_start = presentation_heading + 1
+    if state.tweak_presentation:
+        production_heading = presentation_start + 6
+    else:
+        production_heading = presentation_start + len(packages) + 1
+        if 0 <= state.selected_presentation < len(packages) and not compact:
+            production_heading += 1
+    return {
+        "compact": compact,
+        "presentation_heading": presentation_heading,
+        "presentation_start": presentation_start,
+        "production_heading": production_heading,
+        "plan_start": production_heading + 1,
+        "store_row": panel_height - 4,
+        "commit_row": panel_height - 3,
+        "status_row": panel_height - 2,
+        "tweak_offset": 6 if state.tweak_presentation else 1,
+    }
+
+
 def shelf_rows(state: GameState) -> list[tuple[str, int]]:
     rows = []
     for idea in ordered_shelf(state):
@@ -206,8 +237,8 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
     draw_stage_ribbon(panel, 1, "design", width)
     packages = project.gdd.get("presentation_options", [])
     advice = project.gdd.get("team_advice", [])
-    panel_height = height - 4
-    compact = panel_height < 30
+    layout = design_review_layout(state, height)
+    compact = bool(layout["compact"])
     row = 3
     if advice and not compact:
         add_text(panel, row, 2, "TEAM ADVICE", width - 4, curses.A_BOLD)
@@ -217,6 +248,7 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
             add_text(panel, row, 2, f"{entry['who']} {marker}: {entry['text']}", width - 4, curses.color_pair(3) if entry.get("reliable") else curses.color_pair(2))
             row += 1
         row += 1
+    row = int(layout["presentation_heading"])
     add_text(panel, row, 2, "PRESENTATION DIRECTION" + ("  [T: tweak axes]" if not state.tweak_presentation else "  [T: back to packages]"), width - 4, curses.A_BOLD)
     row += 1
     if not state.tweak_presentation:
@@ -253,20 +285,23 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
         ("Launch life", "selected_release_strategy", RELEASE_STRATEGIES),
         ("Marketing", "selected_marketing", MARKETING),
     )
-    tweak_offset = 6 if state.tweak_presentation else 1
+    row = int(layout["production_heading"])
+    tweak_offset = int(layout["tweak_offset"])
     add_text(panel, row, 2, "PRODUCTION PLAN", width - 4, curses.A_BOLD)
     # Plan rows flow downward; the actionable block (storefront, commit,
     # status) is pinned to the bottom of the panel and drawn last so it
     # always stays visible and wins any overlap on short terminals.
-    plan_start = row + 1
-    store_row = panel_height - 4
-    commit_row = panel_height - 3
-    status_row = panel_height - 2
+    plan_start = int(layout["plan_start"])
+    store_row = int(layout["store_row"])
+    commit_row = int(layout["commit_row"])
+    status_row = int(layout["status_row"])
     for index, (label, attribute, options) in enumerate(plan_specs):
         value_index = getattr(state, attribute)
-        value_index = value_index % len(options) if value_index >= 0 else value_index
-        option = options[value_index]
-        shown = option["name"]
+        if attribute == "selected_price" and value_index < 0:
+            shown = f"Auto ({selected_price_point(state)['name']})"
+        else:
+            value_index = value_index % len(options)
+            shown = options[value_index]["name"]
         cursor = state.selected_design_focus == tweak_offset + index
         attr = curses.color_pair(3) | curses.A_BOLD if cursor else 0
         requirement = None
@@ -288,7 +323,7 @@ def draw_design_review(screen: curses.window, state: GameState, width: int, heig
     cursor_store = state.selected_design_focus == tweak_offset + len(plan_specs)
     attr = curses.color_pair(3) | curses.A_BOLD if cursor_store else 0
     platforms = [CHANNELS[i]["name"] for i in selected_platform_indexes(state)]
-    add_text(panel, store_row, 2, f"{'Storefronts':<15} {', '.join(platforms) or CHANNELS[state.selected_channel]['name']}  ([T] tags extra stores)", width - 4, attr)
+    add_text(panel, store_row, 2, f"{'Storefronts':<15} {', '.join(platforms) or CHANNELS[state.selected_channel]['name']}  ([X] tags extra stores)", width - 4, attr)
     commit_cursor = state.selected_design_focus == tweak_offset + len(plan_specs) + 1
     attr = curses.color_pair(4) | curses.A_BOLD | curses.A_REVERSE if commit_cursor else curses.color_pair(4) | curses.A_BOLD
     add_text(panel, commit_row, 2, "COMMIT TO PRODUCTION", width - 4, attr)

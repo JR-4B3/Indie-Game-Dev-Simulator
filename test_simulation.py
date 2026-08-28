@@ -9,9 +9,9 @@ from unittest.mock import MagicMock, patch
 
 from game_data import GENRES, GOOD_MATCHES, TOPICS
 from main import CTRL_S, active_top_tab, bottom_time_layout, draw_dashboard, draw_footer, draw_games_screen, draw_header, draw_insolvency_popup, draw_main_content, draw_marketing_screen, draw_idea_shelf, draw_concept_screen, draw_design_review, draw_screen, draw_settings_popup, draw_team_screen, footer_button_ranges, footer_layout, global_action_layout, handle_key, handle_mouse, open_idea_shelf, parse_args, status_segments, team_layout, top_context_uses_second_row, top_control_layout, top_tab_actions, top_tab_layout
-from ui_input import handle_ideas_key, handle_concept_key, handle_design_review_key, design_review_rows
+from ui_input import handle_ideas_key, handle_concept_key, handle_design_review_key, design_review_rows, perform_footer_action
 from simulation import start_experiment as _start_experiment  # noqa: F401
-from ui_newgame import shelf_rows
+from ui_newgame import design_review_layout, shelf_rows
 from ui_upgrades import draw_upgrades
 from simulation import (
     ActiveSale,
@@ -155,22 +155,6 @@ def rendered_marketing_text(state: GameState, width: int, height: int) -> list[s
     screen.derwin.side_effect = create_window
     with patch("main.curses.color_pair", return_value=0):
         draw_marketing_screen(screen, state, width, height)
-    return [call.args[2] for window in windows for call in window.addstr.call_args_list]
-
-
-def rendered_new_game_text(state: GameState, width: int, height: int) -> list[str]:
-    screen = MagicMock()
-    windows = []
-
-    def create_window(panel_height, panel_width, _y, _x):
-        window = MagicMock()
-        window.getmaxyx.return_value = (panel_height, panel_width)
-        windows.append(window)
-        return window
-
-    screen.derwin.side_effect = create_window
-    with patch("main.curses.color_pair", return_value=0):
-        draw_new_game(screen, state, width, height)
     return [call.args[2] for window in windows for call in window.addstr.call_args_list]
 
 
@@ -584,8 +568,9 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(any("Unanswered" in line for line in text))
         self.assertTrue(any("Paper prototype" in line for line in text))
 
-        # Running an experiment produces a finding, not a guaranteed boost.
-        start_experiment(state, "paper_prototype")
+        # Use the same dispatch path as a real Enter key, not a simulation
+        # helper, so missing UI imports cannot hide behind headless tests.
+        handle_key(state, 10)
         self.assertTrue(project.active_experiment)
         for day in range(6):
             develop_project(state, day, week_end=False, workday=True)
@@ -595,7 +580,7 @@ class SimulationTests(unittest.TestCase):
         # Ending concept opens the paused design review.
         labels = {action: label for label, action, _ in footer_layout(state, 190)}
         self.assertEqual(labels["end_concept"], "[E] Design")
-        begin_design_review(state)
+        handle_key(state, ord("e"))
         self.assertEqual(project.stage, "design")
         self.assertEqual(state.modal, "design_review")
         self.assertEqual(state.time_speed_index, 0)
@@ -605,9 +590,18 @@ class SimulationTests(unittest.TestCase):
         self.assertTrue(any("PRESENTATION DIRECTION" in line for line in text))
         self.assertTrue(any("TEAM ADVICE" in line for line in text))
         self.assertTrue(any("COMMIT TO PRODUCTION" in line for line in text))
+        self.assertTrue(any("Auto (" in line for line in text))
 
-        # Committing moves the project into Development.
-        commit_design_plan(state)
+        # T is contextual here; it must not be swallowed by the Team shortcut.
+        handle_key(state, ord("t"))
+        self.assertEqual(state.modal, "design_review")
+        self.assertTrue(state.tweak_presentation)
+        handle_key(state, ord("t"))
+        self.assertFalse(state.tweak_presentation)
+
+        # The clickable Commit action commits regardless of cursor position.
+        state.selected_design_focus = 0
+        perform_footer_action(state, "commit_design")
         self.assertEqual(project.stage, "development")
         self.assertEqual(state.modal, "games")
         self.assertEqual(state.time_speed_index, 1)
@@ -716,11 +710,41 @@ class SimulationTests(unittest.TestCase):
         state.studio.idea_shelf.append(force_idea(state))
         handle_ideas_key(state, 10)
         project = state.studio.current_project
-        self.assertTrue(shelve_concept(state))
+        handle_key(state, ord("s"))
         self.assertIsNone(state.studio.current_project)
         self.assertEqual(len(state.studio.idea_shelf), 1)
         self.assertEqual(state.studio.idea_shelf[0].title, project.title)
         self.assertEqual(state.modal, "ideas")
+
+    def test_discarding_selected_last_idea_clamps_before_next_buffered_key(self) -> None:
+        state = GameState(modal="ideas")
+        state.studio.idea_shelf.extend((force_idea(state), force_idea(state)))
+        state.selected_idea = 1
+
+        handle_key(state, ord("d"))
+        self.assertEqual(state.selected_idea, 0)
+        handle_key(state, 10)
+        self.assertEqual(state.modal, "concept")
+
+    def test_design_review_mouse_uses_rendered_dynamic_rows(self) -> None:
+        state = GameState()
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+        begin_design_review(state)
+        height, width = 50, 190
+        layout = design_review_layout(state, height)
+
+        scope_y = 2 + int(layout["plan_start"])
+        with patch("main.curses.getmouse", return_value=(0, 2, scope_y, 0, curses.BUTTON1_CLICKED)):
+            handle_mouse(state, (height, width))
+        scope_row = next(index for index, row in enumerate(design_review_rows(state)) if row == ("plan", "selected_scope"))
+        self.assertEqual(state.selected_design_focus, scope_row)
+
+        package_y = 2 + int(layout["presentation_start"]) + 1
+        with patch("main.curses.getmouse", return_value=(0, 2, package_y, 0, curses.BUTTON1_CLICKED)):
+            handle_mouse(state, (height, width))
+        self.assertEqual(state.selected_presentation, 1)
+        self.assertEqual(state.selected_design_focus, 0)
 
     def test_shelf_rows_are_clickable(self) -> None:
         state = GameState()
@@ -755,24 +779,29 @@ class SimulationTests(unittest.TestCase):
 
             concept = GameState()
             concept.studio.idea_shelf.append(force_idea(concept))
-            handle_ideas_key(concept, 10)
-            cases.append((draw_concept_screen, concept))
-            start_experiment(concept, "paper_prototype")
-            cases.append((draw_concept_screen, concept))
+            concept.modal = "ideas"
+            handle_key(concept, 10)
+            cases.append((draw_concept_screen, deepcopy(concept)))
+            handle_key(concept, 10)
+            cases.append((draw_concept_screen, deepcopy(concept)))
             for day in range(6):
                 develop_project(concept, day, week_end=False, workday=True)
-            cases.append((draw_concept_screen, concept))
-            cases.append((draw_games_screen, concept))
+            cases.append((draw_concept_screen, deepcopy(concept)))
+            cases.append((draw_games_screen, deepcopy(concept)))
 
             design = GameState()
             design.studio.idea_shelf.append(force_idea(design))
-            handle_ideas_key(design, 10)
-            begin_design(design)
-            design.modal = "design_review"
-            cases.append((draw_design_review, design))
+            design.modal = "ideas"
+            handle_key(design, 10)
+            handle_key(design, ord("e"))
+            cases.append((draw_design_review, deepcopy(design)))
             design.tweak_presentation = True
-            cases.append((draw_design_review, design))
-            cases.append((draw_games_screen, design))
+            cases.append((draw_design_review, deepcopy(design)))
+            cases.append((draw_games_screen, deepcopy(design)))
+
+            design.tweak_presentation = False
+            perform_footer_action(design, "commit_design")
+            cases.append((draw_games_screen, deepcopy(design)))
 
             games = GameState(modal="games")
             self.assertTrue(start_project(games))
@@ -1798,6 +1827,30 @@ class SimulationTests(unittest.TestCase):
         self.assertEqual(len(loaded.studio.applicants), len(state.studio.applicants))
         self.assertEqual(len(loaded.studio.contract_offers), len(state.studio.contract_offers))
         self.assertEqual(loaded.marketing_tab, 1)
+
+    def test_design_review_choices_survive_save_round_trip(self) -> None:
+        state = GameState()
+        state.studio.idea_shelf.append(force_idea(state))
+        handle_ideas_key(state, 10)
+        begin_design_review(state)
+        state.selected_presentation = 2
+        state.selected_design_focus = 5
+        state.selected_experiment = 1
+        state.tweak_presentation = True
+        state.design_tweaks = {"form": "Full 3D", "style": "Painted"}
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "design-save.json"
+            state.save_path = str(path)
+            save_game(state)
+            loaded = load_game(str(path))
+
+        self.assertEqual(loaded.selected_presentation, 2)
+        self.assertEqual(loaded.selected_design_focus, 5)
+        self.assertEqual(loaded.selected_experiment, 1)
+        self.assertTrue(loaded.tweak_presentation)
+        self.assertEqual(loaded.design_tweaks, state.design_tweaks)
+        self.assertTrue(loaded.design_review_resume_on_close)
 
     def test_unsupported_save_version_is_rejected(self) -> None:
         state = GameState(selected_scope=1)

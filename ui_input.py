@@ -52,7 +52,6 @@ from simulation import (
     research_requirement_for_channel,
     channel_lock_reason,
     storefront_display_order,
-    cycle_price_point,
     research_requirement_for_format,
     research_requirement_for_marketing,
     research_requirement_for_monetization,
@@ -69,6 +68,9 @@ from simulation import (
     toggle_platform_selection,
     toggle_auto_contracts,
     start_concept_project,
+    start_experiment,
+    begin_design_review,
+    shelve_concept,
     commit_design_plan,
     idea_engine,
 )
@@ -103,7 +105,7 @@ from ui_chrome import (
 from ui_common import catalogue_entries, list_start, live_games, promotion_targets
 from ui_contracts import contract_board_width
 from ui_games import catalogue_table_height, catalogue_table_width, games_list_width, summary_panel_width
-from ui_newgame import shelf_rows, ordered_shelf, stage_banner_line
+from ui_newgame import design_review_layout, shelf_rows, ordered_shelf, stage_banner_line
 from ui_stats import ANALYSIS_TABS
 from ui_team import team_layout, visible_roster
 from ui_title import TITLE_MENU, title_layout
@@ -169,7 +171,7 @@ def handle_ideas_key(state: GameState, key: int) -> None:
         idea = ideas[state.selected_idea]
         state.studio.idea_shelf.remove(idea)
         state.log(f"Discarded the idea {idea.title}.")
-        state.selected_idea = min(state.selected_idea, max(0, len(ideas) - 1))
+        state.selected_idea = min(state.selected_idea, max(0, len(state.studio.idea_shelf) - 1))
     elif key in (10, 13, curses.KEY_ENTER) and ideas:
         idea = ideas[state.selected_idea]
         if start_concept_project(state, idea):
@@ -450,7 +452,7 @@ def perform_footer_action(state: GameState, action: str) -> bool:
             handle_design_review_key(state, ord("t"))
     elif action == "commit_design":
         if state.modal == "design_review":
-            handle_design_review_key(state, 10)
+            commit_design_plan(state)
     elif action == "contracts":
         state.modal = "contracts"
     elif action == "finance":
@@ -636,6 +638,8 @@ def perform_footer_action(state: GameState, action: str) -> bool:
     elif action == "new_game_selection":
         if state.modal == "ideas":
             handle_ideas_key(state, curses.KEY_DOWN)
+        elif state.modal == "design_review":
+            handle_design_review_key(state, curses.KEY_DOWN)
     elif action == "new_game_adjust_left":
         if state.modal == "design_review":
             handle_design_review_key(state, curses.KEY_LEFT)
@@ -1062,14 +1066,25 @@ def handle_mouse(state: GameState, dimensions: tuple[int, int]) -> bool | None:
         return
 
     if state.modal == "design_review":
-        # Wheel adjusts the focused value; plain clicks move the cursor row.
         project = state.studio.current_project
         if project is None or project.stage != "design":
             return
         rows = design_review_rows(state)
-        row = y - 4
-        if 0 <= row < len(rows):
-            state.selected_design_focus = row
+        layout = design_review_layout(state, height)
+        panel_row = y - 2
+        if panel_row == layout["commit_row"]:
+            state.selected_design_focus = len(rows) - 1
+            if double_click:
+                commit_design_plan(state)
+        elif panel_row == layout["store_row"]:
+            state.selected_design_focus = len(rows) - 2
+        elif layout["plan_start"] <= panel_row < layout["plan_start"] + 11:
+            state.selected_design_focus = layout["tweak_offset"] + panel_row - layout["plan_start"]
+        elif state.tweak_presentation and layout["presentation_start"] <= panel_row < layout["presentation_start"] + 5:
+            state.selected_design_focus = 1 + panel_row - layout["presentation_start"]
+        elif not state.tweak_presentation and layout["presentation_start"] <= panel_row < layout["presentation_start"] + len(project.gdd.get("presentation_options", [])):
+            state.selected_presentation = panel_row - layout["presentation_start"]
+            state.selected_design_focus = 0
         return
 
 
@@ -1228,6 +1243,13 @@ def handle_key(state: GameState, key: int, dimensions: tuple[int, int] | None = 
                 state.naming_game = False
         elif 32 <= key <= 126 and len(state.draft_title) < 48:
             state.draft_title += chr(key)
+        return True
+    # Context commands must win over same-letter global tab shortcuts.
+    if state.modal == "concept" and key in (ord("s"), ord("S")):
+        handle_concept_key(state, key)
+        return True
+    if state.modal == "design_review" and key in (ord("t"), ord("T")):
+        handle_design_review_key(state, key)
         return True
     for index, (_, shortcut, _) in enumerate(TOP_TABS):
         if key in (ord(shortcut.lower()), ord(shortcut)):

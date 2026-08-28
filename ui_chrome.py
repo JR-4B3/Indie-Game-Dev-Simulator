@@ -185,7 +185,7 @@ def footer_actions(state: GameState, width: int | None = None) -> list[tuple[str
             actions.append((control_label("</>", "Change"), "new_game_adjust_right"))
         actions.extend([("[T]" if compact else control_label("T", "Tweak look"), "toggle_tweak"), ("[E]" if compact else control_label("E", "Title"), "type_title"), ("[R]" if compact else control_label("R", "Random"), "random_title")])
         if not state.tweak_presentation:
-            actions.append(("[T]", "toggle_platform"))
+            actions.append(("[X]", "toggle_platform"))
         actions.append((control_label("Enter", "Commit"), "commit_design"))
         return actions
     if state.modal == "team":

@@ -3112,7 +3112,7 @@ def begin_design_review(state: GameState) -> bool:
     state.selected_presentation = 0
     state.design_tweaks = {}
     state.tweak_presentation = False
-    state.selected_focus = 0
+    state.selected_design_focus = 0
     state.modal = "design_review"
     state.design_review_resume_on_close = state.time_speed_index != 0
     if state.design_review_resume_on_close:
@@ -5886,6 +5886,13 @@ def state_to_data(state: GameState) -> dict:
             "time_speed_index": state.time_speed_index,
             "resume_speed_index": state.resume_speed_index,
             "design_review_resume_on_close": state.design_review_resume_on_close,
+            "selected_idea": state.selected_idea,
+            "selected_experiment": state.selected_experiment,
+            "selected_presentation": state.selected_presentation,
+            "selected_design_focus": state.selected_design_focus,
+            "tweak_presentation": state.tweak_presentation,
+            "design_tweaks": dict(state.design_tweaks),
+            "shelf_origin": state.shelf_origin,
             "draft_title": state.draft_title,
             "title_roll": state.title_roll,
             "sequel_game_id": state.sequel_game_id,
@@ -5989,6 +5996,13 @@ def state_from_data(data: dict, save_path: str) -> GameState:
         time_speed_index=min(ui.get("time_speed_index", 1), len(TIME_SPEEDS) - 1),
         resume_speed_index=max(1, min(ui.get("resume_speed_index", 1), len(TIME_SPEEDS) - 1)),
         design_review_resume_on_close=ui.get("design_review_resume_on_close", False),
+        selected_idea=ui.get("selected_idea", 0),
+        selected_experiment=ui.get("selected_experiment", 0),
+        selected_presentation=ui.get("selected_presentation", 0),
+        selected_design_focus=ui.get("selected_design_focus", 0),
+        tweak_presentation=ui.get("tweak_presentation", False),
+        design_tweaks=dict(ui.get("design_tweaks", {})),
+        shelf_origin=ui.get("shelf_origin", "main"),
         draft_title=ui.get("draft_title", ""),
         title_roll=ui.get("title_roll", 0),
         sequel_game_id=ui.get("sequel_game_id"),
