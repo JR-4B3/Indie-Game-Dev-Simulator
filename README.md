@@ -14,6 +14,73 @@ On modern terminals the game keeps the terminal's own palette, so a themed emula
 
 ## Start
 
+### Browser interface (preview)
+
+```bash
+python browser.py
+```
+
+Opens a local browser interface at `http://127.0.0.1:8765`. It uses the
+existing Python simulation and version 11 saves, without curses, external
+Python dependencies, accounts, CDN assets, or internet access. Python 3.10+
+and a modern browser are required on Windows, Linux, and macOS.
+
+The preview introduces Studio, Projects, People, Business, and Market pages
+with the blue/lavender, yellow, and green terminal palette. JetBrains Mono
+2.304 is bundled locally under its SIL Open Font License (see
+`web/fonts/OFL.txt`), matching the font face reported by Ghostty on the
+development machine. Browser and terminal rasterization can still differ.
+Compact top
+navigation replaces the sidebar. Main pages fit the viewport; detailed
+choices open in scrollable popups with a slim themed scrollbar. Only the
+staged Design & Production form retains Previous/Next steps. Dropdowns use
+the themed native picker where supported, with a native fallback elsewhere.
+Time runs continuously with the original simulation speeds and a filling
+week bar in the persistent footer. The meter interpolates on animation frames
+between authoritative server updates rather than visibly stepping at the
+polling interval. Studio uses a fixed two-column overview of finances, work,
+team availability/fatigue, and recent activity, with direct work-start actions.
+Popups and outstanding production decisions hold time. An uncommitted Design
+does not freeze the studio or market: production waits, but time keeps running
+after closing the review. Closing a popup preserves your previous pause/speed
+choice. An inactive/disconnected browser stops advancing after three seconds;
+missed time is not fast-forwarded on reconnect.
+
+Projects has a production workspace, idea shelf and design evidence. People
+shows individual skills, condition and vacation actions directly in the roster
+(with roster paging for larger teams). Business shows monthly revenue/expense
+history, fixed-cost composition, debt and capacity allocation. Market shows
+the simulation's weekly sales rankings, chart sales share by studio, and your
+catalogue. Full charts, competitor release sales and ledger records open in
+scrollable detail views. Charts are local SVGs with no external dependencies;
+empty histories remain empty rather than displaying invented data.
+
+Browser controls: `H/G/T/B/S` switch pages, `N` opens ideas, `J` jobs,
+`U` research, `F` financing, and `P` the catalogue. `Space` pauses/resumes;
+`Left/Right` or `</>` change speed. `Up/Down` focus controls and `Enter`
+activates them; `Tab` retains normal browser focus navigation. `Esc` closes
+a popup or opens settings, `Backspace` closes a popup or returns to Studio,
+and `Ctrl+S` saves. Form fields keep their native editing keys. On the
+Projects page `E` enters Design and `T` opens presentation choices during
+Design; on People `E` opens applicants.
+Use **Save studio** before closing the server. To avoid overwriting your
+existing save while trying it, use `python browser.py --save-file saves/browser-preview.json`.
+
+Options: `--port 8765`, `--no-browser`, and `--save-file PATH`.
+This is the first playable browser slice, not yet feature parity with the
+terminal: detailed training/dismissal controls, presentation-axis tweaking,
+advanced promotion/community planning, cancellation queues, additional statistics,
+and a full save-slot interface remain to be migrated.
+
+Browser checks: `python -m unittest test_browser`. Optional real Chromium
+smoke test: install Playwright in your testing environment, install its
+Chromium browser, and run `node web/browser-smoke.cjs` from the repository
+root. `node web/browser-views.cjs` checks populated layouts at four viewport
+sizes; set `SCREENSHOT_DIR` to an existing directory to capture each page.
+Playwright is not a game runtime dependency.
+
+### Original terminal interface
+
 ```bash
 python main.py
 ```
