@@ -83,10 +83,10 @@
 .market-command .best-seller{margin-left:auto;max-width:34%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .market-workspace{grid-template-columns:minmax(0,1.35fr) minmax(0,.65fr)}
 /* The chart carries the whole ranking: it fills the panel and scrolls on hover. */
-.market-workspace .compact-chart{display:flex;flex-direction:column;flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:var(--blue) var(--panel);scrollbar-gutter:stable}
+.market-workspace .compact-chart{display:flex;flex-direction:column;flex:1;min-height:0;padding-right:8px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable}
 .market-workspace .compact-chart .chart-columns{position:sticky;top:0;z-index:1;background:var(--panel);flex-shrink:0}
 .market-workspace .compact-chart .rank-row{flex:1 0 auto}
-.market-workspace .compact-chart::-webkit-scrollbar,.studio-pulse .compact-chart::-webkit-scrollbar{width:6px}
+.market-workspace .compact-chart::-webkit-scrollbar,.studio-pulse .compact-chart::-webkit-scrollbar{width:12px}
 .market-workspace .compact-chart::-webkit-scrollbar-track,.studio-pulse .compact-chart::-webkit-scrollbar-track{background:var(--panel)}
 .market-workspace .compact-chart::-webkit-scrollbar-thumb,.studio-pulse .compact-chart::-webkit-scrollbar-thumb{background:var(--blue);border-radius:3px}
 .market-side{display:grid;grid-template-rows:minmax(0,.9fr) minmax(0,1.1fr);gap:10px;min-width:0;min-height:0}
