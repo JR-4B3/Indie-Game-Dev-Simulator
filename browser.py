@@ -68,6 +68,16 @@ class BrowserGame:
         s = self.state
         p = s.studio.current_project
         studio = asdict(s.studio)
+        if p:
+            studio['current_project'].update(phase=p.phase, progress=p.progress,
+                                             bug_progress=p.bug_progress,
+                                             remaining_work=p.remaining_work,
+                                             weekly_output=sim.projected_weekly_output(s.studio, p.focus))
+        for released, display in zip(s.studio.catalog, studio['catalog']):
+            sale = sim.sale_for_game(s.studio, released.game_id)
+            display.update(weekly_units=round(sale.weekly_units) if sale else 0,
+                           week_to_date=sale.week_to_date if sale else 0,
+                           profit=sim.game_profit(released))
         # Browser view model: explicit display amounts, not inferred fallbacks.
         for employee in studio['team'] + studio['applicants']:
             employee['salary'] = employee['annual_salary']
@@ -81,12 +91,16 @@ class BrowserGame:
                   'description': f"{offer['weeks']} weeks · {offer['rate']:.0%} interest"}
                  for offer in sim.LOAN_OFFERS]
         experiments = sim.idea_engine.available_experiments(sim.concept_idea_view(p)) if p and p.stage == "concept" else []
+        def research_lock(key):
+            node = sim.research_by_key(key) if key else None
+            return f"Requires {node['name']}" if key and not sim.has_research(s.studio, key) and node else ''
         return {
             "started": True, "studio": studio, "date": str(s.clock.current_date),
             "clock": {"progress": s.clock.progress, "week": s.clock.week,
                       "speed": s.time_speed_index, "held": self.hold_reason(),
                       "weeks_per_second": sim.TIME_SPEEDS[s.time_speed_index] / sim.SECONDS_PER_WEEK},
             "allocations": sim.activity_allocations(s.studio),
+            "projected_output": sim.projected_weekly_output(s.studio, p.focus if p else (0, 0, 0, 0)),
             "monthly_cost": sim.monthly_fixed_cost(s.studio),
             "cost_breakdown": sim.monthly_cost_breakdown(s.studio),
             "market_chart": [asdict(entry) for entry in sim.market_chart(s, 30)],
@@ -98,7 +112,9 @@ class BrowserGame:
             "presentation": s.selected_presentation,
             "requirements": sim.plan_requirements(s) if p and p.stage == "design" else [],
             "research": sim.RESEARCH_NODES, "loans": loans,
-            "promotions": sim.PROMOTIONS,
+            "promotions": [{**x, 'lock': research_lock(sim.research_requirement_for_promotion(x['key'])) or (f"Requires {x['rep']} player trust" if s.studio.reputation < x['rep'] else '')} for x in sim.PROMOTIONS],
+            "update_sizes": [{**x, 'lock': research_lock(sim.research_requirement_for_update(x['name']))} for x in sim.UPDATE_SIZES], "update_focuses": sim.UPDATE_FOCUSES,
+            "community_actions": sim.COMMUNITY_ACTIONS,
             "decision": sim.PRODUCTION_DECISIONS[p.pending_decision] if p and p.pending_decision is not None else None,
         }
 
@@ -189,9 +205,33 @@ class BrowserGame:
             sim.queue_research(s, sim.RESEARCH_NODES[index]["key"])
         elif action == "loan":
             sim.take_loan(s, index)
-        elif action in ("update", "support", "promote"):
+        elif action in ("marketing", "community"):
+            game_id = data.get('game_id')
+            if type(game_id) is not int or not (game_id == 0 and p or any(g.game_id == game_id for g in s.studio.catalog)):
+                raise ValueError('Choose a current project or released game.')
+            choices = sim.PROMOTIONS if action == 'marketing' else sim.COMMUNITY_ACTIONS
+            if index >= len(choices):
+                raise ValueError('Invalid campaign selection.')
+            operation = sim.buy_promotion if action == 'marketing' else sim.take_community_action
+            if not operation(s, game_id, index):
+                raise ValueError(s.logs[0])
+        elif action in ("update", "support", "promote", "release_update", "price"):
             game = s.studio.catalog[index]
-            if action == "update":
+            if action == 'release_update':
+                size, focus = data.get('size'), data.get('focus')
+                if size not in [x['name'] for x in sim.UPDATE_SIZES] or focus not in [x['name'] for x in sim.UPDATE_FOCUSES]:
+                    raise ValueError('Invalid update plan.')
+                previous = game.update_size, game.update_focus
+                game.update_size, game.update_focus = size, focus
+                if not sim.queue_game_update(s, game.game_id):
+                    game.update_size, game.update_focus = previous
+                    raise ValueError(s.logs[0])
+            elif action == 'price':
+                delta = data.get('delta')
+                if type(delta) is not int or delta not in (-1, 1):
+                    raise ValueError('Invalid price change.')
+                sim.cycle_game_price(s, game.game_id, delta)
+            elif action == "update":
                 sim.queue_game_update(s, game.game_id)
             elif action == "support":
                 sim.cycle_game_support(s, game.game_id)
@@ -229,6 +269,8 @@ def serve(port=8765, save_path="saves/gamedev_save.json", open_browser=True):
                 self.send((assets / name).read_bytes(), kind)
             elif self.path in ("/fonts/JetBrainsMono-Regular.woff2", "/fonts/JetBrainsMono-SemiBold.woff2", "/fonts/JetBrainsMono-Bold.woff2"):
                 self.send((assets / self.path.lstrip('/')).read_bytes(), "font/woff2")
+            elif self.path in ('/operations.js', '/operations.css'):
+                self.send((assets / self.path.lstrip('/')).read_bytes(), 'text/javascript' if self.path.endswith('.js') else 'text/css')
             else:
                 self.send(b'{}', status=404)
 

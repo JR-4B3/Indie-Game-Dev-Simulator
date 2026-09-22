@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>WP-UI-01 shared harness — isolated variant testing</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="shared.css">
+</head>
+<body>
+  <div id="app">
+    <main id="game-surface" aria-label="Variant surface"></main>
+    <aside id="rail-placeholder" aria-label="Reserved review rail">
+      <p class="rail-title">Isolated variant testing</p>
+      <p class="rail-mode" id="rail-mode">Shared harness</p>
+      <p class="rail-note">One variant mounts at a time. The 1–5 switcher and local feedback are built later by the integration package.</p>
+    </aside>
+  </div>
+
+  <script src="fixtures.js"></script>
+  <script type="module" src="harness.js"></script>
+</body>
+</html>

@@ -25,7 +25,8 @@ const assert=require('node:assert/strict');
    state.studio.current_project.title='A long but plausible production title';
    state.studio.current_project.gdd.findings=Array.from({length:3},()=>({text:'The prototype shows the central mechanic works, but the scope needs careful review before production.'}));
    state.studio.idea_shelf=Array.from({length:5},(_,i)=>({title:`New idea ${i}`,fantasy:'Explore a world with a team and discover what the audience responds to.'}));
-   state.studio.catalog=Array.from({length:3},(_,i)=>({title:`Released game ${i}`,units_sold:10000-i*2000,monthly_players:1000,net_revenue:40000,score:80}));
+    state.studio.catalog=Array.from({length:3},(_,i)=>({title:`Released game ${i}`,units_sold:10000-i*2000,monthly_players:1000,net_revenue:40000,score:80}));
+    state.studio.contract_offers=Array.from({length:8},(_,i)=>({title:`Contract offer ${i+1}`,client:`Client ${i+1}`,focus:['Art','Code','Design','Research'][i%4],difficulty:i%4+1,quality_target:55+i*4,required_work:35+i*12,weeks_left:3+i,expires_week:20+i,reputation_required:i*5,pay:12000+i*6500}));
   });
   for(const [width,height] of [[1440,900],[1024,768],[800,600],[390,844]]){
    await tab.setViewportSize({width,height});
@@ -44,8 +45,13 @@ const assert=require('node:assert/strict');
     if(process.env.SCREENSHOT_DIR)await tab.screenshot({path:`${process.env.SCREENSHOT_DIR}/${name}-${width}.png`});
     assert.deepEqual(issues,[],`${name} ${width}x${height}`);
    }
-  }
-  assert.deepEqual(errors,[]);
+   }
+   await tab.setViewportSize({width:390,height:844});
+   await tab.evaluate(()=>{modal='contracts';drawModal();dialog.showModal();});
+   assert.equal(await tab.locator('.contract-table tbody tr').count(),8);
+   assert(await tab.locator('dialog .dialog-body').evaluate(el=>el.scrollWidth<=el.clientWidth+1),'Contract board overflows horizontally on mobile');
+   assert.equal(await tab.locator('.contract-table tbody tr').first().getByRole('button',{name:'Accept',exact:true}).count(),1);
+   assert.deepEqual(errors,[]);
   console.log('PASS: populated workspaces fit four viewports; charts use generated ledger and market data.');
  }finally{if(browser)await browser.close();server.kill();}
 })().catch(error=>{console.error(error);process.exitCode=1;});

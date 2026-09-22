@@ -1,0 +1,438 @@
+/* WP-UI-01V3 — Board Map. Every rule is scoped under .variant-3. */
+
+.variant-3 {
+  --v3-bg: #0b1020;
+  --v3-panel: #101a2e;
+  --v3-line: #2d3f61;
+  --v3-ink: #dbe4f5;
+  --v3-dim: #9fb0d4;
+  --v3-accent: #ffd166;
+  --v3-lav: #b9a7ff;
+  --v3-blue: #5b8cff;
+  --v3-green: #7ce38b;
+  --v3-warn: #ff8a9a;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+  color: var(--v3-ink);
+  background:
+    radial-gradient(1100px 560px at 18% -10%, rgba(91, 140, 255, 0.14), transparent 62%),
+    radial-gradient(900px 520px at 92% 112%, rgba(185, 167, 255, 0.12), transparent 62%),
+    var(--v3-bg);
+}
+
+.variant-3 .v3-hud {
+  position: sticky;
+  top: 0;
+  z-index: 6;
+  background: #0f1726;
+}
+
+.variant-3 .v3-hud .lab-hud {
+  border-bottom: 1px solid var(--v3-line);
+}
+
+.variant-3 .v3-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 10px;
+  align-items: start;
+  padding: 10px;
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------ relation board */
+
+.variant-3 .v3-map {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  height: calc(100dvh - 96px);
+  padding: 8px;
+  border: 1px solid var(--v3-line);
+  background: linear-gradient(180deg, rgba(16, 26, 46, 0.92), rgba(11, 16, 32, 0.92));
+}
+
+.variant-3 .v3-map-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  min-width: 0;
+}
+
+.variant-3 .v3-map-title {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--v3-lav);
+}
+
+.variant-3 .v3-map-hint {
+  font-size: 10px;
+  color: var(--v3-dim);
+}
+
+.variant-3 .v3-jump {
+  margin-left: auto;
+  min-height: 32px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 11px;
+  color: #141a2c;
+  background: var(--v3-accent);
+  border: 1px solid var(--v3-accent);
+  cursor: pointer;
+}
+
+.variant-3 .v3-map-canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 420px;
+  overflow: hidden;
+  border: 1px dashed rgba(91, 140, 255, 0.28);
+  background-color: rgba(8, 13, 26, 0.6);
+  background-image:
+    linear-gradient(rgba(91, 140, 255, 0.10) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(91, 140, 255, 0.10) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.variant-3 .v3-edge-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.variant-3 .v3-edges {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.variant-3 .v3-edge {
+  stroke: #46618f;
+  stroke-width: 1.5;
+  stroke-dasharray: 5 5;
+}
+
+.variant-3 .v3-edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  padding: 1px 4px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--v3-dim);
+  background: rgba(11, 16, 32, 0.9);
+  border: 1px solid rgba(45, 63, 97, 0.9);
+  white-space: nowrap;
+}
+
+.variant-3 .v3-node {
+  position: absolute;
+  left: calc(var(--v3-x) * 1%);
+  top: calc(var(--v3-y) * 1%);
+  width: calc(var(--v3-w) * 1%);
+  height: calc(var(--v3-h) * 1%);
+  min-height: 54px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 7px 9px;
+  text-align: left;
+  font: inherit;
+  color: var(--v3-ink);
+  background: linear-gradient(180deg, #16223a, #101a2e);
+  border: 1px solid var(--v3-line);
+  border-left: 4px solid var(--v3-blue);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.variant-3 .v3-node.is-evidence {
+  border-left-color: var(--v3-lav);
+}
+
+.variant-3 .v3-node.is-primary {
+  border-color: rgba(255, 209, 102, 0.85);
+  border-left-color: var(--v3-accent);
+  background: linear-gradient(180deg, #1b2742, #121c33);
+}
+
+.variant-3 .v3-node.is-current {
+  box-shadow: inset 0 0 0 2px var(--v3-accent);
+}
+
+.variant-3 .v3-node-kind {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--v3-lav);
+}
+
+.variant-3 .v3-node-label {
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.variant-3 .v3-node-sub {
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--v3-dim);
+}
+
+.variant-3 .v3-node-status {
+  font-size: 10px;
+  color: var(--v3-accent);
+}
+
+.variant-3 .v3-node-meter {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-top: auto;
+  border: 1px solid rgba(124, 227, 139, 0.8);
+  background: rgba(124, 227, 139, 0.12);
+}
+
+.variant-3 .v3-node-meter-fill {
+  display: block;
+  height: 100%;
+  background: var(--v3-green);
+}
+
+.variant-3 .v3-node:focus-visible {
+  outline: 3px solid var(--v3-accent);
+  outline-offset: 3px;
+  z-index: 4;
+}
+
+/* ---------------------------------------------------------------- focus lens */
+
+.variant-3 .v3-lens {
+  position: sticky;
+  top: 46px;
+  min-width: 0;
+  max-height: calc(100dvh - 102px);
+  overflow: auto;
+  padding: 10px 12px 28px;
+  border: 1px solid var(--v3-line);
+  background: rgba(13, 20, 36, 0.94);
+  overflow-wrap: break-word;
+  scrollbar-width: thin;
+}
+
+.variant-3 .v3-lens-kicker {
+  margin: 0;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--v3-lav);
+}
+
+.variant-3 .v3-lens-title {
+  margin: 2px 0;
+  font-size: 20px;
+  line-height: 1.2;
+  color: #fff;
+}
+
+.variant-3 .v3-lens-status {
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--v3-line);
+  font-size: 12px;
+  color: var(--v3-accent);
+}
+
+.variant-3 .v3-lens-body {
+  min-width: 0;
+}
+
+.variant-3 .v3-board-note {
+  padding-left: 8px;
+  border-left: 3px solid var(--v3-lav);
+  font-size: 12px;
+  color: var(--v3-dim);
+}
+
+/* Shared content pieces, tinted inside this board. */
+
+.variant-3 .lab-workbar-track {
+  height: 14px;
+  border-color: rgba(124, 227, 139, 0.8);
+  background: rgba(124, 227, 139, 0.12);
+}
+
+.variant-3 .lab-workbar-fill {
+  background: var(--v3-green);
+  opacity: 1;
+}
+
+.variant-3 .lab-phase-label {
+  color: var(--v3-accent);
+}
+
+.variant-3 .lab-phase-step.is-done {
+  color: var(--v3-blue);
+  opacity: 0.8;
+}
+
+.variant-3 .lab-phase-step.is-current {
+  color: var(--v3-green);
+  outline-color: var(--v3-green);
+}
+
+.variant-3 .lab-readiness {
+  color: var(--v3-accent);
+}
+
+.variant-3 .lab-confidence[data-confidence='supported'] {
+  color: var(--v3-green);
+}
+
+.variant-3 .lab-confidence[data-confidence='tentative'] {
+  color: var(--v3-accent);
+}
+
+.variant-3 .lab-response.is-selected {
+  border-color: var(--v3-accent);
+  box-shadow: inset 0 0 0 1px var(--v3-accent);
+}
+
+.variant-3 .lab-preview {
+  border-color: var(--v3-lav);
+  background: rgba(185, 167, 255, 0.06);
+}
+
+.variant-3 .lab-button.is-primary {
+  background: var(--v3-accent);
+  color: #141a2c;
+  border-color: var(--v3-accent);
+}
+
+.variant-3 .lab-button.is-warn {
+  border-color: var(--v3-warn);
+}
+
+@media (min-width: 701px) {
+  .variant-3 .lab-compare-row {
+    grid-template-columns: 110px minmax(0, 0.85fr) minmax(0, 1.15fr);
+  }
+}
+
+.variant-3 .lab-cap-item.is-selected {
+  border-color: var(--v3-accent);
+}
+
+.variant-3 .v3-footnote {
+  margin: 0;
+  padding: 4px 12px 18px;
+  font-size: 10px;
+  color: var(--v3-dim);
+}
+
+/* -------------------------------------------------- compact no-pan board */
+
+@media (max-width: 1180px) {
+  .variant-3 .v3-stage {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .variant-3 .v3-map {
+    height: auto;
+  }
+
+  .variant-3 .v3-map-canvas {
+    position: static;
+    min-height: 0;
+    overflow: visible;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .variant-3 .v3-edge-layer {
+    display: none;
+  }
+
+  .variant-3 .v3-node {
+    position: static;
+    left: auto;
+    top: auto;
+    width: auto;
+    height: auto;
+    min-height: 58px;
+  }
+
+  .variant-3 .v3-lens {
+    position: static;
+    top: auto;
+    max-height: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .variant-3 .v3-stage {
+    gap: 8px;
+    padding: 6px;
+  }
+
+  .variant-3 .v3-map {
+    padding: 6px;
+  }
+
+  .variant-3 .v3-map-canvas {
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+    gap: 6px;
+    padding: 6px;
+  }
+
+  .variant-3 .v3-node {
+    gap: 1px;
+    min-height: 54px;
+    padding: 6px;
+  }
+
+  .variant-3 .v3-node-kind {
+    font-size: 8px;
+  }
+
+  .variant-3 .v3-node-label {
+    font-size: 11px;
+  }
+
+  .variant-3 .v3-node-sub,
+  .variant-3 .v3-node-status {
+    font-size: 9px;
+  }
+
+  .variant-3 .v3-map-hint {
+    display: none;
+  }
+
+  .variant-3 .v3-lens {
+    padding: 8px 8px 24px;
+  }
+
+  .variant-3 .v3-lens-title {
+    font-size: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .variant-3,
+  .variant-3 * {
+    animation: none;
+    transition: none;
+    scroll-behavior: auto;
+  }
+}

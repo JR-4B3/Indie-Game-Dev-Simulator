@@ -1,0 +1,20 @@
+{
+  "protocol": "studio-rng-v1",
+  "vectors": [
+    {
+      "args": [0, "clock", 0, "campaign", "witness", 0],
+      "sha256": "235fc7ebcd986a6d8321e25bf8b4e0f8ddebf02b48195eaecc08cc314a16474e",
+      "u64": 2548975729695550061
+    },
+    {
+      "args": [42, "market", 7, "project-a", "demand", 0],
+      "sha256": "efd9c714aee6be7066db918f8beacfd24bb38259cbe7e471171cba574812ef90",
+      "u64": 17283063936658620016
+    },
+    {
+      "args": [42, "market", 7, "project-a", "demand", 1],
+      "sha256": "f8537aa4ba9526ae8514e3a12583bc12c5ce2f2ff5dabd2973e29641ecc70842",
+      "u64": 17893780592396674734
+    }
+  ]
+}

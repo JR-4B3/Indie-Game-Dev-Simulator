@@ -39,7 +39,9 @@ Time runs continuously with the original simulation speeds and a filling
 week bar in the persistent footer. The meter interpolates on animation frames
 between authoritative server updates rather than visibly stepping at the
 polling interval. Studio uses a fixed two-column overview of finances, work,
-team availability/fatigue, and recent activity, with direct work-start actions.
+team fatigue/morale, market pulse, releases and recent activity, with direct work-start actions in
+each relevant work row. Player and contractor trust appear in the footer as
+`PTrust` and `CTrust`, matching the terminal status bar.
 Popups and outstanding production decisions hold time. An uncommitted Design
 does not freeze the studio or market: production waits, but time keeps running
 after closing the review. Closing a popup preserves your previous pause/speed
@@ -50,10 +52,33 @@ Projects has a production workspace, idea shelf and design evidence. People
 shows individual skills, condition and vacation actions directly in the roster
 (with roster paging for larger teams). Business shows monthly revenue/expense
 history, fixed-cost composition, debt and capacity allocation. Market shows
-the simulation's weekly sales rankings, chart sales share by studio, and your
-catalogue. Full charts, competitor release sales and ledger records open in
-scrollable detail views. Charts are local SVGs with no external dependencies;
-empty histories remain empty rather than displaying invented data.
+the complete simulation chart directly in the page — every ranked game, the
+panel filling its space and scrolling when the pointer is over it — with chart
+sales share by studio and your catalogue. Competitor release sales and ledger
+records open in scrollable detail views. Charts are local SVGs with no
+external dependencies; empty histories remain empty rather than displaying
+invented data.
+
+Studio uses a compact four-value status strip, then puts Game and Contract
+commands side-by-side. An active game shows its exact stage/phase, completion,
+schedule, estimated remaining time, scope, hype, defects and tracked cost.
+Team count and payroll sit with Team Condition; Team Condition and Market Pulse
+share the right-side overview. Research and studio upgrades live under Business
+rather than occupying a Studio command slot. The release-health table shows
+weekly and lifetime sales, hype, net revenue, tracked profit, known bugs,
+players and support without requiring one large card per game.
+Market Pulse shows ten ranked games with the publisher behind each title in a
+smaller accent colour, and its Full chart action opens the complete ranking.
+Selecting a Studio release-table
+row replaces the Original Game command with compact update and support controls;
+use its detailed operations action to inspect weekly sales history, player
+response and operating queues;
+choose an update size/focus, cycle support, adjust price, fund a marketing
+campaign or start a community action. Costs and research/reputation requirements
+are shown before spending; the simulation still enforces its funding gates.
+The Projects workspace also exposes hype, tracked costs and pre-release
+marketing/community controls. Revenue is not profit; profit uses the same
+tracked game-cost calculation as the terminal UI. WTD means week-to-date.
 
 Browser controls: `H/G/T/B/S` switch pages, `N` opens ideas, `J` jobs,
 `U` research, `F` financing, and `P` the catalogue. `Space` pauses/resumes;
@@ -69,7 +94,7 @@ existing save while trying it, use `python browser.py --save-file saves/browser-
 Options: `--port 8765`, `--no-browser`, and `--save-file PATH`.
 This is the first playable browser slice, not yet feature parity with the
 terminal: detailed training/dismissal controls, presentation-axis tweaking,
-advanced promotion/community planning, cancellation queues, additional statistics,
+queue cancellation controls, additional statistics,
 and a full save-slot interface remain to be migrated.
 
 Browser checks: `python -m unittest test_browser`. Optional real Chromium
@@ -77,6 +102,8 @@ smoke test: install Playwright in your testing environment, install its
 Chromium browser, and run `node web/browser-smoke.cjs` from the repository
 root. `node web/browser-views.cjs` checks populated layouts at four viewport
 sizes; set `SCREENSHOT_DIR` to an existing directory to capture each page.
+`node web/browser-operations.cjs` exercises real post-release API actions and
+checks populated Studio layouts and ten-row Market charts.
 Playwright is not a game runtime dependency.
 
 ### Original terminal interface

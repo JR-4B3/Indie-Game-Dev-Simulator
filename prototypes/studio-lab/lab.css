@@ -1,0 +1,167 @@
+/* WP-UI-01I integration shell styles.
+   Shell-only: the grid, rail column reservation and shared content pieces come from
+   shared.css; the five candidate styles are scoped under .variant-N. Nothing here
+   styles candidate internals, body or the game surface. */
+
+.skip-link {
+  position: absolute;
+  left: 8px;
+  top: -48px;
+  z-index: 50;
+  padding: 8px 12px;
+  background: #ffd166;
+  color: #141a2c;
+  font-weight: 700;
+  text-decoration: none;
+}
+.skip-link:focus {
+  top: 8px;
+}
+
+#review-rail {
+  border-left: 2px solid #263651;
+  background: #0d1424;
+  color: #dbe4f5;
+  padding: 10px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.rail-title { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: #fff; }
+.rail-note { margin: 0 0 4px; font-size: 11px; color: #9fb0d4; }
+.rail-note-dim { color: #7d8cab; }
+
+.rail-warning {
+  border: 1px solid #7a2f3d;
+  background: #251420;
+  color: #ffb3bb;
+  padding: 6px;
+  font-size: 11px;
+}
+.rail-warning[hidden] { display: none; }
+
+.rail-variants {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.variant-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  min-width: 40px;
+  width: 100%;
+  padding: 6px 8px;
+  background: #16223a;
+  color: #dbe4f5;
+  border: 1px solid #2d3f61;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+.variant-btn:hover { border-color: #5b8cff; }
+.variant-btn[aria-pressed='true'] {
+  border-color: #ffd166;
+  background: #1d2c4d;
+  color: #fff;
+}
+.variant-num { font-weight: 700; color: #ffd166; }
+.variant-name {
+  font-size: 11px;
+  color: #9fb0d4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.variant-btn[aria-pressed='true'] .variant-name { color: #dbe4f5; }
+
+.rail-selected {
+  margin: 0;
+  padding: 6px;
+  border: 1px dashed #3a4f80;
+  font-size: 11px;
+  color: #ffd166;
+  overflow-wrap: anywhere;
+}
+
+.rail-feedback { display: flex; flex-direction: column; }
+.rail-label {
+  display: block;
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: #9fb0d4;
+}
+#variant-rating {
+  min-height: 40px;
+  width: 100%;
+  background: #101a2e;
+  color: #dbe4f5;
+  border: 1px solid #2d3f61;
+  font: inherit;
+  padding: 4px;
+}
+#variant-feedback,
+#overall-feedback {
+  width: 100%;
+  min-height: 44px;
+  background: #101a2e;
+  color: #dbe4f5;
+  border: 1px solid #2d3f61;
+  font: inherit;
+  padding: 4px;
+  resize: vertical;
+}
+
+.rail-actions { display: flex; flex-direction: column; gap: 4px; }
+.rail-action {
+  min-height: 40px;
+  min-width: 40px;
+  width: 100%;
+  padding: 6px 8px;
+  background: #1a2745;
+  color: #e6ecfa;
+  border: 1px solid #3a4f80;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+}
+.rail-action:hover { border-color: #5b8cff; }
+.rail-action-danger { border-color: #7a2f3d; color: #ffb3bb; }
+.rail-action-danger:hover { border-color: #ff6b7a; }
+
+.rail-confirm {
+  border: 1px solid #7a2f3d;
+  background: #1c1420;
+  padding: 6px;
+  font-size: 11px;
+}
+.rail-confirm[hidden] { display: none; }
+.rail-confirm p { margin: 0 0 6px; }
+
+.rail-ack {
+  min-height: 14px;
+  font-size: 11px;
+  color: #c9ffdd;
+  overflow-wrap: anywhere;
+}
+.rail-ack:empty { min-height: 0; margin: 0; }
+
+@media (max-width: 800px) {
+  #review-rail { padding: 6px; gap: 6px; font-size: 11px; }
+  .rail-title { font-size: 11px; }
+  .rail-note { font-size: 9px; }
+  .rail-note-dim { display: none; }
+  .rail-variants { grid-template-columns: 1fr; }
+  .variant-name { display: none; }
+  .rail-selected { font-size: 10px; }
+  .rail-label { font-size: 10px; }
+  #variant-feedback,
+  #overall-feedback { min-height: 40px; }
+}

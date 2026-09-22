@@ -1,5 +1,5 @@
 'use strict';
-// Browser-only views. Charts use the same saved simulation data as the TUI.
+// Browser-only workspaces. Charts use the same saved simulation data as the TUI.
 const chartColors=['#89b4fa','#83f59d','#f9e86f','#cba6f7','#f38ba8','#94e2d5'];
 const number=n=>Math.round(n||0).toLocaleString();
 const sum=(items,key)=>items.reduce((total,item)=>total+(Number(item[key])||0),0);
@@ -23,32 +23,44 @@ function financeTrend(ledger){
  const path=key=>rows.map((r,i)=>`${i?'L':'M'} ${30+i*540/Math.max(1,rows.length-1)} ${160-r[key]/maximum*140}`).join(' ');
  return `<figure class="trend"><figcaption><span class="green">Revenue</span> / <span class="danger">Expenses</span> · monthly USD</figcaption><svg viewBox="0 0 600 190" role="img" aria-label="Monthly revenue and expenses"><title>${esc(rows.map(r=>`${r.month}: revenue ${money(r.revenue)}, expenses ${money(r.expenses)}`).join('; '))}</title><path d="M30 20V160H570" fill="none" stroke="#62658a"/><path d="${path('revenue')}" fill="none" stroke="#83f59d" stroke-width="3"/><path d="${path('expenses')}" fill="none" stroke="#f38ba8" stroke-width="3"/>${rows.map((r,i)=>`<circle cx="${30+i*540/Math.max(1,rows.length-1)}" cy="${160-r.revenue/maximum*140}" r="3" fill="#83f59d"/><circle cx="${30+i*540/Math.max(1,rows.length-1)}" cy="${160-r.expenses/maximum*140}" r="3" fill="#f38ba8"/>`).join('')}<text x="30" y="183" fill="#a6adc8" font-size="12">${esc(rows[0].month)}</text><text x="570" y="183" text-anchor="end" fill="#a6adc8" font-size="12">${esc(rows.at(-1).month)}</text><text x="35" y="18" fill="#a6adc8" font-size="12">${esc(money(maximum))}</text></svg></figure>`;
 }
+function skillBars(person){
+ const skills=['design','art','code','research'];
+ return `<div class="skill-bars">${skills.map((skill,index)=>`<div class="skill-row ${person[skill]===Math.max(...skills.map(k=>person[k]))?'strongest':''}"><span>${skill}</span><svg viewBox="0 0 100 7" preserveAspectRatio="none"><rect width="100" height="7" fill="#33364f"/><rect width="${person[skill]}" height="7" fill="${chartColors[index]}"/></svg><strong>${person[skill]}</strong></div>`).join('')}</div>`;
+}
+function projectBrief(p){
+ if(!p)return `<div class="project-brief empty-project"><span class="brief-kicker">No original production</span><h3>Pick an idea worth testing</h3><p>Ideas become findings. Findings become a production plan.</p>${open('[N] Browse ideas','ideas',true)}</div>`;
+ const progress=p.stage==='testing'?p.bug_progress:p.progress;
+ const eta=Math.max(1,Math.round(p.remaining_work/Math.max(1,p.weekly_output)));
+ const control=state.decision?open('Decision required','decision',true):p.stage==='concept'?open('[Enter] Experiment','experiments',true):p.stage==='design'?open('[Enter] Review plan','plan',true):p.ready_for_release?btn('[R] Release','release',0,true):open('History & findings','findings');
+ const stages=['concept','design','development','testing','gold'];
+ return `<div class="project-brief"><span class="brief-kicker">${esc(p.stage)} · ${esc(p.phase)}</span><h3>${esc(p.title)}</h3><p>${esc(p.active_experiment?`${p.active_experiment.replaceAll('_',' ')} · ${p.experiment_days_left} workdays left`:p.gdd.uncertainty||`${p.scope} / ${p.channel} / ${money(p.price)}`)}</p><div class="stage-rail">${stages.map((stage,index)=>`<span class="${index<stages.indexOf(p.stage)?'done':index===stages.indexOf(p.stage)?'current':''}">${stage==='gold'?'release':stage}</span>`).join('')}</div><div class="brief-progress"><div><span>${p.stage==='testing'?'Defect clearance':'Production'}</span><strong>${Math.round(progress*100)}%</strong></div><progress value="${progress}" max="1"></progress></div><div class="brief-grid"><span>Week <b>${p.weeks}</b>${p.planned_weeks?` / ${p.planned_weeks}`:''}</span><span>ETA <b>~${eta}w</b></span><span>Hype <b>${number(p.hype)}</b></span><span>Defects <b class="${p.known_defects?'danger':'green'}">${number(p.known_defects)}</b></span><span>Cost <b>${money((p.production_cost||0)+(p.labor_cost||0)+(p.marketing_cost||0))}</b></span><span>Output <b>${state.projected_output.toFixed(1)}/wk</b></span></div><div class="actions">${control}${p.stage==='concept'?btn('[E] Design','design'):''}${p.stage==='design'?open('[T] Presentation','presentation'):''}${p?open('Findings','findings'):''}${manageButton(-1,'Marketing')}</div></div>`;
+}
 function projectsView(){
- const s=state.studio,p=s.current_project;
- const findings=p?.gdd.findings||[];
- return heading('Projects','The creative brief → evidence → production')+`<div class="project-board">
- ${section('Production workspace',`<div class="project-hero">${projectSummary()}</div><div class="project-facts">${metric('Stage',p?.stage||'No project')}${metric('Findings',findings.length)}${metric('Catalogue',s.catalog.length)}</div>`)}
- ${section('Idea shelf',`<div class="idea-preview">${s.idea_shelf.slice(0,3).map(x=>`<article><h3>${esc(x.title)}</h3><p>${esc(x.fantasy)}</p></article>`).join('')||empty('New pitches arrive as time passes.')}</div>`,open('[N] Browse ideas','ideas'))}
- ${section('Design evidence',`<div class="evidence">${findings.slice(-3).reverse().map(f=>`<blockquote>${esc(f.text)}</blockquote>`).join('')||empty('Run a concept experiment to test the central idea before investing in production.')}</div><div class="actions">${open('All findings','findings')}${p?.stage==='concept'?btn('Shelve concept','shelve'):''}${state.decision?open('Decision required','decision',true):''}</div>`)}
+ const s=state.studio,p=s.current_project,findings=p?.gdd.findings||[];
+ const evidence=findings.slice(-4).reverse().map((finding,index)=>`<article class="evidence-item"><span>F${findings.length-index}</span><p>${esc(finding.text)}</p></article>`).join('')||empty('Experiments turn claims into evidence.');
+ return heading('Projects','Production pipeline: pitch → proof → production')+`<div class="project-workspace">
+  ${section('Current production',projectBrief(p))}
+  ${section('Idea pipeline',`<div class="idea-strip"><span>Ready to explore</span><strong>${s.idea_shelf.length}</strong></div><div class="idea-list">${s.idea_shelf.slice(0,3).map(x=>`<article><h3>${esc(x.title)}</h3><p>${esc(x.fantasy)}</p></article>`).join('')||empty('The team will generate pitches as time runs.')}</div>`,open('[N] Idea shelf','ideas'))}
+  ${section('Design evidence',`<div class="evidence-list">${evidence}</div><div class="evidence-footer"><span>${findings.length} finding${findings.length===1?'':'s'} recorded</span>${p?.stage==='concept'?btn('Shelve concept','shelve'):''}</div>`,open('All findings','findings'))}
  </div>`;
 }
-let rosterPage=0;
+function employeeCard(e,index){
+ const status=availability(e);
+ return `<article class="person-card"><div class="person-top"><div><h3>${esc(e.name)}</h3><span>${esc(e.role)} · ${money(e.salary/12)}/mo</span></div><strong class="${status==='Available'?'green':e.burnout_weeks_left?'danger':'warning'}">${esc(status)}</strong></div>${skillBars(e)}<div class="person-condition"><span>Fatigue <b class="${e.fatigue>=70?'danger':e.fatigue>=35?'warning':'green'}">${Math.round(e.fatigue)}</b></span><span>Morale <b class="${e.morale<40?'danger':e.morale<70?'warning':'green'}">${Math.round(e.morale)}</b></span><span>Career <b>L${e.career_level}</b></span><span>Trait <b>${esc(e.trait)}</b></span></div><div class="person-actions">${btn('Vacation','vacation',index)}</div></article>`;
+}
 function peopleView(){
- const s=state.studio,size=innerWidth<701?1:innerHeight<701?2:4,total=Math.max(1,Math.ceil(s.team.length/size));
- rosterPage=Math.min(rosterPage,total-1);
- const employees=s.team.slice(rosterPage*size,(rosterPage+1)*size);
- return heading('People','Individual strengths, availability and wellbeing')+`<div class="people-summary">${metric('People',s.team.length)}${metric('Available',s.team.filter(e=>availability(e)==='Available').length,'team-avail')}${metric('Monthly payroll',money(sum(s.team,'salary')/12),'burn-expense')}<div class="actions">${open('[E] Hire','applicants',true)}</div></div><div class="people-board">
- <section class="roster"><div class="section-line"><h2>Team roster</h2><div class="roster-controls"><button data-roster="-1" ${rosterPage===0?'disabled':''} aria-label="Previous people">←</button><span>${rosterPage+1} / ${total}</span><button data-roster="1" ${rosterPage===total-1?'disabled':''} aria-label="Next people">→</button></div></div><div class="employee-grid">${employees.map((e,i)=>`<article class="employee-card"><div class="employee-heading"><h3>${esc(e.name)}</h3><span class="${e.burnout_weeks_left?'danger':'green'}">${esc(availability(e))}</span></div><div class="employee-role">${esc(e.role)} · ${money(e.salary/12)}/mo</div>${bars(['design','art','code','research'].map(key=>({label:key,value:e[key]})),{max:100})}<div class="condition-line"><span class="${e.fatigue>=70?'danger':e.fatigue>=35?'warning':'green'}">Fatigue ${Math.round(e.fatigue)}</span><span class="${e.morale<40?'danger':e.morale<70?'warning':'green'}">Morale ${Math.round(e.morale)}</span></div>${btn('Vacation','vacation',rosterPage*size+i)}</article>`).join('')}</div></section>
- ${section('Team skill coverage',bars(['design','art','code','research'].map(key=>({label:key,value:sum(s.team,key)})))+`<p class="view-note">Combined skill points, not available output. Fatigue, leave and shared commitments affect delivery.</p>`,open('All people','team'))}
- </div>`;
+ const s=state.studio,available=s.team.filter(e=>availability(e)==='Available').length;
+ const limit=innerWidth<701?1:innerHeight<701?(innerWidth<1101?2:4):innerWidth<1101?4:6;
+ return heading('People','Roster, skills, condition and capacity')+`<div class="people-summary"><span>${s.team.length} people</span><span class="green">${available} available</span><span>${money(sum(s.team,'salary')/12)}/month payroll</span><span>${state.projected_output.toFixed(1)} project output/week</span>${open('[E] Hire applicants','applicants',true)}</div><div class="people-workspace"><div class="employee-grid">${s.team.slice(0,limit).map(employeeCard).join('')}</div><aside class="people-side">${section('Skill coverage',bars(['design','art','code','research'].map(key=>({label:key,value:sum(s.team,key)})))+`<p class="view-note">Combined points; fatigue and other work reduce output.</p>`,open(`All ${s.team.length} people`,'team'))}${section('Capacity commitments',donut(Object.entries(state.allocations).filter(([,value])=>value>0).map(([label,value])=>({label,value})),'Allocated capacity'))}</aside></div>`;
 }
 function businessView(){
  const s=state.studio;
- return heading('Business','Cash flow, cost structure and commitments')+`<div class="business-summary">${metric('Cash',money(s.cash),s.cash<0?'cash-danger':'cash-good')}${metric('Monthly burn',money(state.monthly_cost),'burn-expense')}${metric('Runway',state.runway.toFixed(1)+' mo','runway-good')}${metric('Debt balance',money(sum(s.loans,'balance')),'burn-expense')}</div><div class="business-board">
- ${section('Cash flow history',financeTrend(s.ledger),open('Ledger','ledger'))}
- ${section('Fixed monthly costs',donut(Object.entries(state.cost_breakdown).map(([label,value])=>({label,value})),'Fixed monthly costs'),open('[F] Financing','loans'))}
- ${section('Client commitments',`<h3>${esc(s.contract?.title||'No active contract')}</h3>${s.contract?bars([{label:'Work completed',value:s.contract.work_done}],{max:s.contract.required_work}):`<p class="view-note">${s.contract_offers.length} offers available to fund your next game.</p>`}<div class="actions">${open('[J] Contract board','contracts',true)}</div>`)}
- ${section('Capacity allocation',donut(Object.entries(state.allocations).filter(([,v])=>v>0).map(([label,value])=>({label,value})),'Allocated capacity'),open('[U] Research','research'))}
+ const activeLoan=s.loans.reduce((total,loan)=>total+loan.balance,0);
+ return heading('Business','Cash flow, commitments and capability investment')+`<div class="business-command"><div class="business-financial"><div><span>Cash</span><strong class="${s.cash<0?'danger':'green'}">${money(s.cash)}</strong></div><div><span>Burn</span><strong class="danger">${money(state.monthly_cost)}</strong></div><div><span>Runway</span><strong class="${state.runway<4?'danger':state.runway<8?'warning':'green'}">${state.runway.toFixed(1)} mo</strong></div><div><span>Debt</span><strong class="${activeLoan?'danger':''}">${money(activeLoan)}</strong></div></div><div class="business-actions">${open('[F] Financing','loans')}${open('[J] Contract board','contracts',true)}${open('[U] Research & upgrades','research')}</div></div><div class="business-workspace">
+  ${section('Cash flow',financeTrend(s.ledger),open('Ledger','ledger'))}
+  ${section('Monthly cost mix',donut(Object.entries(state.cost_breakdown).map(([label,value])=>({label,value})),'Fixed monthly costs'))}
+  ${section('Client delivery',`<div class="commitment-status"><span class="status-pill ${s.contract?'green':'muted'}">${s.contract?'ACTIVE':'IDLE'}</span><h3>${esc(s.contract?.title||'No active contract')}</h3></div>${s.contract?bars([{label:'Delivery progress',value:s.contract.work_done}],{max:s.contract.required_work})+`<div class="commitment-grid"><span>Due <b>${s.contract.weeks_left}w</b></span><span>Payout <b class="green">${money(s.contract.pay)}</b></span><span>CTrust <b>${s.contractor_reputation.toFixed(1)}</b></span></div>`:`<p class="view-note">${s.contract_offers.length} offers available. Contractor trust unlocks better-paying work.</p>`}`)}
+  ${section('Research & upgrades',`<div class="commitment-status"><span class="status-pill ${s.active_research?'green':'muted'}">${s.active_research?'ACTIVE':'IDLE'}</span><h3>${esc(s.active_research?.name||'No active research')}</h3></div>${s.active_research?bars([{label:'Research progress',value:s.active_research.progress*100}],{max:100,format:x=>Math.round(x)+'%'})+`<p class="view-note">${esc(s.active_research.effect)}</p>`:`<p class="view-note">${s.completed_research.length} completed · ${s.research_queue.length} queued · ${Math.round((state.allocations.research||0)*100)}% capacity.</p>`}`)}
  </div>`;
 }
 function marketView(){
@@ -57,21 +69,16 @@ function marketView(){
  const studios=Object.entries(byStudio).sort((a,b)=>b[1]-a[1]);
  const share=studios.slice(0,4).map(([label,value])=>({label,value}));
  if(studios.length>4)share.push({label:'Other chart studios',value:studios.slice(4).reduce((n,x)=>n+x[1],0)});
- const limit=innerHeight<701?3:5;
- return heading('Market','Weekly sales, competing studios and your audience')+`<div class="market-summary">${metric('Followers',number(s.followers),'audience')}${metric('Your units sold',number(sum(s.catalog,'units_sold')))}${metric('Monthly players',number(sum(s.catalog,'monthly_players')))}${metric('Released games',s.catalog.length)}</div><div class="market-board">
- ${section('Weekly sales chart',bars(chart.slice(0,limit).map((g,i)=>({label:`${i+1}. ${g.title}`,value:g.weekly_units,detail:`${g.studio_name} · ${g.genre} · ${g.score}/100` })))+`<p class="view-note">Units this week · same chart as the terminal edition</p>`,open('Full chart','charts'))}
- ${section('Chart sales share',donut(share,'Weekly chart sales share')+`<p class="view-note">Share of the top ${chart.length} chart entries, not the entire market.</p>`,open('Studios','competitors'))}
- ${section('Your catalogue',s.catalog.length?bars([...s.catalog].sort((a,b)=>b.units_sold-a.units_sold).slice(0,3).map(g=>({label:g.title,value:g.units_sold}))):empty('Your first release will appear here. Build an audience while you develop.'),open('[P] Manage releases','catalogue'))}
+ const best=[...s.catalog].sort((a,b)=>b.weekly_units-a.weekly_units)[0];
+ return heading('Market','Chart position, audience and portfolio performance')+`<div class="market-command"><span><b>${number(s.followers)}</b> followers</span><span><b class="blue">${number(sum(s.catalog,'weekly_units'))}</b> units/week</span><span><b>${number(sum(s.catalog,'units_sold'))}</b> lifetime units</span><span><b>${number(sum(s.catalog,'monthly_players'))}</b> monthly players</span>${best?`<span class="best-seller">Top title: <b>${esc(best.title)}</b></span>`:''}</div><div class="market-workspace">
+   ${section('Weekly sales chart',compactChart(chart))}
+  <aside class="market-side">${innerWidth>700?section('Studio sales share',donut(share,'Weekly chart sales share'),open('Studios','competitors')):''}${section('Portfolio',s.catalog.length?releaseRows(s.catalog,innerHeight<701?1:2):empty('Release a game to build sales history and audience.'),open('[P] Releases','catalogue'))}</aside>
  </div>`;
 }
 function analysisBody(name){
  const s=state.studio;
- if(name==='charts')return bars(state.market_chart.map(g=>({label:g.title,value:g.weekly_units,detail:`${g.studio_name} · ${g.genre} · ${g.score}/100`})));
+ if(name==='charts')return compactChart(state.market_chart);
  if(name==='ledger')return financeTrend(s.ledger)+[...s.ledger].sort((a,b)=>b.month.localeCompare(a.month)).map(r=>record(r.month,`<div class="ledger-row"><span class="green">In ${money(r.revenue)}</span><span class="danger">Out ${money(r.expenses)}</span><strong>Net ${money(r.net)}</strong></div>`)).join('');
  return '';
 }
-document.addEventListener('click',event=>{
- const control=event.target.closest('[data-roster]');
- if(control&&!busy){rosterPage=Math.max(0,rosterPage+Number(control.dataset.roster));render(true);}
-});
 window.addEventListener('resize',()=>{if(state?.started)render(true);});

@@ -40,116 +40,21 @@ function availability(e){
 }
 function metric(label,value,tone=''){return `<div class="metric ${tone}"><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`;}
 function overview(){
- const s=state.studio,p=s.current_project,a=state.allocations;
- const available=s.team.filter(e=>availability(e)==='Available').length;
- const allocationNames={project:'Game',contract:'Contracts',research:'Research',update:'Updates',promotion:'Promotion',community:'Community',support:'Support'};
- const shares=Object.entries(a).filter(([,v])=>v>0.001).map(([k,v])=>`${allocationNames[k]} ${Math.round(v*100)}%`).join(' · ');
-
- const gameTitle=p?.title||'No game in progress';
- const gameTag=p?p.stage.toUpperCase():'';
- const gameDetail=p?(p.active_experiment?`${p.active_experiment.replaceAll('_',' ')} in progress · ${p.experiment_days_left}d left`:p.stage==='concept'?'Concept stage · choose an experiment or review design':p.stage==='design'?'Design review · review plan and commit to production':`${p.phase||p.stage} · ${Math.round((p.stage==='testing'?p.bug_work_done/Math.max(1,p.bug_work):p.work_done/Math.max(1,p.total_work))*100)}% complete`):`${s.idea_shelf.length} ideas on shelf · explore one`;
- const gameControl=state.decision?open('Decision required','decision',true):p?.stage==='concept'?open('Experiments','experiments'):p?.stage==='design'?open('Review plan','plan'):p?.ready_for_release?btn('Release','release',0,true):p?open('Details','findings'):open('Explore ideas','ideas');
-
- const contractTitle=s.contract?s.contract.title:'No active contract';
- const contractTag=s.contract?money(s.contract.pay):'';
- const contractDetail=s.contract?`${s.contract.weeks_left}w left · ${Math.round(s.contract.work_done)}/${Math.round(s.contract.required_work)} work completed`:`${s.contract_offers.length} client offers available · ${s.contract_queue.length} in queue`;
-
- const researchTitle=s.active_research?s.active_research.name:'Studio Research';
- const researchTag=s.active_research?`${Math.round(s.active_research.progress*100)}%`:'';
- const researchDetail=s.active_research?s.active_research.effect:`${s.completed_research.length} capabilities researched · ${s.research_queue.length} queued`;
-
- const liveTitle=s.catalog.length?`${s.catalog.length} released ${s.catalog.length===1?'game':'games'}`:'No released games';
- const liveDetail=s.catalog.length?`${s.update_queue.length} updates queued · ${s.active_promotions.length} active campaigns · ${s.catalog.reduce((n,g)=>n+g.monthly_players,0).toLocaleString()} players`:'Release your first game to start catalogue operations';
-
+ const s=state.studio;
  const cashTone=s.cash<0?'cash-danger':'cash-good';
  const runwayTone=state.runway<4?'runway-danger':state.runway<8?'runway-caution':'runway-good';
- const teamTone=available>0?'team-avail':'team-busy';
-
  return `<div class="studio-summary" aria-label="Studio health">
   ${metric('Cash',money(s.cash),cashTone)}
   ${metric('Monthly burn',money(state.monthly_cost),'burn-expense')}
   ${metric('Runway',(state.runway>=10?Math.round(state.runway):state.runway.toFixed(1))+' mo',runwayTone)}
-  ${metric('Team',`${available} / ${s.team.length} avail`,teamTone)}
   ${metric('Audience',`${s.followers.toLocaleString()} fans`,'audience')}
  </div>
- <div class="work-actions" aria-label="Quick actions">
-  <span class="work-actions-label">Actions:</span>
-  ${open('[N] New game / idea','ideas',true)}
-  ${open('[J] Take a contract','contracts')}
-  ${open('[U] Research','research')}
-  ${open('[E] Hire someone','applicants')}
-  ${open('[F] Financing','loans')}
- </div>
- <div class="studio-layout">
-  <div class="studio-work-col">
-   <div class="section-line"><h2>Work in motion</h2><span class="small muted">${esc(shares||'No active commitments')}</span></div>
-   <div class="work-list">
-    <div class="work-row">
-     <span class="badge badge-game">GAME</span>
-     <div class="work-copy">
-      <div class="work-title-line"><strong>${esc(gameTitle)}</strong>${gameTag?`<span class="work-stage-tag">${esc(gameTag)}</span>`:''}</div>
-      <span class="work-detail">${esc(gameDetail)}</span>
-      ${p&&['development','testing'].includes(p.stage)?`<progress aria-label="Project progress" value="${p.stage==='testing'?p.bug_work_done:p.work_done}" max="${Math.max(1,p.stage==='testing'?p.bug_work:p.total_work)}"></progress>`:''}
-     </div>
-     <div>${gameControl}</div>
-    </div>
-    <div class="work-row">
-     <span class="badge badge-client">CLIENT</span>
-     <div class="work-copy">
-      <div class="work-title-line"><strong>${esc(contractTitle)}</strong>${contractTag?`<span class="work-stage-tag">${esc(contractTag)}</span>`:''}</div>
-      <span class="work-detail">${esc(contractDetail)}</span>
-      ${s.contract?`<progress aria-label="Contract progress" value="${s.contract.work_done}" max="${Math.max(1,s.contract.required_work)}"></progress>`:''}
-     </div>
-     <div>${open('Contracts','contracts')}</div>
-    </div>
-    <div class="work-row">
-     <span class="badge badge-rd">R&D</span>
-     <div class="work-copy">
-      <div class="work-title-line"><strong>${esc(researchTitle)}</strong>${researchTag?`<span class="work-stage-tag">${esc(researchTag)}</span>`:''}</div>
-      <span class="work-detail">${esc(researchDetail)}</span>
-      ${s.active_research?`<progress aria-label="Research progress" value="${s.active_research.progress}" max="1"></progress>`:''}
-     </div>
-     <div>${open('Research','research')}</div>
-    </div>
-    <div class="work-row">
-     <span class="badge badge-live">LIVE</span>
-     <div class="work-copy">
-      <div class="work-title-line"><strong>${esc(liveTitle)}</strong></div>
-      <span class="work-detail">${esc(liveDetail)}</span>
-     </div>
-     <div>${open('Catalogue','catalogue')}</div>
-    </div>
-   </div>
-  </div>
-  <aside class="studio-side-col">
-   <div class="team-panel">
-    <div class="section-line"><h2>Team condition</h2>${open(`All ${s.team.length} people →`,'team')}</div>
-    <table>
-     <thead><tr><th>Name</th><th>Role</th><th>Status</th><th>Fatigue</th><th>Morale</th></tr></thead>
-     <tbody>${s.team.slice(0,5).map(e=>{
-      const status=availability(e);
-      const statusClass=status==='Available'?'team-status-good':e.burnout_weeks_left?'team-status-danger':'team-status-caution';
-      const fatigueClass=e.fatigue>=70?'danger':e.fatigue>=35?'caution':'good';
-      const moraleClass=e.morale>=70?'team-status-good':e.morale>=40?'team-status-caution':'team-status-danger';
-      return `<tr>
-       <td class="member-name">${esc(e.name)}</td>
-       <td class="muted">${esc(e.role)}</td>
-       <td class="${statusClass}">${esc(status)}</td>
-       <td>
-        <div class="fatigue-wrapper">
-         <progress class="${fatigueClass}" aria-label="${esc(e.name)} fatigue" value="${e.fatigue}" max="100"></progress>
-         <span class="fatigue-num fatigue-${fatigueClass}">${Math.round(e.fatigue)}</span>
-        </div>
-       </td>
-       <td class="${moraleClass}">${Math.round(e.morale)}</td>
-      </tr>`;
-     }).join('')}</tbody>
-    </table>
-   </div>
-   <div class="activity-panel">
-    <div class="section-line"><h2>Recent activity</h2>${open('Full log →','activity')}</div>
-    <div class="activity-list">${Array.from({length:3},(_,i)=>`<div class="event">${esc(state.logs[i]||' ')}</div>`).join('')}</div>
-   </div>
+ <div class="studio-dashboard">
+  ${studioCommand()}
+  ${studioReleaseTable()}
+  <aside class="studio-intelligence">
+   <div class="studio-glance">${studioTeam()}${studioPulse()}</div>
+   <div class="activity-panel"><div class="section-line"><h2>Recent activity</h2>${open('Full log →','activity')}</div><div class="activity-list">${Array.from({length:3},(_,i)=>`<div class="event">${esc(state.logs[i]||' ')}</div>`).join('')}</div></div>
   </aside>
  </div>`;
 }
@@ -159,7 +64,7 @@ function render(force=false){
  const signature=JSON.stringify([page,state.date,state.studio.current_project,state.studio.cash,state.studio.team,state.studio.idea_shelf.length,state.logs[0]]);
  if(force||signature!==lastRender){
   const focus=document.activeElement;const action=focus?.dataset?.action,opened=focus?.dataset?.open;
-  app.innerHTML=`<header><nav aria-label="Main navigation">${[['Studio','H'],['Projects','G'],['People','T'],['Business','B'],['Market','S']].map(([p,k])=>`<button data-page="${p}" class="${p===page?'active':''}" ${p===page?'aria-current="page"':''}>[${k}]${p}</button>`).join('')}</nav><button data-open="settings">[Esc] Settings</button></header><main>${({Studio:overview,Projects:projectsView,People:peopleView,Business:businessView,Market:marketView}[page])()}</main><footer><div class="time-strip"><progress id="week-progress" max="1" aria-label="Week progress"></progress><span id="date"></span><span class="financial">${money(state.studio.cash)} | ${state.runway.toFixed(1)} mo</span></div><div class="footer-controls"><button data-action="slower" aria-label="Slower">[&lt;]</button><button id="pause" data-action="pause">[Space]</button><button data-action="faster" aria-label="Faster">[&gt;]</button><span id="clock-status"></span></div></footer>`;
+  app.innerHTML=`<header><nav aria-label="Main navigation">${[['Studio','H'],['Projects','G'],['People','T'],['Business','B'],['Market','S']].map(([p,k])=>`<button data-page="${p}" class="${p===page?'active':''}" ${p===page?'aria-current="page"':''}>[${k}]${p}</button>`).join('')}</nav><button data-open="settings">[Esc] Settings</button></header><main>${({Studio:overview,Projects:projectsView,People:peopleView,Business:businessView,Market:marketView}[page])()}</main><footer><div class="time-strip"><progress id="week-progress" max="1" aria-label="Week progress"></progress><span id="date"></span><span class="financial">${money(state.studio.cash)} | ${state.runway.toFixed(1)} mo</span><span class="trust">PTrust ${state.studio.reputation.toFixed(1)} | CTrust ${state.studio.contractor_reputation.toFixed(1)}</span></div><div class="footer-controls"><button data-action="slower" aria-label="Slower">[&lt;]</button><button id="pause" data-action="pause">[Space]</button><button data-action="faster" aria-label="Faster">[&gt;]</button><span id="clock-status"></span></div></footer>`;
   if(!dialog.open&&(action||opened)){const target=[...app.querySelectorAll('button')].find(b=>action?b.dataset.action===action:b.dataset.open===opened);target?.focus({preventScroll:true});}
   lastRender=signature;
  }
@@ -190,8 +95,30 @@ requestAnimationFrame(animateClock);
 
 const titles={ideas:'Idea shelf',experiments:'Choose an experiment',plan:'Design & production plan',presentation:'Presentation direction',findings:'Findings & project history',team:'Team detail',applicants:'Applicants',contracts:'Contract board',research:'Research capabilities',loans:'Financing',catalogue:'Released games',competitors:'Competition',activity:'Activity log',settings:'Settings & controls',decision:'Production decision',confirm:'Confirm commitment'};
 function paginated(items,draw){return items.map(draw).join('')||'<p>Nothing here yet.</p>';}
+function applicantComparison(applicants){
+ if(!applicants.length)return '<p>No applicants right now. The pool refreshes monthly.</p>';
+ const skills=['design','art','code','research'];
+ const columnBest=Object.fromEntries(skills.map(skill=>[skill,Math.max(...applicants.map(person=>person[skill]))]));
+ const rows=applicants.map((person,index)=>{
+  const personalBest=Math.max(...skills.map(skill=>person[skill]));
+  const cells=skills.map(skill=>{
+   const classes=['candidate-stat'];
+   if(person[skill]===personalBest)classes.push('candidate-strongest');
+   if(person[skill]===columnBest[skill])classes.push('candidate-best');
+   return `<span class="${classes.join(' ')}"><small>${skill==='research'?'Rsch':esc(skill)}</small><strong>${person[skill]}</strong></span>`;
+  }).join('');
+  return `<article class="candidate-row"><div class="candidate-name"><strong>${esc(person.name)}</strong><small>${esc(person.role)}</small></div><span class="candidate-salary">${money(person.salary/12)}<small>/ month</small></span><div class="candidate-stats">${cells}</div>${btn('Hire','hire',index,true)}</article>`;
+ }).join('');
+ return `<div class="candidate-key"><span><i class="candidate-key-best"></i>Best in applicant pool</span><span><strong>Bold</strong> = candidate's strongest skill</span></div><div class="candidate-table-header"><span>Candidate / role</span><span>Salary</span><div><span>Design</span><span>Art</span><span>Code</span><span>Research</span></div><span></span></div><div class="candidate-list">${rows}</div>`;
+}
+function contractComparison(contracts){
+ if(!contracts.length)return '<p>No contract offers right now. The board refreshes over time.</p>';
+ const rows=contracts.map((contract,index)=>`<tr><td data-label="Contract"><strong>${esc(contract.title)}</strong><small>${esc(contract.client)}</small></td><td data-label="Focus">${esc(contract.focus)}</td><td data-label="Difficulty"><strong>D${contract.difficulty}</strong><small>Quality ${contract.quality_target}</small></td><td data-label="Work"><strong>${number(contract.required_work)}</strong></td><td data-label="Deadline"><strong>${contract.weeks_left}w</strong><small>${contract.expires_week?`Expires W${contract.expires_week}`:'Open offer'}</small></td><td data-label="Trust">${contract.reputation_required}</td><td data-label="Payout"><strong class="green">${money(contract.pay)}</strong><small>${money(contract.pay/Math.max(1,contract.required_work))} / work</small></td><td>${btn('Accept','contract',index)}</td></tr>`).join('');
+ return `<div class="contract-table-wrap"><table class="contract-table"><thead><tr><th>Contract / client</th><th>Focus</th><th>Difficulty</th><th>Work</th><th>Deadline</th><th>Trust</th><th>Payout</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`;
+}
 function modalBody(){const s=state.studio,p=s.current_project;
  switch(modal){
+ case 'management':return managementBody();
  case 'charts':case 'ledger':return analysisBody(modal);
  case 'ideas':return paginated(s.idea_shelf,(x,i)=>record(x.title,`<p>${esc(x.fantasy)}</p><p>${esc(x.uncertainty)}</p>${!p?btn('Explore idea','idea',i,true):'<p>Finish or shelve the current project first.</p>'}`));
  case 'experiments':return !p||p.stage!=='concept'?'<p>No concept is open.</p>':p.active_experiment?`<p>${esc(p.active_experiment)} · ${p.experiment_days_left} workdays left. Close this popup to let time run.</p>`:paginated(state.experiments,(e,i)=>record(e.name,`<p>${esc(e.blurb)}</p><p class="green">${e.weeks} weeks</p>${btn('Run experiment','experiment',i,true)}`));
@@ -200,11 +127,11 @@ function modalBody(){const s=state.studio,p=s.current_project;
  case 'findings':return paginated([...(p?.gdd.findings||[]).map(f=>f.text),...(p?.gdd.history||[]).map(h=>h.entry)],x=>record('Project record',`<p>${esc(x)}</p>`));
  case 'activity':return paginated(state.logs,x=>`<article class="dialog-card"><p>${esc(x)}</p></article>`);
  case 'team':return paginated(s.team,(e,i)=>record(e.name,`<p>${esc(e.role)} · ${money(e.salary/12)} / month</p><p>Design ${e.design} · Art ${e.art} · Code ${e.code} · Research ${e.research}</p><p>Fatigue ${Math.round(e.fatigue)} · Morale ${Math.round(e.morale)}</p>${btn('Schedule vacation','vacation',i)}`));
- case 'applicants':return paginated(s.applicants,(e,i)=>record(e.name,`<p>${esc(e.role)} · ${money(e.salary/12)} / month</p><p>Design ${e.design} · Art ${e.art} · Code ${e.code} · Research ${e.research}</p>${btn('Hire','hire',i,true)}`));
- case 'contracts':return paginated(s.contract_offers,(c,i)=>record(c.title,`<p>${esc(c.client)} · ${money(c.pay)} payout · ${c.weeks_left} weeks</p><p>Work ${c.required_work} · Reputation required ${c.reputation_required}</p>${btn('Accept contract','contract',i)}`));
+ case 'applicants':return applicantComparison(s.applicants);
+  case 'contracts':return contractComparison(s.contract_offers);
  case 'research':return paginated(state.research,(r,i)=>record(r.name,`<p>${esc(r.effect)} · ${money(r.cost)}</p><p>Prerequisites: ${esc(r.prereq.join(', ')||'none')}</p>${s.completed_research.includes(r.key)?'<span class="green">Completed</span>':btn('Queue research','research',i)}`));
  case 'loans':return paginated(state.loans,(l,i)=>record(l.name,`<p>${money(l.amount)} · ${esc(l.description)}</p>${btn('Take loan','loan',i)}`));
- case 'catalogue':return paginated(s.catalog,(g,i)=>record(g.title,`<p>Rating ${Math.round(g.score)} · ${g.units_sold.toLocaleString()} units · ${money(g.net_revenue)} revenue</p><div class="actions">${btn('Queue update','update',i)}${btn('Change support','support',i)}${btn('Basic promotion','promote',i)}</div>`));
+ case 'catalogue':return releaseRows(s.catalog);
  case 'competitors':return paginated(s.competitors,c=>record(c.name,`<p>${c.in_development.length} projects in development · ${esc(c.tier)} · ${number(c.fanbase)} fans</p>${bars(c.recent_releases.map(g=>({label:g.title,value:g.units_sold,detail:`${number(g.weekly_units)} units this week · ${g.quality}/100` })))}`));
  case 'decision':return state.decision?`<p>Time is held until this decision is resolved.</p><h3>${esc(state.decision.title)}</h3>${state.decision.options.map((o,i)=>record(o.name,`<p>${esc(o.effect)}</p>${btn('Choose','decision',i,true)}`)).join('')}`:'<p>No outstanding decision.</p>';
  case 'settings':return `<p>Keyboard and mouse are both supported. Time pauses while a popup is open and resumes at the previous speed when it closes.</p><div class="row"><span>Pages</span><span>H / G / T / B / S</span></div><div class="row"><span>Pause / speed</span><span>Space / ← → / &lt; &gt;</span></div><div class="row"><span>Ideas / jobs / research</span><span>N / J / U</span></div><div class="row"><span>Move / activate</span><span>↑ ↓ / Enter</span></div><div class="row"><span>Close popup / back</span><span>Esc / Backspace</span></div><div class="row"><span>Save</span><span>Ctrl+S</span></div><p>Inside forms, arrows change the focused option. Tab moves between controls. Q opens this menu; close the browser after saving.</p><div class="actions">${btn('Save studio','save',0,true)}</div>`;
@@ -213,7 +140,7 @@ function modalBody(){const s=state.studio,p=s.current_project;
  }
 }
 function modalCount(){const s=state.studio,p=s.current_project;return ({ideas:s.idea_shelf,experiments:state.experiments,presentation:p?.gdd.presentation_options||[],plan:Object.keys(state.options),findings:[...(p?.gdd.findings||[]),...(p?.gdd.history||[])],activity:state.logs,team:s.team,applicants:s.applicants,contracts:s.contract_offers,research:state.research,loans:state.loans,catalogue:s.catalog,competitors:s.competitors}[modal]||[]).length;}
-function drawModal(){const total=modal==='plan'?Math.max(1,Math.ceil(modalCount()/4)):1;modalPage=Math.min(modalPage,total-1);const scroll=dialog.querySelector('.dialog-body')?.scrollTop||0;dialog.innerHTML=`<div class="dialog-header"><h2 id="dialog-title">${esc(titles[modal]||({charts:'Weekly sales chart',ledger:'Financial ledger'}[modal]))}</h2><button data-close aria-label="Close popup">[Esc] Close</button></div><div class="dialog-body" tabindex="0" aria-label="${esc(titles[modal]||modal)} content">${modalBody()}${total>1?`<div class="pager"><button data-turn="-1" ${modalPage===0?'disabled':''}>Previous</button><span>${modalPage+1} / ${total}</span><button data-turn="1" ${modalPage===total-1?'disabled':''}>Next</button></div>`:''}</div>`;dialog.querySelector('.dialog-body').scrollTop=scroll;}
+function drawModal(){const total=modal==='plan'?Math.max(1,Math.ceil(modalCount()/4)):1;modalPage=Math.min(modalPage,total-1);const scroll=dialog.querySelector('.dialog-body')?.scrollTop||0;dialog.dataset.modal=modal;dialog.innerHTML=`<div class="dialog-header"><h2 id="dialog-title">${esc(titles[modal]||({charts:'Weekly sales chart',ledger:'Financial ledger'}[modal]))}</h2><button data-close aria-label="Close popup">[Esc] Close</button></div><div class="dialog-body" tabindex="0" aria-label="${esc(titles[modal]||modal)} content">${modalBody()}${total>1?`<div class="pager"><button data-turn="-1" ${modalPage===0?'disabled':''}>Previous</button><span>${modalPage+1} / ${total}</span><button data-turn="1" ${modalPage===total-1?'disabled':''}>Next</button></div>`:''}</div>`;dialog.querySelector('.dialog-body').scrollTop=scroll;}
 async function showModal(name){if(busy)return;const wasOpen=dialog.open;if(!wasOpen)returnFocus=document.activeElement;modal=name;modalPage=0;if(!wasOpen){if(!await act('overlay',0,{open:true})){modal=null;return;}}drawModal();if(!dialog.open)dialog.showModal();dialog.querySelector('.dialog-body button, select')?.focus();}
 async function closeModal(){if(busy)return;dialog.close();modal=null;pending=null;await act('overlay',0,{open:false});if(returnFocus?.isConnected)returnFocus.focus();else app.querySelector('nav button.active')?.focus();}
 let pending=null;

@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Studio Lab — five disposable UI prototypes</title>
+  <link rel="icon" href="data:,">
+  <!-- Load order is contract: shared foundation, then the five scoped candidate
+       styles, then this integration shell (shell-only rules). -->
+  <link rel="stylesheet" href="shared.css">
+  <link rel="stylesheet" href="variants/1/variant.css">
+  <link rel="stylesheet" href="variants/2/variant.css">
+  <link rel="stylesheet" href="variants/3/variant.css">
+  <link rel="stylesheet" href="variants/4/variant.css">
+  <link rel="stylesheet" href="variants/5/variant.css">
+  <link rel="stylesheet" href="lab.css">
+</head>
+<body>
+  <a class="skip-link" href="#game-surface">Skip to prototype surface</a>
+  <div id="app">
+    <main id="game-surface" aria-label="Prototype surface"></main>
+
+    <aside id="review-rail" aria-label="Prototype review controls">
+      <div class="rail-head">
+        <p class="rail-title">UI selection lab</p>
+        <p class="rail-note">Prototype · fixture data · time paused</p>
+        <p class="rail-note rail-note-dim">Fixture resets on reload. Feedback stays on this device.</p>
+      </div>
+      <div id="storage-warning" class="rail-warning" role="status" hidden></div>
+
+      <nav class="rail-variants" aria-label="Prototype variants">
+        <button type="button" class="variant-btn" data-variant-btn="1" aria-label="Variant 1" aria-pressed="false">
+          <span class="variant-num" aria-hidden="true">1</span><span class="variant-name" aria-hidden="true">Ops Deck</span>
+        </button>
+        <button type="button" class="variant-btn" data-variant-btn="2" aria-label="Variant 2" aria-pressed="false">
+          <span class="variant-num" aria-hidden="true">2</span><span class="variant-name" aria-hidden="true">Field Notes</span>
+        </button>
+        <button type="button" class="variant-btn" data-variant-btn="3" aria-label="Variant 3" aria-pressed="false">
+          <span class="variant-num" aria-hidden="true">3</span><span class="variant-name" aria-hidden="true">Board Map</span>
+        </button>
+        <button type="button" class="variant-btn" data-variant-btn="4" aria-label="Variant 4" aria-pressed="false">
+          <span class="variant-num" aria-hidden="true">4</span><span class="variant-name" aria-hidden="true">Timeline Table</span>
+        </button>
+        <button type="button" class="variant-btn" data-variant-btn="5" aria-label="Variant 5" aria-pressed="false">
+          <span class="variant-num" aria-hidden="true">5</span><span class="variant-name" aria-hidden="true">Command Board</span>
+        </button>
+      </nav>
+      <p class="rail-selected" id="selected-variant" data-testid="selected-variant">Selected: Variant 1 — Ops Deck</p>
+
+      <div class="rail-feedback">
+        <label class="rail-label" for="variant-rating">Variant rating</label>
+        <select id="variant-rating" name="variant-rating" aria-label="Variant rating">
+          <option value="">Unrated</option>
+          <option value="1">1</option>
+          <option value="2">2</option>
+          <option value="3">3</option>
+          <option value="4">4</option>
+          <option value="5">5</option>
+        </select>
+        <label class="rail-label" for="variant-feedback">Variant feedback</label>
+        <textarea id="variant-feedback" name="variant-feedback" rows="3" aria-label="Variant feedback" placeholder="Notes on this variant…"></textarea>
+        <label class="rail-label" for="overall-feedback">Overall feedback</label>
+        <textarea id="overall-feedback" name="overall-feedback" rows="3" aria-label="Overall feedback" placeholder="Overall notes across variants…"></textarea>
+      </div>
+
+      <div class="rail-actions">
+        <button type="button" id="export-feedback" class="rail-action">Export feedback</button>
+        <button type="button" id="reset-fixture" class="rail-action">Reset fixture</button>
+        <button type="button" id="clear-feedback" class="rail-action rail-action-danger">Clear feedback</button>
+        <div id="clear-confirm" class="rail-confirm" hidden>
+          <p>Clear all five ratings and comments plus the overall comment? Fixture state and the selected variant stay as they are.</p>
+          <button type="button" id="clear-confirm-yes" class="rail-action rail-action-danger">Confirm clear</button>
+          <button type="button" id="clear-cancel" class="rail-action">Cancel</button>
+        </div>
+      </div>
+      <div id="rail-ack" class="rail-ack" role="status" aria-live="polite"></div>
+    </aside>
+  </div>
+
+  <script src="fixtures.js"></script>
+  <script type="module" src="lab.js"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=https://www.coderabbit.ai/integrations/schema.v2.json
+language: en-US
+enable_free_tier: true
+tone_instructions: >-
+  Be concise and practical. Prioritize actionable bugs with a concrete failure
+  scenario. Avoid cosmetic rewrites and speculative architecture advice.
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  suggested_reviewers: false
+  in_progress_fortune: false
+  poem: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  path_filters:
+    - "!.venv/**"
+    - "!**/__pycache__/**"
+    - "!saves/**"
+    - "!web/fonts/**"
+  path_instructions:
+    - path: "**/*"
+      instructions: >-
+        This is Indie Studio Game Dev Sim, a single-player offline studio-management
+        game with a Python 3.10+ simulation, curses terminal UI, and local browser
+        UI. Prioritize reproducible correctness bugs, crashes, save compatibility,
+        and measurable hot-path performance problems. Preserve the offline,
+        standard-library runtime design (windows-curses is needed on Windows).
+        Distinguish intentional game-balance changes from calculation bugs.
+        Do not assume a publicly hosted multi-user service or recommend accounts,
+        cloud services, or enterprise architecture. Still report concrete local
+        HTTP, file access, and untrusted-input vulnerabilities when applicable.
+    - path: "**/*.py"
+      instructions: >-
+        Trace simulation changes through their callers and existing tests.
+        Check financial accounting, duplicate costs or rewards, invalid production
+        transitions, time-step boundaries, pause/resume behavior, and save/load
+        round trips including older save versions. Consider empty catalogues,
+        missing saved fields, and long-running simulations. Preserve Python 3.10
+        compatibility. For terminal code, check small-window bounds, input
+        handling, and ASCII fallback. Suggest focused regression tests for real
+        behavioral gaps rather than tests that merely mirror implementation.
+    - path: "browser.py"
+      instructions: >-
+        The browser server runs locally on loopback. Check authoritative simulation
+        state, concurrent requests, input validation, save integrity, and consistency
+        with terminal actions. Check pause ownership, disconnection behavior, and
+        duplicate action handling. Assess security against this local deployment.
+    - path: "web/**"
+      instructions: >-
+        This frontend works offline with local assets. Check stale polling responses,
+        duplicate submissions, keyboard shortcuts while editing form fields, modal
+        pause/resume behavior, reconnect behavior, and agreement with server state.
+        Treat displayed interpolation as presentation, not authoritative game time.
+        Flag concrete keyboard accessibility and viewport overflow regressions;
+        do not speculate about visual quality without evidence.
+
+chat:
+  auto_reply: true

@@ -22,12 +22,23 @@ const assert = require('node:assert/strict');
     await page.evaluate(() => document.fonts.ready);
     assert(await page.evaluate(() => document.fonts.check('14px "Studio Mono"')), 'Bundled font did not load');
     assert.equal((await page.request.get('http://127.0.0.1:18767/fonts/JetBrainsMono-Regular.woff2')).status(), 200);
-    assert.equal(await page.locator('.studio-summary .metric').count(), 5);
-    assert.equal(await page.locator('.work-row').count(), 4);
+    assert.equal(await page.locator('.studio-summary .metric').count(), 4);
+    assert.equal(await page.locator('.studio-summary').getByText('Team',{exact:true}).count(),0,'Team count belongs in Team Condition');
+    assert.equal(await page.locator('.command-card').count(), 2);
+    assert.equal(await page.locator('.work-actions').count(), 0, 'Redundant action strip returned');
+    assert.equal(await page.getByRole('columnheader',{name:'Status'}).count(), 0, 'Availability column returned');
+    assert.match(await page.locator('footer').innerText(), /PTrust 0\.0 \| CTrust 0\.0/);
+    for(const name of ['[N] Explore ideas','[J] Contracts']) {
+      await page.getByRole('button',{name,exact:true}).waitFor();
+    }
+    assert.equal(await page.getByRole('button',{name:'[U] Research',exact:true}).count(),0);
+    assert.equal(await page.getByRole('button',{name:'[P] Catalogue',exact:true}).count(),0);
+    assert.equal(await page.locator('.command-card').evaluateAll(cards=>new Set(cards.map(x=>Math.round(x.getBoundingClientRect().top))).size),1,'Game and Contract are not side-by-side');
+    assert.equal(await page.locator('.studio-glance > section').evaluateAll(cards=>new Set(cards.map(x=>Math.round(x.getBoundingClientRect().top))).size),1,'Team and Market are not side-by-side');
     for (const weight of ['Regular', 'SemiBold', 'Bold']) {
       assert.equal((await page.request.get(`http://127.0.0.1:18767/fonts/JetBrainsMono-${weight}.woff2`)).status(), 200);
     }
-    await page.getByRole('button', {name:'[J] Take a contract', exact:true}).waitFor();
+    await page.getByRole('button', {name:'[J] Contracts', exact:true}).waitFor();
     await page.getByRole('table').waitFor();
     await page.waitForFunction(() => !busy);
     await page.keyboard.press('Space');
@@ -45,13 +56,13 @@ const assert = require('node:assert/strict');
         if (key === 'h') {
           const problems = await page.evaluate(() => {
             const issues=[];
-            for(const selector of ['.studio-layout','.studio-work-col','.work-list','.work-row','.studio-side-col','.team-panel','.activity-panel','.work-actions','header','footer']) {
+            for(const selector of ['.studio-dashboard','.studio-command','.command-card','.studio-release-table','.studio-intelligence','.studio-glance','.team-panel','.studio-pulse','.activity-panel','header','footer']) {
               for(const el of document.querySelectorAll(selector)) {
-                if(el.scrollHeight>el.clientHeight+1 || el.scrollWidth>el.clientWidth+1) issues.push(selector+' overflows');
+                if(el.scrollHeight>el.clientHeight+1 || el.scrollWidth>el.clientWidth+1) issues.push(`${selector} overflows ${el.scrollWidth}x${el.scrollHeight} / ${el.clientWidth}x${el.clientHeight}`);
               }
             }
-            const left=document.querySelector('.studio-work-col').getBoundingClientRect();
-            const right=document.querySelector('.studio-side-col').getBoundingClientRect();
+            const left=document.querySelector('.studio-command').getBoundingClientRect();
+            const right=document.querySelector('.studio-intelligence').getBoundingClientRect();
             if(Math.min(left.right,right.right)>Math.max(left.left,right.left)+1 && Math.min(left.bottom,right.bottom)>Math.max(left.top,right.top)+1) issues.push('columns overlap');
             return issues;
           });
@@ -87,7 +98,7 @@ const assert = require('node:assert/strict');
     await page.getByRole('button',{name:'Explore idea',exact:true}).first().click();
     await page.waitForFunction(() => !busy && !dialog.open);
     await page.keyboard.press('g');
-    await page.getByRole('button',{name:'[Enter] Experiments',exact:true}).click();
+    await page.getByRole('button',{name:'[Enter] Experiment',exact:true}).click();
     await page.getByRole('button',{name:'Run experiment',exact:true}).first().click();
     await page.waitForFunction(() => !busy && !dialog.open && !!state.studio.current_project.active_experiment);
     await page.keyboard.press('Space');
@@ -161,8 +172,20 @@ const assert = require('node:assert/strict');
       assert.equal(await page.locator('dialog .pager').count(),0,`${name} still has pages`);
       assert.equal(await page.locator('.dialog-body').evaluate(el=>getComputedStyle(el).scrollbarWidth),'thin');
       assert(await page.locator('.dialog-body').evaluate(el=>el.getBoundingClientRect().bottom<=innerHeight),`${name} extends below viewport`);
+      if(name==='applicants'){
+        assert.equal(await page.locator('.candidate-row').count(),await page.evaluate(()=>state.studio.applicants.length));
+        assert(await page.locator('.candidate-row').evaluateAll(rows=>rows.every(row=>row.querySelectorAll('.candidate-strongest').length>=1)),'Every applicant needs a strongest skill');
+        assert(await page.locator('.candidate-stats').evaluateAll(groups=>[0,1,2,3].every(column=>groups.some(group=>group.children[column].classList.contains('candidate-best')))),'Every skill column needs a highlighted best applicant');
+        assert(await page.locator('.candidate-row').evaluateAll(rows=>rows.every(row=>{const card=row.getBoundingClientRect(),button=row.querySelector('button').getBoundingClientRect();return button.right<=card.right&&button.left>card.left+card.width/2&&card.height<=70;})),'Applicant rows should be compact with Hire at right');
+        if(process.env.APPLICANT_SCREENSHOT)await page.screenshot({path:process.env.APPLICANT_SCREENSHOT});
+      }
       await page.evaluate(()=>closeModal());
     }
+    await page.setViewportSize({width:390,height:844});
+    await page.evaluate(()=>showModal('applicants'));
+    assert(await page.locator('.candidate-row').evaluateAll(rows=>rows.every(row=>row.scrollWidth<=row.clientWidth+1)),'Mobile applicant rows overflow');
+    if(process.env.APPLICANT_MOBILE_SCREENSHOT)await page.screenshot({path:process.env.APPLICANT_MOBILE_SCREENSHOT});
+    await page.evaluate(()=>closeModal());
     assert.deepEqual(errors, []);
     console.log('PASS: four viewport sizes; experiments, keyboard, scrollable lists, staged plan, running Design clock and popup pause/resume work in Chromium.');
   } finally {

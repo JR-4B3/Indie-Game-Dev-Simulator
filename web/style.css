@@ -268,31 +268,6 @@ main {
   color: var(--blue-soft);
 }
 
-/* Quick Actions Bar */
-.work-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 3px;
-}
-
-.work-actions-label {
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  margin-right: 4px;
-}
-
-.work-actions button {
-  padding: 4px 10px;
-  font-size: 13px;
-}
-
 /* Studio 2-Column Board */
 .studio-layout {
   display: grid;
@@ -383,10 +358,9 @@ main {
 .section-line .small { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .muted { color: var(--muted); }
 .team-panel th:nth-child(2), .team-panel td:nth-child(2) { display: none; }
-.team-panel th:first-child { width: 30%; }
-.team-panel th:nth-child(3) { width: 28%; }
-.team-panel th:nth-child(4) { width: 27%; }
-.team-panel th:last-child { width: 15%; }
+.team-panel th:first-child { width: 42%; }
+.team-panel th:nth-child(3) { width: 38%; }
+.team-panel th:last-child { width: 20%; }
 
 .badge {
   display: inline-block;
@@ -913,15 +887,11 @@ select {
 
 /* Keep secondary copy readable; compact views omit detail instead of shrinking it. */
 .metric span, .section-line button, .team-panel th, .event, .stat small,
-.page-heading .small, .work-actions-label, .fatigue-num { font-size: 14px; }
+.page-heading .small, .fatigue-num { font-size: 14px; }
 .work-detail, .team-panel table, .panel p, .dialog-card p { font-size: 14px; }
 .activity-panel { flex-shrink: 0; height: 150px; }
-.work-actions { flex-shrink: 0; }
-.work-actions button { white-space: nowrap; }
 @media (max-width: 1100px) {
-  .work-actions-label, .financial, .work-stage-tag, .section-line .small { display: none; }
-  .work-actions { gap: 4px; padding: 6px; }
-  .work-actions button { padding: 4px 6px; font-size: 13px; }
+  .financial, .work-stage-tag, .section-line .small { display: none; }
   .studio-work-col, .team-panel, .activity-panel { padding: 8px; }
   .work-row { padding: 6px; gap: 6px; }
   .work-row button { font-size: 13px; padding: 5px; }
@@ -947,8 +917,6 @@ select {
   .studio-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 6px; gap: 4px; }
   .metric span { font-size: 12px; }
   .metric strong { font-size: 15px; }
-  .work-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .work-actions button { white-space: normal; font-size: 12px; padding: 3px; }
   .studio-layout {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(0, 1fr) 205px;
@@ -967,6 +935,7 @@ select {
   footer { flex-wrap: wrap; justify-content: center; gap: 2px; padding: 3px; }
   .time-strip { gap: 6px; font-size: 12px; }
   .time-strip progress { width: 75px; }
+  .trust { display: none; }
   .page-heading .small { display: none; }
   .dashboard { grid-template-columns: 1fr; grid-template-rows: repeat(4, minmax(0, 1fr)); gap: 6px; }
   .panel { padding: 6px; gap: 3px; }
